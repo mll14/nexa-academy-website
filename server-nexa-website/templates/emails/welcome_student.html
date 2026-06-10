@@ -1,0 +1,19 @@
+{% extends 'emails/base_email.html' %} {% block subject %}Welcome to Nexa
+Academy, {{ display_name }}{% endblock %} {% block content %}
+<p>Hi {{ display_name }},</p>
+<p>
+  Welcome to Nexa Academy! You have been enrolled in
+  <strong>{{ program_name }}</strong>.
+</p>
+<p>Enrollment details:</p>
+<ul>
+  <li>Total Fees: KSh {{ amount }}</li>
+  <li>Amount Paid: KSh {{ amount_paid }}</li>
+  <li>Balance: KSh {{ balance }}</li>
+</ul>
+<p>
+  Access your dashboard at
+  <a href="{{ frontend_url }}">{{ frontend_url }}</a> to get started.
+</p>
+<p>Best regards,<br />Admissions — Nexa Academy</p>
+{% endblock %}

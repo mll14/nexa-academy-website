@@ -1,0 +1,109 @@
+{
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "chrome-devtools-mcp@claude-plugins-official": true,
+    "ralph-loop@claude-plugins-official": true,
+    "figma@claude-plugins-official": true
+  },
+  "hooks": {
+    "PostToolUse": [],
+    "Stop": [
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat >/dev/null || true; git rev-parse --git-dir >/dev/null 2>&1 && code-review-graph update --skip-flows --repo \"/home/manasseh/Documents/nexa/website\" || true",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "_comment": "CRG auto-update after AI finishes turn \u2014 once per turn, PID-guarded.",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v code-review-graph >/dev/null 2>&1 && [ -d .code-review-graph ] && { PF=/tmp/crg-claude.pid; if [ -f \"$PF\" ] && kill -0 \"$(cat \"$PF\")\" 2>/dev/null; then true; else { code-review-graph update --skip-flows 2>/dev/null && nohup code-review-graph embed >/dev/null 2>&1 & } & echo $! > \"$PF\"; fi; } || true",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "_comment": "CRG graph status on session open",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v code-review-graph >/dev/null 2>&1 && code-review-graph status 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "_comment": "Setup nudge \u2014 prompt to initialize if CLI installed but no graph built yet",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if command -v code-review-graph >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ ! -d .code-review-graph ]; then printf '{\"systemMessage\":\"Graph tool installed but not yet initialized. Ask me to set up: code-review-graph (code-review-graph install)\"}'; fi || true",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "_comment": "Graph query cheatsheet \u2014 injected once per session (~150 tokens)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .code-review-graph/graph.db ] || [ -f graphify-out/graph.json ]; then STATS=\"\"; TOOL_LINES=\"\"; if [ -f .code-review-graph/graph.db ]; then STATS=$(python3 -c \"import sqlite3; c=sqlite3.connect('.code-review-graph/graph.db'); n=c.execute('SELECT COUNT(*) FROM nodes').fetchone()[0]; e=c.execute('SELECT COUNT(*) FROM edges').fetchone()[0]; print(f'{n} nodes, {e} edges'); c.close()\" 2>/dev/null || echo \"\"); TOOL_LINES=\"  where is X defined    \u2192 semantic_search_nodes_tool(query=X)\\n  who calls X           \u2192 query_graph_tool(pattern=callers_of, target=X)\\n  pre-refactor blast    \u2192 get_impact_radius_tool(changed_files=[...])\\n  community/cluster     \u2192 list_communities_tool()\\n  code review context   \u2192 get_review_context_tool(changed_files=[...])\"; fi; if [ -f graphify-out/graph.json ]; then GFY_STATS=$(python3 -c \"import json; g=json.load(open('graphify-out/graph.json')); nodes=g.get('nodes',[]); comms=len(set(n.get('community','') for n in nodes if n.get('community',''))); print(f'{len(nodes)} nodes, {comms} communities')\" 2>/dev/null || echo \"\"); [ -n \"$GFY_STATS\" ] && STATS=\"${STATS:+$STATS | }graphify: $GFY_STATS\"; TOOL_LINES=\"${TOOL_LINES:+$TOOL_LINES\\n}  CRG miss / explore    \u2192 graphify query '<term>' --graph graphify-out/graph.json\\n  path A\u2192B              \u2192 graphify path '<from>' '<to>' --graph graphify-out/graph.json\"; fi; printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"GRAPH QUERY CHEATSHEET (%s) \u2014 use BEFORE Read/Grep/Bash-find on code:\\n%s\\nSkip graph for: .md .json .yml .log .jsonl configs cross-repo paths.\\nOverride grep gate: append --graph-tried to any Bash command.\"}}' \"$STATS\" \"$TOOL_LINES\"; fi",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "if [ -f .code-review-graph/graph.db ] || [ -f graphify-out/graph.json ]; then STATS=''; TOOL_LINES=''; if [ -f .code-review-graph/graph.db ]; then STATS=$(python3 -c \"import sqlite3; c=sqlite3.connect('.code-review-graph/graph.db'); n=c.execute('SELECT COUNT(*) FROM nodes').fetchone()[0]; e=c.execute('SELECT COUNT(*) FROM edges').fetchone()[0]; print(f'{n} nodes, {e} edges'); c.close()\" 2>/dev/null || echo ''); TOOL_LINES=\"  where is X defined    → semantic_search_nodes_tool(query=X)\\n  who calls X           → query_graph_tool(pattern=callers_of, target=X)\\n  pre-refactor blast    → get_impact_radius_tool(changed_files=[...])\\n  community/cluster     → list_communities_tool()\\n  code review context   → get_review_context_tool(changed_files=[...])\"; fi; if [ -f graphify-out/graph.json ]; then GFY_STATS=$(python3 -c \"import json; g=json.load(open('graphify-out/graph.json')); nodes=g.get('nodes',[]); comms=len(set(n.get('community','') for n in nodes if n.get('community',''))); print(f'{len(nodes)} nodes, {comms} communities')\" 2>/dev/null || echo ''); [ -n \"$GFY_STATS\" ] && STATS=\"${STATS:+$STATS | }graphify: $GFY_STATS\"; TOOL_LINES=\"${TOOL_LINES:+$TOOL_LINES\\n}  CRG miss / explore    → graphify query '<term>' --graph graphify-out/graph.json\\n  path A→B              → graphify path '<from>' '<to>' --graph graphify-out/graph.json\"; fi; printf '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"GRAPH QUERY CHEATSHEET (%s) — use BEFORE Read/Grep/Bash-find on code:\\n%s\\nSkip graph for: .md .json .yml .log .jsonl configs cross-repo paths.\\nOverride grep gate: append --graph-tried to any Bash command.\"}}' \"$STATS\" \"$TOOL_LINES\"; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "CMD=$(python3 -c \"import json,sys; d=json.load(sys.stdin); print(d.get('tool_input',d).get('command',''))\" 2>/dev/null || true); case \"$CMD\" in *grep*|*rg\\ *|*ripgrep*|*find\\ *|*fd\\ *|*ack\\ *|*ag\\ *)   [ -f graphify-out/graph.json ] &&   echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify: knowledge graph at graphify-out/. For focused questions, run `graphify query \\\"<question>\\\"` (scoped subgraph, usually much smaller than GRAPH_REPORT.md) instead of grepping raw files. Read GRAPH_REPORT.md only for broad architecture context.\"}}'   || true ;; esac"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "HIT=$(python3 -c \"import json,sys;d=json.load(sys.stdin);t=d.get('tool_input',d);s=(str(t.get('file_path') or '')+' '+str(t.get('pattern') or '')+' '+str(t.get('path') or '')).lower().replace(chr(92),'/');exts=('.py','.js','.ts','.tsx','.jsx','.go','.rs','.java','.rb','.c','.h','.cpp','.hpp','.cc','.cs','.kt','.swift','.php','.scala','.lua','.sh','.md','.rst','.txt','.mdx');sys.stdout.write('1' if 'graphify-out/' not in s and any(e in s for e in exts) else '')\" 2>/dev/null || true); if [ \"$HIT\" = 1 ] && [ -f graphify-out/graph.json ]; then echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"graphify: knowledge graph at graphify-out/. For codebase questions, run `graphify query \\\"<question>\\\"` (scoped subgraph, usually much smaller than reading files one by one), `graphify explain \\\"<concept>\\\"`, or `graphify path \\\"<A>\\\" \\\"<B>\\\"`, instead of reading source files to answer. Read raw files to modify or debug specific code, or when the graph lacks the detail.\"}}'; fi || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/smart-grep-hook.sh",
+            "timeout": 6
+          }
+        ]
+      }
+    ]
+  }
+}

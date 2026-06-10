@@ -1,0 +1,15 @@
+{% extends 'emails/base_email.html' %} {% block subject %}Weekly Admin Report —
+Nexa Academy{% endblock %} {% block content %}
+<p>Hello Admin,</p>
+<p>Here is your weekly summary:</p>
+<ul>
+  <li>New Applications: {{ new_applications }}</li>
+  <li>New Newsletter Subscribers: {{ new_subscriptions }}</li>
+  <li>New Contact Inquiries: {{ new_contacts }}</li>
+</ul>
+<p>
+  Visit the admin dashboard for more details:
+  <a href="{{ frontend_url }}">{{ frontend_url }}</a>
+</p>
+<p>Regards,<br />Nexa Academy</p>
+{% endblock %}

@@ -1,0 +1,867 @@
+from rest_framework import viewsets, status, filters
+from ubuntu_labs.pagination import StandardResultsSetPagination
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Q
+from django.utils import timezone
+from django.core.cache import cache
+from .models import Application, ApplicationLog, DraftApplication
+from .serializers import ApplicationSerializer, ApplicationCreateSerializer, InterviewSlotSerializer
+from .models import InterviewSlot
+from accounts.permissions import IsAdminUser
+from django.conf import settings
+from ubuntu_labs.email_utils import send_html_email
+from notifications.models import Notification
+import requests as http_req
+import uuid
+import logging
+from accounts.models import User
+
+
+logger = logging.getLogger(__name__)
+
+
+def _verify_recaptcha(token: str, remote_ip: str = "", expected_action: str = ""):
+    """Verify reCAPTCHA token with Google.
+
+    Returns a tuple: (is_valid: bool, response_json: dict, error_message: str).
+    If RECAPTCHA_SECRET_KEY is not set, verification is skipped and treated as valid.
+    """
+    secret = getattr(settings, "RECAPTCHA_SECRET_KEY", "")
+    min_score = float(getattr(settings, "RECAPTCHA_MIN_SCORE", 0.5))
+    expected_action = expected_action or getattr(
+        settings,
+        "RECAPTCHA_V3_ACTION",
+        "",
+    )
+    if not secret:
+        return True, {"skipped": True, "reason": "missing_secret"}, ""
+    if not token:
+        return False, {"success": False, "error-codes": ["missing-input-response"]}, "missing_token"
+    try:
+        payload = {"secret": secret, "response": token}
+        if remote_ip:
+            payload["remoteip"] = remote_ip
+
+        resp = http_req.post(
+            "https://www.google.com/recaptcha/api/siteverify",
+            data=payload,
+            timeout=5,
+        )
+        data = resp.json()
+        if not bool(data.get("success", False)):
+            return False, data, ""
+
+        if expected_action and data.get("action") != expected_action:
+            data.setdefault("error-codes", [])
+            if "action-mismatch" not in data["error-codes"]:
+                data["error-codes"].append("action-mismatch")
+            return False, data, "action_mismatch"
+
+        score = data.get("score")
+        try:
+            score_value = float(score)
+        except (TypeError, ValueError):
+            score_value = 0.0
+
+        if score_value < min_score:
+            data.setdefault("error-codes", [])
+            if "low-score" not in data["error-codes"]:
+                data["error-codes"].append("low-score")
+            return False, data, "low_score"
+
+        return True, data, ""
+    except Exception as exc:
+        return False, {}, str(exc)
+
+
+class ApplicationViewSet(viewsets.ModelViewSet):
+    queryset = Application.objects.all()
+    serializer_class = ApplicationSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'program', 'email_sent']
+    search_fields = ['full_name', 'email', 'phone']
+    ordering_fields = ['applied_at', 'updated_at', 'full_name']
+    ordering = ['-applied_at']
+    pagination_class = StandardResultsSetPagination
+    
+    def get_queryset(self):
+        user = self.request.user
+        # Unauthenticated requests (e.g. AllowAny create) have no meaningful queryset
+        if not user or not user.is_authenticated:
+            return Application.objects.none()
+        # Admins see everything
+        if getattr(user, 'role', None) == 'admin':
+            return Application.objects.all()
+        # Students only see their own applications (matched by FK or email)
+        return Application.objects.filter(
+            Q(user=user) | Q(email__iexact=user.email)
+        )
+
+    def get_permissions(self):
+        if self.action == 'create':
+            permission_classes = [AllowAny]
+        elif self.action in ['update', 'partial_update', 'destroy', 'cancel_interview']:
+            permission_classes = [IsAuthenticated, IsAdminUser]
+        else:
+            permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]
+    
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return ApplicationCreateSerializer
+        return ApplicationSerializer
+    
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Verify reCAPTCHA token if secret is configured
+        recaptcha_verified = True
+        recaptcha_token = str(
+            request.data.get("recaptcha_token")
+            or request.data.get("recaptchaToken")
+            or ""
+        ).strip()
+        recaptcha_enforce = getattr(
+            settings,
+            "RECAPTCHA_ENFORCE",
+            not getattr(settings, "DEBUG", False),
+        )
+
+        if getattr(settings, "RECAPTCHA_SECRET_KEY", ""):
+            is_valid_recaptcha, recaptcha_data, recaptcha_err = _verify_recaptcha(
+                recaptcha_token,
+                remote_ip=request.META.get("REMOTE_ADDR", ""),
+                expected_action=getattr(settings, "RECAPTCHA_V3_ACTION", "application_submit"),
+            )
+            if not is_valid_recaptcha:
+                recaptcha_verified = False
+                logger.warning(
+                    "reCAPTCHA verification failed: codes=%s hostname=%s action=%s err=%s token_prefix=%s",
+                    recaptcha_data.get("error-codes", []),
+                    recaptcha_data.get("hostname"),
+                    recaptcha_data.get("action"),
+                    recaptcha_err,
+                    (recaptcha_token or "")[:20],
+                )
+
+                codes = recaptcha_data.get("error-codes", []) or []
+                if codes:
+                    body = {"error": f"reCAPTCHA verification failed ({', '.join(codes)})"}
+                else:
+                    body = {"error": "reCAPTCHA verification failed"}
+                if getattr(settings, "DEBUG", False):
+                    body["recaptcha_debug"] = {
+                        "error_codes": codes,
+                        "hostname": recaptcha_data.get("hostname"),
+                        "challenge_ts": recaptcha_data.get("challenge_ts"),
+                        "score": recaptcha_data.get("score"),
+                        "action": recaptcha_data.get("action"),
+                        "exception": recaptcha_err or None,
+                    }
+
+                if recaptcha_enforce:
+                    return Response(body, status=status.HTTP_400_BAD_REQUEST)
+
+                logger.warning(
+                    "reCAPTCHA fail-open enabled (DEBUG). Allowing application create despite verification failure."
+                )
+
+        # If user is authenticated, link to their account. Otherwise try to auto-create or find a user by email.
+        if request.user.is_authenticated:
+            application = serializer.save(
+                user=request.user,
+                recaptcha_verified=recaptcha_verified,
+            )
+        else:
+            email = serializer.validated_data.get("email")
+            full_name = serializer.validated_data.get("full_name") or serializer.validated_data.get("fullName") or "Applicant"
+            phone = serializer.validated_data.get("phone", "")
+            user = None
+            if email:
+                user = User.objects.filter(email__iexact=email).first()
+            if not user:
+                # create a lightweight student account with a random password
+                try:
+                    random_password = uuid.uuid4().hex[:12]
+                    user = User.objects.create_user(
+                        email=email,
+                        password=random_password,
+                        display_name=full_name,
+                        phone=phone,
+                    )
+                except Exception:
+                    user = None
+
+            if user:
+                application = serializer.save(
+                    user=user,
+                    recaptcha_verified=recaptcha_verified,
+                )
+            else:
+                # fallback: save without user
+                application = serializer.save(
+                    recaptcha_verified=recaptcha_verified,
+                )
+        
+        # Create log entry
+        ApplicationLog.objects.create(
+            application=application,
+            previous_status='',
+            new_status='pending',
+            changed_by='system',
+            notes='Application submitted',
+            applicant_email=application.email,
+            applicant_name=application.full_name
+        )
+
+        # Mark any draft as completed so reminder email is not sent
+        try:
+            DraftApplication.objects.filter(email__iexact=application.email).update(completed=True)
+        except Exception:
+            pass
+
+        # Create an in-app notification for the applicant if we have a linked user
+        try:
+            if application.user:
+                Notification.objects.create(
+                    user=application.user,
+                    type='pending',
+                    title='Application Received',
+                    message=f"We have received your application for {application.program_name}. Our admissions team will review it and get back to you.",
+                    application=application,
+                    course_name=application.program_name,
+                    link='/student-dashboard/' + str(application.user.uid)
+                )
+        except Exception:
+            pass
+        
+        # Send confirmation email
+        try:
+            context = {
+                'full_name': application.full_name,
+                'program_name': application.program_name,
+                'start_date': application.start_date,
+                'estimated_fees': application.estimated_fees,
+                'frontend_url': settings.FRONTEND_URL,
+            }
+            send_html_email(
+                subject=f"We've received your application, {application.full_name}",
+                template_name='application_received.html',
+                context=context,
+                recipient_email=application.email,
+            )
+            application.email_sent = True
+            application.save(update_fields=['email_sent'])
+        except Exception:
+            pass
+        
+        return Response(
+            ApplicationSerializer(application).data,
+            status=status.HTTP_201_CREATED
+        )
+    
+    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def update_status(self, request, pk=None):
+        application = self.get_object()
+        new_status = request.data.get('status')
+        notes = request.data.get('notes', '')
+        
+        if new_status not in dict(Application.STATUS_CHOICES):
+            return Response(
+                {'error': 'Invalid status'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        previous_status = application.status
+        application.status = new_status
+        application.status_updated_at = timezone.now()
+        application.processed_by = request.user.email
+        if notes:
+            application.admin_notes = notes
+        application.save()
+        
+        # Create log entry
+        ApplicationLog.objects.create(
+            application=application,
+            previous_status=previous_status,
+            new_status=new_status,
+            changed_by=request.user.email,
+            notes=notes,
+            applicant_email=application.email,
+            applicant_name=application.full_name
+        )
+        
+        # Send status update email to student
+        try:
+            email_configs = {
+                'reviewed': {
+                    'template': 'application_reviewed.html',
+                    'subject': f"Your Nexa Academy application has been reviewed",
+                },
+                'approved': {
+                    'template': 'application_approved.html',
+                    'subject': f"Congratulations, {application.full_name} — you've been approved",
+                },
+                'rejected': {
+                    'template': 'application_rejected.html',
+                    'subject': f"An update on your Nexa Academy application",
+                },
+                'interview_completed': {
+                    'template': 'interview_completed.html',
+                    'subject': f"Thanks for interviewing with us, {application.full_name}",
+                },
+                'enrolled': {
+                    'template': 'enrolled.html',
+                    'subject': f"Welcome to Nexa Academy, {application.full_name} — you're in!",
+                },
+            }
+            cfg = email_configs.get(new_status)
+            if cfg:
+                context = {
+                    'full_name': application.full_name,
+                    'program_name': application.program_name,
+                    'frontend_url': settings.FRONTEND_URL,
+                    'start_date': application.start_date,
+                    'estimated_fees': application.estimated_fees,
+                }
+                send_html_email(
+                    subject=cfg['subject'],
+                    template_name=cfg['template'],
+                    context=context,
+                    recipient_email=application.email,
+                )
+            # Create in-app notification if user is linked
+            if application.user:
+                Notification.objects.create(
+                    user=application.user,
+                    type=new_status,
+                    title=f"Application {new_status.capitalize()}",
+                    message=f"Your application for {application.program_name} has been {new_status}.",
+                    application=application,
+                    link='/student-dashboard/' + str(application.user.uid)
+                )
+        except Exception:
+            pass
+
+        
+        return Response(ApplicationSerializer(application).data)
+
+    @action(detail=True, methods=['post'])
+    def choose_interview_time(self, request, pk=None):
+        application = self.get_object()
+        slot = getattr(application, 'interview_slot', None)
+        chosen = request.data.get('chosen_time')
+        if not chosen:
+            return Response({'error': 'chosen_time is required'}, status=400)
+        if not slot:
+            return Response({'error': 'No interview slot found for this application.'}, status=400)
+        # Ensure the requester is the application owner (student) or an admin.
+        # Allow matching by linked user.uid, or by email if the application wasn't linked to a user.
+        user = request.user
+        is_owner = False
+        if hasattr(user, 'uid') and application.user and user.uid == application.user.uid:
+            is_owner = True
+        # fallback: allow if the authenticated user's email matches the application email
+        if not is_owner and hasattr(user, 'email') and application.email and user.email.lower() == application.email.lower():
+            is_owner = True
+
+        if not is_owner and not getattr(user, 'is_staff', False):
+            return Response({'error': 'Permission denied'}, status=403)
+
+        # Save chosen time
+        slot.chosen_time = chosen
+        slot.save()
+
+        previous_status = application.status
+        application.status = 'interview_scheduled'
+        application.status_updated_at = timezone.now()
+        application.save()
+
+        # Create application log
+        try:
+            ApplicationLog.objects.create(
+                application=application,
+                previous_status=previous_status,
+                new_status='interview_scheduled',
+                changed_by=user.email if hasattr(user, 'email') else 'student',
+                notes=f'Chosen time: {chosen}',
+                applicant_email=application.email,
+                applicant_name=application.full_name,
+            )
+        except Exception:
+            pass
+
+        # Notify student
+        try:
+            if application.user:
+                Notification.objects.create(
+                    user=application.user,
+                    type='info',
+                    title='Interview Confirmed',
+                    message=f'Your interview is confirmed for {chosen}.',
+                    application=application,
+                )
+        except Exception:
+            pass
+
+        # Notify admins
+        try:
+            admins = User.objects.filter(role='admin')
+            for admin in admins:
+                Notification.objects.create(
+                    user=admin,
+                    type='info',
+                    title='Interview Time Selected',
+                    message=f"{application.full_name} has chosen their interview time: {chosen}.",
+                    application=application,
+                )
+        except Exception:
+            pass
+
+        return Response({'status': 'scheduled', 'chosen_time': chosen})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def propose_interview_times(self, request, pk=None):
+        """Admin action: propose interview times for the applicant."""
+        application = self.get_object()
+        data = request.data
+        times = data.get('proposed_times') or data.get('proposedTimes')
+        zoom_link = data.get('zoom_link') or data.get('zoomLink') or ''
+        if not times or not isinstance(times, list):
+            return Response({'error': 'proposed_times (list) is required'}, status=400)
+
+        slot, created = InterviewSlot.objects.get_or_create(application=application)
+        slot.proposed_times = times
+        slot.zoom_link = zoom_link
+        slot.admin_approved = True
+        slot.save()
+
+        # Only transition to 'approved' if not already at or past interview_scheduled.
+        # This prevents accidentally resetting a confirmed interview's status.
+        if application.status not in ('interview_scheduled', 'interview_completed', 'enrolled'):
+            previous_status = application.status
+            application.status = 'approved'
+            application.status_updated_at = timezone.now()
+            application.save()
+
+            try:
+                ApplicationLog.objects.create(
+                    application=application,
+                    previous_status=previous_status,
+                    new_status='approved',
+                    changed_by=request.user.email if hasattr(request.user, 'email') else 'admin',
+                    notes=f'Proposed interview times: {times}',
+                    applicant_email=application.email,
+                    applicant_name=application.full_name,
+                )
+            except Exception:
+                pass
+
+        # Notify student
+        try:
+            if application.user:
+                Notification.objects.create(
+                    user=application.user,
+                    type='info',
+                    title='Interview Times Available',
+                    message='Interview times are available — please choose your preferred slot in your student dashboard.',
+                    application=application,
+                )
+        except Exception:
+            pass
+
+        return Response(InterviewSlotSerializer(slot).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def complete_interview(self, request, pk=None):
+        """Admin marks the interview complete and approves the result."""
+        application = self.get_object()
+        slot = getattr(application, 'interview_slot', None)
+        if not slot:
+            return Response({'error': 'No interview slot found.'}, status=400)
+
+        slot.completed = True
+        slot.admin_approved = True
+        slot.save()
+
+        previous_status = application.status
+        application.status = 'interview_completed'
+        application.status_updated_at = timezone.now()
+        application.save()
+
+        # Log
+        try:
+            ApplicationLog.objects.create(
+                application=application,
+                previous_status=previous_status,
+                new_status='interview_completed',
+                changed_by=request.user.email if hasattr(request.user, 'email') else 'admin',
+                notes='Interview marked complete by admin',
+                applicant_email=application.email,
+                applicant_name=application.full_name,
+            )
+        except Exception:
+            pass
+
+        # Notify student
+        try:
+            if application.user:
+                Notification.objects.create(
+                    user=application.user,
+                    type='success',
+                    title='Interview Passed',
+                    message='Congratulations! Your interview was successful. You may now proceed to enrollment and payment.',
+                    application=application,
+                )
+        except Exception:
+            pass
+
+        return Response({'status': 'completed'})
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def get_interview_slot(self, request, pk=None):
+        application = self.get_object()
+        # Only allow applicant or admins
+        user = request.user
+        if not (getattr(user, 'is_staff', False) or (application.user and getattr(user, 'uid', None) == getattr(application.user, 'uid', None))):
+            return Response({'error': 'Permission denied'}, status=403)
+
+        slot = getattr(application, 'interview_slot', None)
+        if not slot:
+            return Response({'error': 'No interview slot found.'}, status=404)
+
+        return Response(InterviewSlotSerializer(slot).data)
+
+    @action(detail=True, methods=['get'], permission_classes=[IsAuthenticated])
+    def available_slots(self, request, pk=None):
+        application = self.get_object()
+        user = request.user
+        is_admin = getattr(user, 'role', None) == 'admin'
+        is_owner = (
+            (application.user and hasattr(user, 'uid') and user.uid == application.user.uid)
+            or (hasattr(user, 'email') and application.email and user.email.lower() == application.email.lower())
+        )
+        if not is_admin and not is_owner:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        # Students may fetch slots for 'approved' (initial booking) or
+        # 'interview_scheduled' (reschedule). Admins can always fetch.
+        if not is_admin and application.status not in ('approved', 'interview_scheduled'):
+            return Response({'error': 'Application is not in approved status'}, status=status.HTTP_400_BAD_REQUEST)
+
+        cache_key = f'gcal_slots_v2_{application.id}'
+        slot_data = cache.get(cache_key)
+        if slot_data is None:
+            try:
+                from .gcal_service import get_all_slots_with_status, CalendarServiceError
+                slot_data = get_all_slots_with_status()
+                cache.set(cache_key, slot_data, 300)
+            except Exception as exc:
+                logger.warning('available_slots: calendar unavailable — %s', exc)
+                return Response(
+                    {'error': 'Calendar unavailable, please try again'},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
+        # slots      — full list with status for grid rendering
+        # available  — ISO strings only, for backward compat
+        available = [s['time'] for s in slot_data if s['status'] == 'available']
+        return Response({'slots': slot_data, 'available': available})
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def confirm_interview(self, request, pk=None):
+        application = self.get_object()
+        user = request.user
+        is_admin = getattr(user, 'role', None) == 'admin'
+        is_owner = (
+            (application.user and hasattr(user, 'uid') and user.uid == application.user.uid)
+            or (hasattr(user, 'email') and application.email and user.email.lower() == application.email.lower())
+        )
+        if not is_admin and not is_owner:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        if not is_admin and application.status != 'approved':
+            return Response(
+                {'error': 'Application is not in approved status'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        chosen_time = request.data.get('chosen_time')
+        if not chosen_time:
+            return Response({'error': 'chosen_time is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing_slot = getattr(application, 'interview_slot', None)
+        if existing_slot and existing_slot.gcal_event_id:
+            if application.status == 'interview_scheduled':
+                return Response(
+                    {'error': 'Interview already scheduled. Use reschedule_interview instead.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            # Status was incorrectly reset (e.g. by propose_interview_times) even though a
+            # calendar event already exists. Restore the status without creating a duplicate event.
+            application.status = 'interview_scheduled'
+            application.status_updated_at = timezone.now()
+            application.save()
+            ApplicationLog.objects.create(
+                application=application,
+                previous_status=application.status,
+                new_status='interview_scheduled',
+                changed_by=user.email if hasattr(user, 'email') else 'system',
+                notes='Status restored to interview_scheduled (was incorrectly reset)',
+                applicant_email=application.email,
+                applicant_name=application.full_name,
+            )
+            return Response(InterviewSlotSerializer(existing_slot).data)
+
+        from .gcal_service import create_interview_event, CalendarServiceError
+        try:
+            result = create_interview_event(application, chosen_time)
+        except CalendarServiceError:
+            return Response(
+                {'error': 'Calendar unavailable, please try again'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        from datetime import datetime as dt_cls
+        from zoneinfo import ZoneInfo
+        eat = ZoneInfo('Africa/Nairobi')
+        chosen_dt = dt_cls.fromisoformat(chosen_time) if isinstance(chosen_time, str) else chosen_time
+        if chosen_dt.tzinfo is None:
+            chosen_dt = chosen_dt.replace(tzinfo=eat)
+
+        slot, _ = InterviewSlot.objects.get_or_create(application=application)
+        slot.gcal_event_id = result['event_id']
+        slot.meet_url = result['meet_url']
+        slot.chosen_time = chosen_dt
+        slot.confirmed_at = timezone.now()
+        slot.admin_approved = True
+        slot.save()
+
+        previous_status = application.status
+        application.status = 'interview_scheduled'
+        application.status_updated_at = timezone.now()
+        application.save()
+
+        ApplicationLog.objects.create(
+            application=application,
+            previous_status=previous_status,
+            new_status='interview_scheduled',
+            changed_by=user.email if hasattr(user, 'email') else 'system',
+            notes=f'Interview confirmed for {chosen_time}. Meet: {result["meet_url"]}',
+            applicant_email=application.email,
+            applicant_name=application.full_name,
+        )
+
+        try:
+            formatted_time = chosen_dt.astimezone(eat).strftime('%A, %d %B %Y at %I:%M %p EAT')
+            send_html_email(
+                subject=f"Your Interview is Confirmed — {application.program_name}",
+                template_name='interview_scheduled.html',
+                context={
+                    'full_name': application.full_name,
+                    'program_name': application.program_name,
+                    'chosen_time': formatted_time,
+                    'meet_url': result['meet_url'],
+                    'frontend_url': settings.FRONTEND_URL,
+                },
+                recipient_email=application.email,
+            )
+        except Exception:
+            pass
+
+        try:
+            if application.user:
+                Notification.objects.create(
+                    user=application.user,
+                    type='info',
+                    title='Interview Scheduled',
+                    message='Your interview is confirmed. Check your email for the Google Meet link.',
+                    application=application,
+                )
+        except Exception:
+            pass
+
+        return Response(InterviewSlotSerializer(slot).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
+    def reschedule_interview(self, request, pk=None):
+        application = self.get_object()
+        user = request.user
+        is_admin = getattr(user, 'role', None) == 'admin'
+        is_owner = (
+            (application.user and hasattr(user, 'uid') and user.uid == application.user.uid)
+            or (hasattr(user, 'email') and application.email and user.email.lower() == application.email.lower())
+        )
+        if not is_admin and not is_owner:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        slot = getattr(application, 'interview_slot', None)
+        if not slot or not slot.gcal_event_id:
+            return Response({'error': 'No scheduled interview found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not is_admin and slot.chosen_time:
+            hours_until = (slot.chosen_time - timezone.now()).total_seconds() / 3600
+            if hours_until < 24:
+                return Response(
+                    {'error': 'Cannot reschedule within 24 hours of the interview'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        new_time = request.data.get('chosen_time')
+        if not new_time:
+            return Response({'error': 'chosen_time is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .gcal_service import update_interview_event, CalendarServiceError
+        try:
+            update_interview_event(slot.gcal_event_id, new_time)
+        except CalendarServiceError:
+            return Response(
+                {'error': 'Calendar unavailable, please try again'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        from datetime import datetime as dt_cls
+        from zoneinfo import ZoneInfo
+        eat = ZoneInfo('Africa/Nairobi')
+        new_dt = dt_cls.fromisoformat(new_time) if isinstance(new_time, str) else new_time
+        if new_dt.tzinfo is None:
+            new_dt = new_dt.replace(tzinfo=eat)
+
+        old_time = slot.chosen_time
+        slot.chosen_time = new_dt
+        slot.confirmed_at = timezone.now()
+        slot.save()
+
+        # Ensure status is interview_scheduled — also auto-heals if it was incorrectly reset.
+        previous_status = application.status
+        if application.status != 'interview_scheduled':
+            application.status = 'interview_scheduled'
+            application.status_updated_at = timezone.now()
+            application.save()
+
+        ApplicationLog.objects.create(
+            application=application,
+            previous_status=previous_status,
+            new_status='interview_scheduled',
+            changed_by=user.email if hasattr(user, 'email') else 'system',
+            notes=f'Rescheduled from {old_time} to {new_time}',
+            applicant_email=application.email,
+            applicant_name=application.full_name,
+        )
+
+        try:
+            formatted_time = new_dt.astimezone(eat).strftime('%A, %d %B %Y at %I:%M %p EAT')
+            send_html_email(
+                subject=f"Interview Rescheduled — {application.program_name}",
+                template_name='interview_rescheduled.html',
+                context={
+                    'full_name': application.full_name,
+                    'program_name': application.program_name,
+                    'chosen_time': formatted_time,
+                    'meet_url': slot.meet_url,
+                    'frontend_url': settings.FRONTEND_URL,
+                },
+                recipient_email=application.email,
+            )
+        except Exception:
+            pass
+
+        return Response(InterviewSlotSerializer(slot).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def cancel_interview(self, request, pk=None):
+        application = self.get_object()
+        slot = getattr(application, 'interview_slot', None)
+        if not slot or not slot.gcal_event_id:
+            return Response({'error': 'No scheduled interview found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .gcal_service import cancel_interview_event, CalendarServiceError
+        try:
+            cancel_interview_event(slot.gcal_event_id)
+        except CalendarServiceError:
+            return Response(
+                {'error': 'Calendar unavailable, please try again'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        slot.gcal_event_id = ''
+        slot.meet_url = ''
+        slot.chosen_time = None
+        slot.admin_approved = False
+        slot.save()
+
+        previous_status = application.status
+        application.status = 'approved'
+        application.status_updated_at = timezone.now()
+        application.save()
+
+        ApplicationLog.objects.create(
+            application=application,
+            previous_status=previous_status,
+            new_status='approved',
+            changed_by=request.user.email if hasattr(request.user, 'email') else 'admin',
+            notes='Interview cancelled by admin',
+            applicant_email=application.email,
+            applicant_name=application.full_name,
+        )
+
+        try:
+            if application.user:
+                Notification.objects.create(
+                    user=application.user,
+                    type='info',
+                    title='Interview Cancelled',
+                    message='Your interview has been cancelled. Please contact admissions to reschedule.',
+                    application=application,
+                )
+        except Exception:
+            pass
+
+        return Response({'status': 'cancelled'})
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def stats(self, request):
+        total = Application.objects.count()
+        pending = Application.objects.filter(status='pending').count()
+        approved = Application.objects.filter(status='approved').count()
+        rejected = Application.objects.filter(status='rejected').count()
+        interview_scheduled = Application.objects.filter(status='interview_scheduled').count()
+        interview_completed = Application.objects.filter(status='interview_completed').count()
+        enrolled = Application.objects.filter(status='enrolled').count()
+
+        return Response({
+            'total': total,
+            'pending': pending,
+            'approved': approved,
+            'rejected': rejected,
+            'interview_scheduled': interview_scheduled,
+            'interview_completed': interview_completed,
+            'enrolled': enrolled,
+        })
+
+
+class DraftApplicationViewSet(viewsets.ViewSet):
+    """Upsert a draft application by email. Called from the frontend when the user enters their email."""
+    permission_classes = [AllowAny]
+
+    def create(self, request):
+        email = (request.data.get('email') or '').strip().lower()
+        if not email:
+            return Response({'error': 'email is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            step_reached = int(request.data.get('step_reached') or 1)
+        except (TypeError, ValueError):
+            step_reached = 1
+
+        draft, _ = DraftApplication.objects.update_or_create(
+            email=email,
+            defaults={
+                'full_name': (request.data.get('full_name') or '').strip()[:255],
+                'program': (request.data.get('program') or '').strip()[:100],
+                'step_reached': step_reached,
+            },
+        )
+        return Response({'id': str(draft.id), 'email': draft.email}, status=status.HTTP_201_CREATED)

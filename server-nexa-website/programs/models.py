@@ -1,0 +1,350 @@
+import uuid
+from django.db import models
+from django.conf import settings
+from django.utils import timezone
+from django.utils.text import slugify
+
+class Program(models.Model):
+    LEVEL_CHOICES = (
+        ('Beginner', 'Beginner'),
+        ('Intermediate', 'Intermediate'),
+        ('Advanced', 'Advanced'),
+    )
+
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('draft', 'Draft'),
+        ('archived', 'Archived'),
+    )
+
+    program_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    program_name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    category = models.CharField(max_length=100, blank=True)
+    level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='Beginner')
+    duration = models.IntegerField(null=True, blank=True, help_text="Duration in weeks")
+    price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    max_students = models.IntegerField(null=True, blank=True)
+    current_enrolled = models.IntegerField(default=0)
+    instructor = models.CharField(max_length=255, blank=True, default='')
+    instructor_email = models.EmailField(blank=True, default='')
+    is_featured = models.BooleanField(default=False)
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    modules = models.IntegerField(default=0)
+    total_lessons = models.IntegerField(default=0)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    thumbnail = models.URLField(blank=True)
+    syllabus = models.URLField(blank=True)
+    requirements = models.JSONField(default=list, blank=True)
+    skills = models.JSONField(default=list, blank=True)
+    offers_certificate = models.BooleanField(default=True)
+
+    # Landing page / CMS content fields
+    slug = models.SlugField(max_length=100, unique=True, blank=True)
+    sanity_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    subtitle = models.CharField(max_length=255, blank=True)
+    icon = models.URLField(blank=True, help_text="Small program icon (thumbnail is the hero image).")
+    image = models.URLField(blank=True, help_text="Hero/banner image URL.")
+    original_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Struck-through comparison price.")
+    coming_soon = models.BooleanField(default=False, help_text="Hides from the application form and shows a Coming Soon badge.")
+    duration_months = models.IntegerField(null=True, blank=True, help_text="Duration in months (display only; duration stores weeks).")
+    topics = models.JSONField(default=list, blank=True, help_text='[{"name": "React", "icon": "/icons/react.png"}]')
+    curriculum = models.JSONField(default=list, blank=True, help_text='[{"phase": "Month 1", "title": "...", "weeks": "4 weeks", "topics": ["..."], "project": "..."}]')
+    features = models.JSONField(default=list, blank=True, help_text='[{"icon": "code", "title": "...", "desc": "..."}]')
+    outcomes = models.JSONField(default=list, blank=True, help_text='["Outcome 1", "Outcome 2"]')
+    faq = models.JSONField(default=list, blank=True, help_text='[{"question": "...", "answer": "..."}]')
+
+    class Meta:
+        db_table = 'programs'
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['category']),
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['slug']),
+        ]
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.slug and self.program_name:
+            self.slug = slugify(self.program_name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.program_name
+
+
+class Enrollment(models.Model):
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('withdrawn', 'Withdrawn'),
+    )
+
+    enrollment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL, 
+        on_delete=models.CASCADE,
+        related_name='enrollments'
+    )
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='enrollments')
+    student_name = models.CharField(max_length=255)
+    program_name = models.CharField(max_length=255)
+    enrollment_date = models.DateTimeField(default=timezone.now)
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    balance = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        db_table = 'enrollments'
+        unique_together = ['student', 'program']
+        indexes = [
+            models.Index(fields=['student']),
+            models.Index(fields=['program']),
+            models.Index(fields=['status']),
+            models.Index(fields=['enrollment_date']),
+        ]
+        ordering = ['-enrollment_date']
+
+    def save(self, *args, **kwargs):
+        self.balance = self.amount - self.amount_paid
+        if not self.student_name:
+            self.student_name = self.student.display_name
+        if not self.program_name:
+            self.program_name = self.program.program_name
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.student_name} - {self.program_name}"
+
+
+class StudentProgramEnrolled(models.Model):
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('withdrawn', 'Withdrawn'),
+    )
+    
+    APPLICATION_STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='programs_enrolled'
+    )
+    program = models.ForeignKey(Program, on_delete=models.CASCADE)
+    program_name = models.CharField(max_length=255)
+    enrollment_date = models.DateTimeField(null=True, blank=True)
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    application_status = models.CharField(max_length=20, choices=APPLICATION_STATUS_CHOICES, default='pending')
+    progress = models.IntegerField(default=0)
+    completion_percentage = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'student_programs_enrolled'
+        indexes = [
+            models.Index(fields=['student']),
+            models.Index(fields=['program']),
+            models.Index(fields=['status']),
+        ]
+        unique_together = ['student', 'program']
+
+    def __str__(self):
+        return f"{self.student.display_name} - {self.program_name}"
+
+
+class ProgramProgress(models.Model):
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('completed', 'Completed'),
+        ('paused', 'Paused'),
+        ('withdrawn', 'Withdrawn'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='program_progress'
+    )
+    program = models.ForeignKey(Program, on_delete=models.CASCADE)
+    program_name = models.CharField(max_length=255)
+    enrollment_date = models.DateTimeField(null=True, blank=True)
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    completion_percentage = models.IntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    total_hours_spent = models.IntegerField(default=0)
+    last_accessed_at = models.DateTimeField(null=True, blank=True)
+    
+    # Store as JSON for flexibility
+    modules = models.JSONField(default=dict, blank=True)
+    assignments = models.JSONField(default=list, blank=True)
+    quizzes = models.JSONField(default=list, blank=True)
+    
+    lessons_completed = models.IntegerField(default=0)
+    lessons_total = models.IntegerField(default=0)
+    tests_passed = models.IntegerField(default=0)
+    certificate_earned = models.BooleanField(default=False)
+    certificate_earned_at = models.DateTimeField(null=True, blank=True)
+    certificate_url = models.URLField(blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'program_progress'
+        indexes = [
+            models.Index(fields=['student']),
+            models.Index(fields=['program']),
+            models.Index(fields=['status']),
+            models.Index(fields=['completion_percentage']),
+        ]
+        unique_together = ['student', 'program']
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"{self.student.display_name} - {self.program_name} ({self.completion_percentage}%)"
+
+    def save(self, *args, **kwargs):
+        if not self.program_name and self.program:
+            self.program_name = self.program.program_name
+        super().save(*args, **kwargs)
+
+
+class Certificate(models.Model):
+    STATUS_CHOICES = (
+        ('issued', 'Issued'),
+        ('revoked', 'Revoked'),
+        ('pending', 'Pending'),
+    )
+
+    GRADE_CHOICES = (
+        ('A', 'A'),
+        ('B', 'B'),
+        ('C', 'C'),
+        ('D', 'D'),
+        ('F', 'F'),
+    )
+
+    certificate_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='certificates'
+    )
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='certificates')
+    student_name = models.CharField(max_length=255)
+    program_name = models.CharField(max_length=255)
+    issued_date = models.DateTimeField(default=timezone.now)
+    certificate_url = models.URLField(blank=True)
+    certificate_number = models.CharField(max_length=50, unique=True)
+    verification_code = models.CharField(max_length=255, blank=True)
+    verification_url = models.URLField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='issued')
+    grade = models.CharField(max_length=2, choices=GRADE_CHOICES, blank=True)
+    completion_percentage = models.IntegerField()
+    instructor = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        db_table = 'certificates'
+        indexes = [
+            models.Index(fields=['student']),
+            models.Index(fields=['program']),
+            models.Index(fields=['certificate_number']),
+            models.Index(fields=['-issued_date']),
+        ]
+        ordering = ['-issued_date']
+
+    def save(self, *args, **kwargs):
+        if not self.student_name and self.student:
+            self.student_name = self.student.display_name
+        if not self.program_name and self.program:
+            self.program_name = self.program.program_name
+        if not self.certificate_number:
+            year = self.issued_date.strftime('%Y')
+            # Get last certificate number for this year
+            last_cert = Certificate.objects.filter(
+                certificate_number__startswith=f'UBUNTULABS-{year}'
+            ).order_by('-certificate_number').first()
+            if last_cert:
+                last_num = int(last_cert.certificate_number.split('-')[-1])
+                new_num = last_num + 1
+            else:
+                new_num = 1
+            self.certificate_number = f'UBUNTULABS-{year}-{new_num:04d}'
+        if not self.verification_code:
+            import secrets
+            self.verification_code = secrets.token_urlsafe(16)
+        if not self.verification_url:
+            self.verification_url = f"/verify/{self.verification_code}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.certificate_number} - {self.student_name}"
+
+
+class ProgramInterest(models.Model):
+    """Stores expressions of interest for upcoming programs."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    program_slug = models.CharField(max_length=255, blank=True)
+    program_name = models.CharField(max_length=255, blank=True)
+    name = models.CharField(max_length=255, blank=True)
+    email = models.EmailField()
+    message = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'program_interests'
+        indexes = [
+            models.Index(fields=['program_slug']),
+            models.Index(fields=['email']),
+            models.Index(fields=['-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Interest: {self.email} -> {self.program_slug or self.program_name}"
+
+
+class ProgramIntake(models.Model):
+    STATUS_CHOICES = (
+        ('open', 'Open'),
+        ('closed', 'Closed'),
+        ('draft', 'Draft'),
+    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sanity_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='intakes')
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    application_deadline = models.DateField(null=True, blank=True)
+    max_seats = models.IntegerField(null=True, blank=True)
+    seats_remaining = models.IntegerField(null=True, blank=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    notes = models.CharField(max_length=500, blank=True)
+    # CMS integration fields
+    source = models.CharField(max_length=10, default='site')  # 'site' or 'cms'
+    cms_id = models.CharField(max_length=255, blank=True, help_text='External CMS entry ID')
+    last_synced_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'program_intakes'
+        ordering = ['start_date']
+        unique_together = ['program', 'start_date']
+
+    def __str__(self):
+        return f'{self.program.program_name} — {self.start_date}'

@@ -1,0 +1,18 @@
+.env
+.git
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+.pytest_cache
+*.egg-info
+dist/
+build/
+staticfiles/
+media/
+node_modules/
+.venv/
+venv/
+frontend documents/

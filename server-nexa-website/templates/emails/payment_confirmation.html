@@ -1,0 +1,11 @@
+{% extends 'emails/base_email.html' %} {% block subject %}Payment Confirmation —
+Nexa Academy{% endblock %} {% block content %}
+<p>Hi {{ display_name }},</p>
+<p>We have received your payment of <strong>{{ amount }}</strong>.</p>
+<p>Reference: <code>{{ reference }}</code></p>
+<p>
+  You can view your updated balance in your student dashboard:
+  <a href="{{ frontend_url }}">{{ frontend_url }}</a>
+</p>
+<p>Best regards,<br />Nexa Academy Billing</p>
+{% endblock %}

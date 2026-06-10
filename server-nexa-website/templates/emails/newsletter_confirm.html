@@ -1,0 +1,13 @@
+{% extends 'emails/base_email.html' %} {% block subject %}You're on the list —
+Nexa Academy{% endblock %} {% block content %}
+<p>Hi {{ name }},</p>
+<p>
+  Thanks for subscribing to the Nexa Academy newsletter. We'll send you
+  occasional updates about programs, scholarships, and events.
+</p>
+<p>
+  Manage your preferences or unsubscribe at
+  <a href="{{ frontend_url }}">{{ frontend_url }}</a>.
+</p>
+<p>Best regards,<br />Nexa Academy Team</p>
+{% endblock %}

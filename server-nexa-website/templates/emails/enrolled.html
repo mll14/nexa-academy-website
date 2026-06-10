@@ -1,0 +1,17 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}Welcome to Nexa Academy, {{ full_name }} &mdash; you're in!{% endblock %}
+{% block content %}
+<div style="background:linear-gradient(135deg,#141a42 0%,#1e2a6b 100%);border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
+  <p style="margin:0 0 6px;font-size:26px;font-weight:800;color:#fff;line-height:1.2;">Welcome to Nexa Academy!</p>
+  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.6);">{{ program_name }}</p>
+</div>
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">{{ full_name }}, you're officially enrolled. We've been looking forward to welcoming you to this cohort, and we mean it &mdash; it's going to be a great experience.</p>
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">Here's what to do next:</p>
+<div style="background:#f7f9fc;border-radius:8px;padding:18px 22px;margin-bottom:24px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 10px;font-size:13px;color:#2d3748;line-height:1.6;"><strong>1.</strong> Log in to your student portal and complete the enrollment form</p>
+  <p style="margin:0 0 10px;font-size:13px;color:#2d3748;line-height:1.6;"><strong>2.</strong> Make your initial payment to secure your spot</p>
+  <p style="margin:0;font-size:13px;color:#2d3748;line-height:1.6;"><strong>3.</strong> Orientation details will be sent to you before your start date</p>
+</div>
+<a href="{{ frontend_url }}/student-dashboard" style="display:inline-block;background:#00bf63;color:#fff;padding:12px 24px;border-radius:7px;font-size:14px;font-weight:600;text-decoration:none;">Go to Student Portal &rarr;</a>
+<p style="margin:20px 0 0;font-size:13px;color:#718096;">Got questions? We're here: <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a> &middot; <a href="tel:+254713067311" style="color:#141a42;">+254713067311</a></p>
+{% endblock %}

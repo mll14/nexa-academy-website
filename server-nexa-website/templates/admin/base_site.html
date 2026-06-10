@@ -1,0 +1,15 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'admin/css/dashboard.css' %}">
+{% endblock %}
+
+{% block branding %}
+<div class="academy-admin-branding">
+  <div class="academy-admin-branding__eyebrow">Nexa Academy</div>
+  <div class="academy-admin-branding__title">Operations Dashboard</div>
+  <div class="academy-admin-branding__subtitle">Admissions, payments, courses, and student activity in one place.</div>
+</div>
+{% endblock %}
