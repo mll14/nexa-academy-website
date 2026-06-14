@@ -24,8 +24,8 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const [page, settings] = await Promise.all([
-    sanityFetch<Page>({ query: pageBySlugQuery, params: { slug }, tags: [`page-${slug}`] }),
-    sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'] }),
+    sanityFetch<Page>({ query: pageBySlugQuery, params: { slug }, tags: [`page-${slug}`], revalidate: false }),
+    sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'], revalidate: false }),
   ])
   if (!page) return {}
   return buildMetadata(page.seo, { title: page.title }, settings?.siteName, settings?.defaultSeo?.ogImage)
@@ -37,6 +37,7 @@ export default async function DynamicPage({ params }: Props) {
     query: pageBySlugQuery,
     params: { slug },
     tags: [`page-${slug}`],
+    revalidate: false,
   })
   if (!page) notFound()
   return <SectionRenderer sections={page.sections ?? []} />

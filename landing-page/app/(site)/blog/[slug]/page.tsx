@@ -47,8 +47,8 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const [post, settings] = await Promise.all([
-    sanityFetch<BlogPost>({ query: blogPostBySlugQuery, params: { slug }, tags: [`blog-${slug}`] }),
-    sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'] }),
+    sanityFetch<BlogPost>({ query: blogPostBySlugQuery, params: { slug }, tags: [`blog-${slug}`], revalidate: false }),
+    sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'], revalidate: false }),
   ])
   if (!post) return {}
   return buildMetadata(
@@ -65,7 +65,7 @@ export default async function BlogPostPage({ params }: Props) {
     query: blogPostBySlugQuery,
     params: { slug },
     tags: [`blog-${slug}`],
-    revalidate: 300,
+    revalidate: false,
   })
 
   if (!post) notFound()
