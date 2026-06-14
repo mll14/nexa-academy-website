@@ -1,0 +1,196 @@
+@import url("https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,200..1000;1,200..1000&family=Plus+Jakarta+Sans:ital,wght@0,200..800;1,200..800&display=swap");
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --font-sans: "Nunito", sans-serif;
+  --font-heading: "Plus Jakarta Sans", sans-serif;
+}
+
+:root {
+  /* === BRAND CORE === */
+  --primary: oklch(0.62 0.2 150); /* Green (#00bf63) */
+  --primary-foreground: oklch(0.98 0 0);
+
+  --secondary: oklch(0.22 0.08 260); /* Deep blue (#141a42) */
+  --secondary-foreground: oklch(0.98 0 0);
+
+  --accent: oklch(0.62 0.2 150);
+  --accent-foreground: oklch(0.98 0 0);
+
+  /* === BACKGROUNDS === */
+  --background: oklch(0.97 0.01 260); /* Soft light bg (#f7f9fc) */
+  --foreground: oklch(0.18 0.02 260);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.18 0.02 260);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.18 0.02 260);
+
+  /* === UI STATES === */
+  --muted: oklch(0.95 0.01 260);
+  --muted-foreground: oklch(0.45 0.02 260);
+
+  --border: oklch(0.9 0.01 260);
+  --input: oklch(0.9 0.01 260);
+  --ring: oklch(0.62 0.2 150);
+
+  --destructive: oklch(0.6 0.25 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  /* === STATUS TOKENS === */
+  --success: oklch(0.62 0.2 150);
+  --success-foreground: oklch(0.98 0 0);
+
+  --warning: oklch(0.75 0.18 65);
+  --warning-foreground: oklch(0.18 0.02 260);
+
+  --radius: 0.625rem;
+
+  --neutral-50: 0.98 0 0;
+  --neutral-100: 0.95 0 0;
+  --neutral-200: 0.9 0 0;
+  --neutral-300: 0.82 0 0;
+  --neutral-400: 0.7 0 0;
+  --neutral-500: 0.55 0 0;
+  --neutral-600: 0.45 0 0;
+  --neutral-700: 0.35 0 0;
+  --neutral-800: 0.25 0 0;
+  --neutral-900: 0.18 0 0;
+  --neutral-950: 0.12 0 0;
+}
+
+.dark {
+  --background: oklch(0.17 0.02 260);
+  --foreground: oklch(0.95 0.01 260);
+
+  --card: oklch(0.22 0.02 260);
+  --card-foreground: oklch(0.95 0.01 260);
+
+  --popover: oklch(0.22 0.02 260);
+  --popover-foreground: oklch(0.95 0.01 260);
+
+  --primary: oklch(0.68 0.2 150);
+  --primary-foreground: oklch(0.1 0 0);
+
+  --secondary: oklch(0.3 0.05 260);
+  --secondary-foreground: oklch(0.95 0.01 260);
+
+  --accent: oklch(0.68 0.2 150);
+  --accent-foreground: oklch(0.1 0 0);
+
+  --muted: oklch(0.25 0.01 260);
+  --muted-foreground: oklch(0.7 0.01 260);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.68 0.2 150);
+
+  --destructive: oklch(0.7 0.2 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --success: oklch(0.68 0.2 150);
+  --success-foreground: oklch(0.1 0 0);
+
+  --warning: oklch(0.78 0.18 65);
+  --warning-foreground: oklch(0.1 0 0);
+
+  --neutral-50: 0.12 0 0;
+  --neutral-100: 0.18 0 0;
+  --neutral-200: 0.25 0 0;
+  --neutral-300: 0.35 0 0;
+  --neutral-400: 0.45 0 0;
+  --neutral-500: 0.55 0 0;
+  --neutral-600: 0.7 0 0;
+  --neutral-700: 0.82 0 0;
+  --neutral-800: 0.9 0 0;
+  --neutral-900: 0.95 0 0;
+  --neutral-950: 0.98 0 0;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: var(--ring);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+  }
+  html {
+    font-family: var(--font-sans);
+  }
+  p {
+    @apply text-[1rem] font-normal text-neutral-700;
+    font-family: "Nunito", sans-serif;
+  }
+  strong {
+    @apply text-[1rem] font-semibold text-neutral-700;
+    font-family: "Nunito", sans-serif;
+  }
+  h1 {
+    @apply text-[1.8rem] md:text-[2.25rem] font-bold text-neutral-950;
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+  h2 {
+    @apply text-[1.4rem] md:text-[1.75rem] font-semibold text-neutral-950;
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+  h3 {
+    @apply text-[1.2rem] md:text-[1.5rem] font-semibold text-neutral-950;
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+  h4 {
+    @apply text-[1.1rem] md:text-[1.25rem] font-semibold text-neutral-950;
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+  h5 {
+    @apply text-[1rem] md:text-[1.125rem] font-medium text-neutral-950;
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+  h6 {
+    @apply text-[1rem] font-medium text-neutral-700;
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+  li {
+    @apply text-[1rem] font-normal text-neutral-700;
+    font-family: "Nunito", sans-serif;
+  }
+  ol {
+    @apply list-none;
+  }
+  ul {
+    @apply list-none;
+  }
+}

@@ -15,47 +15,18 @@ class ProgramProgressInline(admin.TabularInline):
 
 @admin.register(Program)
 class ProgramAdmin(admin.ModelAdmin):
-    list_display = ['program_name', 'level', 'price', 'duration', 'current_enrolled', 'status']
-    list_filter = ['status', 'level', 'category']
-    search_fields = ['program_name', 'description', 'instructor']
-    readonly_fields = ['program_id', 'created_at', 'updated_at', 'current_enrolled']
+    list_display = ['name', 'price', 'status', 'slug', 'sanity_id']
+    list_filter = ['status']
+    search_fields = ['name', 'slug', 'sanity_id']
+    readonly_fields = ['program_id', 'created_at', 'updated_at']
     inlines = [EnrollmentInline]
-    
+
     fieldsets = (
         ('Basic Information', {
-            'fields': ('program_name', 'description', 'category', 'level')
+            'fields': ('name', 'slug', 'price', 'original_price', 'status')
         }),
-        ('Program Details', {
-            'fields': ('duration', 'price', 'max_students', 'current_enrolled')
-        }),
-        ('Instructor', {
-            'fields': ('instructor', 'instructor_email')
-        }),
-        ('Schedule', {
-            'fields': ('start_date', 'end_date')
-        }),
-        ('Content', {
-            'fields': ('modules', 'total_lessons', 'thumbnail', 'syllabus')
-        }),
-        ('Requirements & Skills', {
-            'fields': ('requirements', 'skills')
-        }),
-        ('Status', {
-            'fields': ('status', 'offers_certificate')
-        }),
-        ('Landing Page Content', {
-            'fields': ('slug', 'subtitle', 'icon', 'image', 'original_price',
-                       'coming_soon', 'duration_months', 'topics',
-                       'curriculum', 'features', 'outcomes', 'faq'),
-            'classes': ('collapse',),
-            'description': (
-                'JSON fields — edit carefully. '
-                'topics: [{"name":"React","icon_url":"/icons/react.png"}] | '
-                'curriculum: [{"phase":"Month 1","title":"...","weeks":"4 weeks","topics":["..."],"project":"..."}] | '
-                'features: [{"icon":"code","title":"...","desc":"..."}] | '
-                'outcomes: ["Outcome 1","Outcome 2"] | '
-                'program_faq: [{"question":"...","answer":"..."}]'
-            ),
+        ('CMS', {
+            'fields': ('sanity_id',)
         }),
         ('Metadata', {
             'fields': ('program_id', 'created_at', 'updated_at'),

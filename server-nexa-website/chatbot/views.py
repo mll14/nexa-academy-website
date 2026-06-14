@@ -1,21 +1,25 @@
 import json
 import logging
 import re
+import time
 
+import requests
 from django.conf import settings
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+
 try:
     from google import genai
 except ImportError:
     genai = None
 
-from .models import KnowledgeBase
-
 logger = logging.getLogger(__name__)
 
-GEMINI_MODEL = getattr(settings, "GEMINI_MODEL", "gemini-2.0-flash")
+GEMINI_MODEL = getattr(settings, "GEMINI_MODEL", "gemini-1.5-flash")
+_SANITY_CACHE: dict = {"context": "", "ts": 0.0}
+_CACHE_TTL = 300  # seconds
+_SANITY_API_VERSION = "2024-01-01"
 
 _EMOJI_RE = re.compile(
     "["
@@ -49,7 +53,7 @@ OFF-TOPIC QUESTIONS (weather, politics, general coding help, other schools, unre
 Politely decline and redirect. Example: "I can only help with questions about Nexa Academy — our programs, admissions, fees, and schedule. Is there something specific about Nexa Academy I can help you with?"
 
 VAGUE OR INCOMPLETE INPUT (e.g. "tell me more", "what about fees", "and the course", "ok"):
-Ask one short clarifying question to understand what the user needs. Reference specific programs from the LIVE DATA if helpful.
+Ask one short clarifying question to understand what the user needs. Reference specific programs from the CMS DATA if helpful.
 
 UNCLEAR OR MISSPELLED INPUT:
 Interpret the most likely intent charitably and answer it. If the input is genuinely uninterpretable, ask: "Could you rephrase that? I want to make sure I give you accurate information."
@@ -58,91 +62,150 @@ QUESTIONS NOT COVERED BY THE PROVIDED DATA:
 Reply: "I don't have that detail — please contact info@nexaacademy.co.ke or call +254713067311."
 
 --- STRICT RULES FOR ALL RESPONSES ---
-1. Answer ONLY from the LIVE DATA and KNOWLEDGE BASE CONTEXT provided. Never use outside knowledge or invent information.
+1. Answer ONLY from the CMS DATA provided below. Never use outside knowledge or invent information.
 2. Do NOT use emojis, emoticons, or decorative characters.
-3. Do NOT use bullet symbols (*, •, or –). Use numbered lists or plain prose.
+3. Do NOT use bullet symbols (*, or -). Use numbered lists or plain prose.
 4. Keep answers under 150 words. Be direct and professional.
-5. LIVE DATA always takes precedence over KNOWLEDGE BASE CONTEXT when they conflict.
-6. Never invent or estimate prices, dates, seat counts, or program features not stated in the provided data.
-7. When the answer relates to a specific page, end with its path (e.g. /programs or /apply). Skip this for greetings or redirects.
+5. Never invent or estimate prices, dates, seat counts, or program features not stated in the provided data.
+6. When the answer relates to a specific page, end with its path (e.g. /programs or /apply). Skip this for greetings or redirects.
 """
+
+
+def _sanity_query(groq: str) -> list:
+    project_id = getattr(settings, "SANITY_PROJECT_ID", "")
+    dataset = getattr(settings, "SANITY_DATASET", "production")
+    token = getattr(settings, "SANITY_API_TOKEN", "")
+    if not project_id:
+        logger.warning("_sanity_query: SANITY_PROJECT_ID not configured")
+        return []
+
+    url = f"https://{project_id}.api.sanity.io/v{_SANITY_API_VERSION}/data/query/{dataset}"
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+
+    try:
+        resp = requests.get(url, params={"query": groq}, headers=headers, timeout=8)
+        resp.raise_for_status()
+        return resp.json().get("result", [])
+    except Exception as exc:
+        logger.warning("_sanity_query failed: %s", exc)
+        return []
+
+
+def _pt_to_text(blocks) -> str:
+    """Flatten Sanity Portable Text blocks to a plain string."""
+    if not blocks or not isinstance(blocks, list):
+        return ""
+    parts = []
+    for block in blocks:
+        if isinstance(block, dict) and block.get("_type") == "block":
+            for child in block.get("children", []):
+                if isinstance(child, dict):
+                    parts.append(child.get("text", ""))
+    return " ".join(filter(None, parts)).strip()
+
+
+def _build_sanity_context() -> str:
+    now = time.monotonic()
+    if _SANITY_CACHE["context"] and now - _SANITY_CACHE["ts"] < _CACHE_TTL:
+        return _SANITY_CACHE["context"]
+
+    lines = []
+
+    # Programs
+    programs = _sanity_query(
+        '*[_type == "program" && isActive == true] | order(order asc) {'
+        '  name, "slug": slug.current, price, originalPrice,'
+        '  durationMonths, level, comingSoon, heroSubtitle,'
+        '  outcomes, paymentNote,'
+        '  paymentPlans[]{ title, description },'
+        '  faqItems[]{ question, answer },'
+        '  modules[]{ title, isBonus }'
+        "}"
+    )
+
+    if programs:
+        lines.append("CURRENT PROGRAMS (live from CMS):")
+        for p in programs:
+            name = p.get("name", "")
+            slug = p.get("slug", "")
+            price = p.get("price")
+            original_price = p.get("originalPrice")
+            duration = p.get("durationMonths")
+            level = p.get("level", "")
+            coming_soon = p.get("comingSoon", False)
+            subtitle = p.get("heroSubtitle", "")
+            payment_note = p.get("paymentNote", "")
+
+            price_str = f"KSh {int(price):,}" if price else "N/A"
+            if original_price and original_price != price:
+                price_str += f" (originally KSh {int(original_price):,})"
+
+            block = [
+                f"\n{name}",
+                f"  Page: /programs/{slug}" if slug else "",
+                f"  Price: {price_str}",
+                f"  Duration: {duration} months" if duration else "  Duration: N/A",
+                f"  Level: {level}" if level else "",
+                f"  Status: {'Coming soon' if coming_soon else 'Enrolling now'}",
+                f"  About: {subtitle}" if subtitle else "",
+                f"  Payment note: {payment_note}" if payment_note else "",
+            ]
+
+            outcomes = p.get("outcomes") or []
+            if outcomes:
+                block.append(f"  Learning outcomes: {'; '.join(outcomes)}")
+
+            plans = p.get("paymentPlans") or []
+            if plans:
+                plan_strs = [
+                    pl.get("title", "") + (f" — {pl['description']}" if pl.get("description") else "")
+                    for pl in plans
+                ]
+                block.append(f"  Payment plans: {'; '.join(plan_strs)}")
+
+            modules = p.get("modules") or []
+            core = [m["title"] for m in modules if not m.get("isBonus") and m.get("title")]
+            if core:
+                block.append(f"  Core modules: {', '.join(core)}")
+
+            for faq in (p.get("faqItems") or []):
+                q = faq.get("question", "")
+                raw_ans = faq.get("answer", "")
+                a = _pt_to_text(raw_ans) if isinstance(raw_ans, list) else str(raw_ans or "")
+                if q and a:
+                    block.append(f"  Q: {q} | A: {a[:300]}")
+
+            lines.append("\n".join(line for line in block if line))
+    else:
+        lines.append("(Program data temporarily unavailable)")
+
+    # FAQs
+    faqs = _sanity_query(
+        '*[_type == "faq" && isActive == true] | order(sortOrder asc) {'
+        "  question, answer, category"
+        "}"
+    )
+
+    if faqs:
+        lines.append("\nFREQUENTLY ASKED QUESTIONS:")
+        for faq in faqs:
+            q = faq.get("question", "")
+            a = faq.get("answer", "")
+            cat = faq.get("category", "general")
+            if q and a:
+                lines.append(f"  [{cat.upper()}] Q: {q}\n  A: {a}")
+
+    result = "\n".join(lines) if lines else "No CMS data available."
+    _SANITY_CACHE["context"] = result
+    _SANITY_CACHE["ts"] = now
+    return result
 
 
 def _get_gemini_client():
     api_key = getattr(settings, "GEMINI_API_KEY", "")
-    if not api_key:
+    if not api_key or genai is None:
         return None
     return genai.Client(api_key=api_key)
-
-
-def _build_live_context() -> str:
-    """Pull current data from the database and format it as plain text for the prompt."""
-    lines = []
-    try:
-        from programs.models import Program
-        programs = Program.objects.filter(status="active").order_by("program_name")
-        if programs.exists():
-            lines.append("CURRENT PROGRAMS (live from database):")
-            for p in programs:
-                seats_left = None
-                if p.max_students is not None:
-                    seats_left = p.max_students - (p.current_enrolled or 0)
-                duration_str = f"{p.duration} weeks" if p.duration else "N/A"
-                price_str = f"KSh {int(p.price):,}" if p.price else "N/A"
-                lines.append(
-                    f"\n{p.program_name}"
-                    f"\n  Slug: {getattr(p, 'slug', '')}"
-                    f"\n  Duration: {duration_str}"
-                    f"\n  Price: {price_str}"
-                    f"\n  Level: {p.level}"
-                    f"\n  Status: {p.status}"
-                    + (f"\n  Seats available: {seats_left}" if seats_left is not None else "")
-                    + (f"\n  Start date: {p.start_date.strftime('%B %d, %Y')}" if p.start_date else "")
-                    + (f"\n  Description: {p.description[:300]}" if p.description else "")
-                )
-        else:
-            lines.append("No active programs found in the database.")
-    except Exception as exc:
-        logger.warning("_build_live_context: could not load programs — %s", exc)
-        lines.append("(Program data temporarily unavailable)")
-
-    try:
-        from programs.models import ProgramIntake
-        intakes = ProgramIntake.objects.filter(status="open").select_related("program").order_by("start_date")
-        if intakes.exists():
-            lines.append("\nOPEN INTAKES:")
-            for intake in intakes:
-                deadline_str = (
-                    intake.application_deadline.strftime("%B %d, %Y")
-                    if intake.application_deadline else "N/A"
-                )
-                lines.append(
-                    f"  {intake.program.program_name}: starts {intake.start_date.strftime('%B %d, %Y')}"
-                    f", deadline {deadline_str}"
-                    + (f", {intake.seats_remaining} seats remaining" if intake.seats_remaining is not None else "")
-                )
-    except Exception:
-        pass
-
-    return "\n".join(lines) if lines else "No live program data available."
-
-
-def _build_kb_context() -> tuple[str, list[str]]:
-    """Load all active KnowledgeBase entries from the ORM and return (context_text, source_urls)."""
-    try:
-        entries = KnowledgeBase.objects.filter(is_active=True).order_by("category", "title")
-        if not entries.exists():
-            return "", []
-        context = "\n\n".join(
-            f"[{e.category.upper()} — {e.title}]\n{e.content}"
-            + (f"\nURL: {e.source_url}" if e.source_url else "")
-            for e in entries
-        )
-        sources = list({e.source_url for e in entries if e.source_url})
-        return context, sources
-    except Exception as exc:
-        logger.warning("_build_kb_context failed: %s", exc)
-        return "", []
 
 
 def _clean(text: str) -> str:
@@ -161,9 +224,7 @@ def chat(request):
     if not user_message:
         return JsonResponse({"error": "message field is required."}, status=400)
 
-    # Cap length to prevent prompt injection; preserve the full question including punctuation
     query = user_message[:600]
-
     logger.debug("[chat] query: %s", query)
 
     client = _get_gemini_client()
@@ -171,14 +232,12 @@ def chat(request):
         fallback = _clean(CONTACT_FALLBACK)
         return JsonResponse({"answer": fallback, "reply": fallback, "sources": []}, status=200)
 
-    live_context = _build_live_context()
-    kb_context, all_sources = _build_kb_context()
+    cms_context = _build_sanity_context()
 
     full_prompt = (
         f"{SYSTEM_PROMPT}\n\n"
-        f"--- LIVE DATA START ---\n{live_context}\n--- LIVE DATA END ---\n\n"
-        + (f"--- KNOWLEDGE BASE CONTEXT START ---\n{kb_context}\n--- KNOWLEDGE BASE CONTEXT END ---\n\n" if kb_context else "")
-        + f"User question: {query}\n\nAssistant:"
+        f"--- CMS DATA START ---\n{cms_context}\n--- CMS DATA END ---\n\n"
+        f"User question: {query}\n\nAssistant:"
     )
 
     try:
@@ -196,4 +255,4 @@ def chat(request):
         fallback = _clean(CONTACT_FALLBACK)
         return JsonResponse({"answer": fallback, "reply": fallback, "sources": []})
 
-    return JsonResponse({"answer": answer, "reply": answer, "sources": all_sources})
+    return JsonResponse({"answer": answer, "reply": answer, "sources": []})

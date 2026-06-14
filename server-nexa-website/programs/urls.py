@@ -12,9 +12,11 @@ router.register(r'intakes', views.ProgramIntakeViewSet, basename='intake')
 
 urlpatterns = [
     path('sanity-webhook/', SanityWebhookView.as_view(), name='sanity-webhook'),
-    # Custom paths must come before router.urls so they aren't swallowed by programs/{pk}/
     path('programs/interest/', views.ProgramInterestCreate.as_view(), name='program-interest-create'),
     path('programs/program-interests/', views.ProgramInterestListView.as_view(), name='program-interest-list'),
+    path('programs/program-interests/notify/', views.ProgramInterestNotifyView.as_view(), name='program-interest-notify'),
+    path('programs/help-me/', views.HelpMeLeadView.as_view(), name='help-me-lead'),
+    path('programs/incomplete/', views.IncompleteApplicationView.as_view(), name='incomplete-application'),
     path('cms/intakes/sync/', views.CMSIntakeSyncView.as_view(), name='cms-intake-sync'),
     path('', include(router.urls)),
 ]

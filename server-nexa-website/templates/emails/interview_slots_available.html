@@ -1,0 +1,13 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}Action required: choose your interview time — {{ program_name }}{% endblock %}
+{% block content %}
+<p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Interview Times Available</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a202c;line-height:1.3;">Pick your interview slot, {{ full_name }}.</h2>
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">Great news — your application for <strong>{{ program_name }}</strong> has been reviewed and we're ready to schedule your admissions interview. Our team has made a few times available; please choose the one that works best for you.</p>
+<div style="background:#f0faf4;border-left:3px solid #00bf63;padding:14px 18px;border-radius:0 6px 6px 0;margin-bottom:28px;">
+  <p style="margin:0;font-size:13px;color:#276749;line-height:1.5;">Log in to your student dashboard to view available times and confirm your slot. Slots are first-come, first-served — book soon to get your preferred time.</p>
+</div>
+<a href="{{ frontend_url }}/student-dashboard" style="display:inline-block;background:#00bf63;color:#fff;padding:12px 24px;border-radius:7px;font-size:14px;font-weight:600;text-decoration:none;">Choose My Interview Time &rarr;</a>
+<p style="margin:20px 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">The interview is a relaxed conversation — not a technical test. We want to hear about your goals and why you're drawn to tech. No preparation needed beyond being yourself.</p>
+<p style="margin:0;font-size:13px;color:#718096;">Questions? <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a></p>
+{% endblock %}

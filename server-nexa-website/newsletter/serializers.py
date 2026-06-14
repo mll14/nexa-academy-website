@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import NewsletterSubscription
+from .models import NewsletterSubscription, NewsletterCampaign
 
 class NewsletterSubscriptionSerializer(serializers.ModelSerializer):
     class Meta:
@@ -16,3 +16,10 @@ class SubscribeSerializer(serializers.Serializer):
         required=False,
         default='website'
     )
+
+
+class NewsletterCampaignSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NewsletterCampaign
+        fields = '__all__'
+        read_only_fields = ['campaign_id', 'status', 'sent_at', 'sent_count', 'failed_count', 'created_at', 'updated_at']

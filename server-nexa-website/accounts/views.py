@@ -7,6 +7,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from .serializers import UserSerializer, EmailTokenObtainPairSerializer
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -19,6 +20,10 @@ from payments.serializers import PaymentSerializer
 from programs.models import Enrollment
 from programs.serializers import EnrollmentSerializer
 from accounts.permissions import IsAdminUser
+from ubuntu_labs.email_utils import send_html_email
+import logging
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -133,6 +138,72 @@ class StudentDetailView(generics.RetrieveAPIView):
             'payments': PaymentSerializer(payments, many=True).data,
             'enrollments': EnrollmentSerializer(enrollments, many=True).data,
         })
+
+class ForgotPasswordView(APIView):
+    """
+    POST /api/auth/forgot-password/
+    Sends a password-reset email. Always returns 200 regardless of whether the
+    email is registered — prevents email enumeration.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        if not email:
+            return Response({'error': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.filter(email__iexact=email).first()
+        if user:
+            try:
+                token = PasswordResetTokenGenerator().make_token(user)
+                reset_url = (
+                    f"{getattr(settings, 'ADMISSIONS_PORTAL_URL', 'https://admissions.nexaacademy.co.ke')}"
+                    f"/reset-password?uid={user.uid}&token={token}"
+                )
+                send_html_email(
+                    subject='Reset your Nexa Academy password',
+                    template_name='password_reset.html',
+                    context={'display_name': user.display_name or email, 'reset_url': reset_url},
+                    recipient_email=email,
+                )
+            except Exception:
+                logger.exception('Failed to send password reset email to %s', email)
+
+        return Response(
+            {'detail': 'If that email is registered, a reset link has been sent.'},
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResetPasswordView(APIView):
+    """
+    POST /api/auth/reset-password/
+    Verifies the PasswordResetTokenGenerator token and sets the new password.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        uid = request.data.get('uid', '').strip()
+        token = request.data.get('token', '').strip()
+        password = request.data.get('password', '')
+
+        if not uid or not token or not password:
+            return Response({'error': 'uid, token, and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(password) < 8:
+            return Response({'error': 'Password must be at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = User.objects.get(uid=uid)
+        except User.DoesNotExist:
+            return Response({'error': 'Invalid or expired reset link.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not PasswordResetTokenGenerator().check_token(user, token):
+            return Response({'error': 'Invalid or expired reset link.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(password)
+        user.save()
+        return Response({'detail': 'Password updated successfully.'}, status=status.HTTP_200_OK)
+
 
 class LogoutView(APIView):
     """

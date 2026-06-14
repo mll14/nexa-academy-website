@@ -36,6 +36,12 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
                   'status_updated_at', 'updated_at', 'month_year']
         read_only_fields = ['id', 'applied_at']
 
+    def to_internal_value(self, data):
+        # Convert empty-string date fields to None before DRF's DateField parser rejects them
+        if isinstance(data, dict) and data.get('start_date') == '':
+            data = {**data, 'start_date': None}
+        return super().to_internal_value(data)
+
     def validate_email(self, value):
         # Normalize email
         email = value.lower().strip()
@@ -45,15 +51,26 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
         return email
 
     def validate(self, attrs):
-        # Require explicit knowledge answer and a non-empty description
+        from programs.models import Program as ProgramModel
+
+        program_slug = attrs.get('program', '')
         has_knowledge = attrs.get('has_basic_knowledge')
         desc = attrs.get('knowledge_description', '') or ''
 
-        if has_knowledge is None:
-            raise serializers.ValidationError({'has_basic_knowledge': 'Please indicate if you have basic knowledge of the chosen program.'})
+        # Skip knowledge check for "help me choose" and coming-soon programs
+        skip_knowledge = (
+            program_slug == '__help_me__'
+            or ProgramModel.objects.filter(slug=program_slug, coming_soon=True).exists()
+        )
 
-        if not desc.strip():
-            raise serializers.ValidationError({'knowledge_description': 'Please describe what basic knowledge you have. This is required.'})
+        if not skip_knowledge:
+            if has_knowledge is None:
+                raise serializers.ValidationError({'has_basic_knowledge': 'Please indicate if you have basic knowledge of the chosen program.'})
+            if has_knowledge and not desc.strip():
+                raise serializers.ValidationError({'knowledge_description': 'Please describe what basic knowledge you have.'})
+
+        if not has_knowledge:
+            attrs['knowledge_description'] = ''
 
         return attrs
 

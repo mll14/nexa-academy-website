@@ -1,0 +1,22 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}Set up your Nexa Academy account{% endblock %}
+{% block content %}
+<div style="background:linear-gradient(135deg,#141a42 0%,#1e2a6b 100%);border-radius:8px;padding:24px;text-align:center;margin-bottom:24px;">
+  <p style="margin:0 0 6px;font-size:26px;font-weight:800;color:#fff;line-height:1.2;">You're almost in!</p>
+  <p style="margin:0;font-size:13px;color:rgba(255,255,255,0.6);">Nexa Academy Admissions Portal</p>
+</div>
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">Hi {{ display_name }},</p>
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">Your application has been received. We've created an account for you so you can track your application status at the Nexa Academy admissions portal.</p>
+<p style="margin:0 0 20px;font-size:15px;color:#4a5568;line-height:1.7;">Click the button below to set a password and access your portal.</p>
+<div style="text-align:center;margin:28px 0;">
+  <a href="{{ setup_url }}" style="display:inline-block;background:#00bf63;color:#fff;padding:13px 28px;border-radius:7px;font-size:14px;font-weight:600;text-decoration:none;">Set Up My Account &rarr;</a>
+</div>
+<div style="background:#f7f9fc;border-radius:8px;padding:14px 18px;margin-bottom:20px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 6px;font-size:12px;color:#718096;"><strong>Alternatively, sign in with Google</strong> using the same email address you applied with.</p>
+  <p style="margin:0;font-size:12px;color:#718096;line-height:1.6;">This setup link expires in <strong>3 days</strong>. If you didn't apply to Nexa Academy, you can safely ignore this email.</p>
+</div>
+<p style="margin:0;font-size:13px;color:#718096;">Having trouble with the button? Copy and paste this link:<br>
+  <a href="{{ setup_url }}" style="color:#141a42;word-break:break-all;">{{ setup_url }}</a>
+</p>
+<p style="margin:20px 0 0;font-size:13px;color:#718096;">Questions? <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a></p>
+{% endblock %}

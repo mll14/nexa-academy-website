@@ -1,19 +1,47 @@
-{% extends 'emails/base_email.html' %} {% block subject %}Welcome to Nexa
-Academy, {{ display_name }}{% endblock %} {% block content %}
-<p>Hi {{ display_name }},</p>
-<p>
-  Welcome to Nexa Academy! You have been enrolled in
-  <strong>{{ program_name }}</strong>.
-</p>
-<p>Enrollment details:</p>
-<ul>
-  <li>Total Fees: KSh {{ amount }}</li>
-  <li>Amount Paid: KSh {{ amount_paid }}</li>
-  <li>Balance: KSh {{ balance }}</li>
-</ul>
-<p>
-  Access your dashboard at
-  <a href="{{ frontend_url }}">{{ frontend_url }}</a> to get started.
-</p>
-<p>Best regards,<br />Admissions — Nexa Academy</p>
+{% extends "emails/base_email.html" %}
+{% block subject %}Welcome to Nexa Academy, {{ display_name }} &mdash; you're in!{% endblock %}
+{% block content %}
+<div style="background:linear-gradient(135deg,#141a42 0%,#1e2a6b 100%);border-radius:10px;padding:28px;text-align:center;margin-bottom:28px;">
+  <p style="margin:0 0 8px;font-size:30px;">&#127881;</p>
+  <p style="margin:0 0 6px;font-size:24px;font-weight:800;color:#fff;line-height:1.2;">Welcome to Nexa Academy!</p>
+  {% if program_name %}<p style="margin:0;font-size:13px;color:rgba(255,255,255,0.6);font-weight:600;">{{ program_name }}</p>{% endif %}
+</div>
+
+<p style="margin:0 0 20px;font-size:15px;color:#4a5568;line-height:1.7;">{{ display_name }}, you're officially enrolled{% if program_name %} in <strong>{{ program_name }}</strong>{% endif %}. We've been looking forward to welcoming you — this is the start of something great, and we mean it.</p>
+
+{% if amount %}
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:24px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 10px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Enrollment Summary</p>
+  <p style="margin:0 0 4px;font-size:14px;color:#2d3748;">Total Fees: <strong>KSh {{ amount }}</strong></p>
+  {% if amount_paid %}<p style="margin:0 0 4px;font-size:14px;color:#2d3748;">Amount Paid: <strong style="color:#276749;">KSh {{ amount_paid }}</strong></p>{% endif %}
+  {% if balance %}<p style="margin:0;font-size:14px;color:#2d3748;">Balance Due: <strong>KSh {{ balance }}</strong></p>{% endif %}
+</div>
+{% endif %}
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:28px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 14px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Your next steps</p>
+  <table cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">1</div>
+      </td>
+      <td style="padding:0 0 12px 10px;font-size:14px;color:#2d3748;line-height:1.5;">Log in to your student portal and complete the enrollment form</td>
+    </tr>
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">2</div>
+      </td>
+      <td style="padding:0 0 12px 10px;font-size:14px;color:#2d3748;line-height:1.5;">Make your initial payment to secure your spot</td>
+    </tr>
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">3</div>
+      </td>
+      <td style="padding:0 0 0 10px;font-size:14px;color:#2d3748;line-height:1.5;">We'll send orientation details before your start date</td>
+    </tr>
+  </table>
+</div>
+
+<a href="{{ frontend_url }}/student-dashboard" style="display:inline-block;background:#00bf63;color:#fff;padding:13px 26px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Go to Student Portal &rarr;</a>
+<p style="margin:20px 0 0;font-size:13px;color:#718096;">Got questions? We're here: <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;font-weight:600;">admissions@nexaacademy.co.ke</a> &middot; <a href="tel:+254713067311" style="color:#141a42;">+254713067311</a></p>
 {% endblock %}

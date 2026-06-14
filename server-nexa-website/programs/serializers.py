@@ -1,12 +1,13 @@
 from rest_framework import serializers
-from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake
+from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication
 from accounts.serializers import UserSerializer
 
 class ProgramSerializer(serializers.ModelSerializer):
     class Meta:
         model = Program
-        fields = '__all__'
-        read_only_fields = ['program_id', 'slug', 'sanity_id', 'created_at', 'updated_at', 'current_enrolled']
+        fields = ['program_id', 'slug', 'name', 'price', 'original_price',
+                  'status', 'coming_soon', 'sanity_id', 'created_at', 'updated_at']
+        read_only_fields = ['program_id', 'slug', 'sanity_id', 'created_at', 'updated_at']
 
 
 class EnrollmentSerializer(serializers.ModelSerializer):
@@ -57,12 +58,26 @@ class EnrollStudentSerializer(serializers.Serializer):
 class ProgramInterestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProgramInterest
-        fields = ['id', 'program_slug', 'program_name', 'name', 'email', 'message', 'created_at']
+        fields = ['id', 'program_slug', 'program_name', 'name', 'email', 'phone', 'message', 'created_at']
         read_only_fields = ['id', 'created_at']
 
 
+class HelpMeLeadSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HelpMeLead
+        fields = ['id', 'name', 'email', 'phone', 'message', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class IncompleteApplicationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = IncompleteApplication
+        fields = ['id', 'name', 'email', 'phone', 'program_slug', 'program_name', 'step_reached', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
 class ProgramIntakeSerializer(serializers.ModelSerializer):
-    program_name = serializers.CharField(source='program.program_name', read_only=True)
+    program_name = serializers.CharField(source='program.name', read_only=True)
 
     class Meta:
         model = ProgramIntake

@@ -64,28 +64,12 @@ def _sync_intake(payload: dict) -> None:
 
 def _map_program(p: dict) -> dict:
     return {
-        'program_name': p.get('programName', ''),
-        'slug':         (p.get('slug') or {}).get('current', ''),
-        'subtitle':     p.get('subtitle', ''),
-        'description':  p.get('description', ''),
-        'level':        p.get('level', ''),
-        'category':     p.get('category', ''),
-        'price':        p.get('price') or 0,
-        'original_price':   p.get('originalPrice'),
-        'duration':         p.get('durationWeeks') or 0,
-        'duration_months':  p.get('durationMonths'),
-        'instructor':       p.get('instructor', ''),
-        'instructor_email': p.get('instructorEmail', ''),
-        'image':     p.get('imageUrl', ''),
-        'icon':      p.get('iconUrl', ''),
-        'topics':     p.get('topics', []),
-        'outcomes':   p.get('outcomes', []),
-        'faq':        p.get('faq', []),
-        'curriculum': p.get('curriculum', []),
-        'features':   p.get('features', []),
-        'coming_soon': p.get('comingSoon', False),
-        'is_featured':  p.get('isFeatured', False),
-        'status': 'active' if p.get('isActive', True) else 'draft',
+        'name':           p.get('programName', ''),
+        'slug':           (p.get('slug') or {}).get('current', ''),
+        'price':          p.get('price') or 0,
+        'original_price': p.get('originalPrice'),
+        'coming_soon':    p.get('comingSoon', False),
+        'status':         'active' if p.get('isActive', True) else 'draft',
     }
 
 

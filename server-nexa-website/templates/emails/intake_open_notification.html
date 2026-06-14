@@ -1,0 +1,13 @@
+{% extends "emails/base_email.html" %}
+{% block content %}
+<p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Applications Now Open</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a202c;line-height:1.3;">Hey {{ name }}, a cohort just opened up.</h2>
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">You registered your interest in <strong>{{ program_name }}</strong> at Nexa Academy. We&rsquo;re excited to let you know that applications are now open for the upcoming cohort &mdash; and we want you in it.</p>
+<div style="background:#f0faf4;border-left:3px solid #00bf63;padding:14px 18px;border-radius:0 6px 6px 0;margin-bottom:24px;">
+  <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#276749;">Cohort start date: {{ start_date }}</p>
+  {% if deadline %}<p style="margin:4px 0 0;font-size:13px;color:#276749;">Application deadline: {{ deadline }}</p>{% endif %}
+</div>
+<a href="{{ apply_url }}" style="display:inline-block;background:#00bf63;color:#fff;padding:12px 28px;border-radius:7px;font-size:14px;font-weight:600;text-decoration:none;margin-bottom:28px;">Apply Now &rarr;</a>
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">Spots fill up quickly &mdash; applying early gives you the best chance of securing your place. Our admissions team reviews every application and will reach out within 2 hours.</p>
+<p style="margin:0;font-size:13px;color:#718096;">Questions? Reply to this email or reach us at <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a></p>
+{% endblock %}
