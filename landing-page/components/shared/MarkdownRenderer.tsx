@@ -1,3 +1,5 @@
+'use client'
+
 import { PortableText, type PortableTextReactComponents } from '@portabletext/react'
 import type { PortableTextBlock } from '@portabletext/types'
 import ReactMarkdown from 'react-markdown'
