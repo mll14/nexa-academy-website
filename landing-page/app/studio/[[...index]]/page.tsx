@@ -1,10 +1,7 @@
-'use client'
+export const dynamic = 'force-static'
 
-export const runtime = 'edge'
-
-import { NextStudio } from 'next-sanity/studio'
-import config from '@/sanity.config'
+import { redirect } from 'next/navigation'
 
 export default function StudioPage() {
-  return <NextStudio config={config} />
+  redirect('https://www.sanity.io/manage')
 }
