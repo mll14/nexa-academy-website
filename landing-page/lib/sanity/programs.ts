@@ -50,8 +50,9 @@ export async function getSanityProgram(slug: string): Promise<SanityProgram | nu
 }
 
 export async function getAllSanityPrograms(): Promise<SanityProgram[]> {
-  return sanityFetch<SanityProgram[]>({
+  const result = await sanityFetch<SanityProgram[]>({
     query: groq`*[_type == "program"] | order(order asc, name asc) { ${programFragment} }`,
     tags: ['programs'],
   })
+  return result ?? []
 }
