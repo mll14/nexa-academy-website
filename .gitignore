@@ -3,3 +3,4 @@
 .serena
 graphify-out/
 .superpowers/
+.claude/.env
