@@ -33,7 +33,7 @@ urlpatterns = [
     path('api/', include('newsletter.urls')),
     path('api/', include('analytics.urls')),
     path('api/', include('contacts.urls')),
-    path('api/', include('chatbot.urls')),
+    path('api/chatbot/', include('chatbot.urls')),
     # AI assistant retrieval endpoints
     path('api/ai/', include('aiassistant.urls')),
     path('api/', include('content.urls')),

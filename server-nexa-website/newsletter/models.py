@@ -39,3 +39,28 @@ class NewsletterSubscription(models.Model):
         self.status = 'inactive'
         self.unsubscribed_at = timezone.now()
         self.save()
+
+
+class NewsletterCampaign(models.Model):
+    STATUS_CHOICES = (
+        ('draft', 'Draft'),
+        ('sent', 'Sent'),
+    )
+
+    campaign_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    subject = models.CharField(max_length=255)
+    preview_text = models.CharField(max_length=255, blank=True)
+    html_body = models.TextField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    sent_at = models.DateTimeField(null=True, blank=True)
+    sent_count = models.IntegerField(default=0)
+    failed_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'newsletter_campaigns'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.subject} ({self.status})"

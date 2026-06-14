@@ -18,6 +18,7 @@ import requests as http_req
 import uuid
 import logging
 from accounts.models import User
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 
 
 logger = logging.getLogger(__name__)
@@ -181,10 +182,10 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             full_name = serializer.validated_data.get("full_name") or serializer.validated_data.get("fullName") or "Applicant"
             phone = serializer.validated_data.get("phone", "")
             user = None
+            user_created = False
             if email:
                 user = User.objects.filter(email__iexact=email).first()
             if not user:
-                # create a lightweight student account with a random password
                 try:
                     random_password = uuid.uuid4().hex[:12]
                     user = User.objects.create_user(
@@ -193,6 +194,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                         display_name=full_name,
                         phone=phone,
                     )
+                    user_created = True
                 except Exception:
                     user = None
 
@@ -221,6 +223,16 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         # Mark any draft as completed so reminder email is not sent
         try:
             DraftApplication.objects.filter(email__iexact=application.email).update(completed=True)
+        except Exception:
+            pass
+
+        # Remove incomplete application record now that a full submission exists
+        try:
+            from programs.models import IncompleteApplication
+            IncompleteApplication.objects.filter(
+                email__iexact=application.email,
+                program_slug=application.program,
+            ).delete()
         except Exception:
             pass
 
@@ -256,13 +268,30 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             )
             application.email_sent = True
             application.save(update_fields=['email_sent'])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error('application_received email failed for %s: %s', application.email, exc)
         
-        return Response(
-            ApplicationSerializer(application).data,
-            status=status.HTTP_201_CREATED
-        )
+        # Send account-setup email only for brand-new accounts so the applicant
+        # can set a password via the admissions portal. Uses the same token
+        # mechanism as ForgotPasswordView — email ownership is verified before
+        # the token can be used.
+        if user_created and user:
+            try:
+                token = PasswordResetTokenGenerator().make_token(user)
+                setup_url = (
+                    f"{getattr(settings, 'ADMISSIONS_PORTAL_URL', 'https://admissions.nexaacademy.co.ke')}"
+                    f"/reset-password?uid={user.uid}&token={token}"
+                )
+                send_html_email(
+                    subject='Set up your Nexa Academy account',
+                    template_name='account_setup.html',
+                    context={'display_name': full_name, 'setup_url': setup_url},
+                    recipient_email=email,
+                )
+            except Exception as exc:
+                logger.error('account_setup email failed for %s: %s', email, exc)
+
+        return Response(ApplicationSerializer(application).data, status=status.HTTP_201_CREATED)
     
     @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated, IsAdminUser])
     def update_status(self, request, pk=None):
@@ -474,6 +503,21 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
+        # Email student that slots are ready to pick
+        try:
+            send_html_email(
+                subject=f"Action required: choose your interview time — {application.program_name}",
+                template_name='interview_slots_available.html',
+                context={
+                    'full_name': application.full_name,
+                    'program_name': application.program_name,
+                    'frontend_url': settings.FRONTEND_URL,
+                },
+                recipient_email=application.email,
+            )
+        except Exception:
+            pass
+
         return Response(InterviewSlotSerializer(slot).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
@@ -595,10 +639,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         existing_slot = getattr(application, 'interview_slot', None)
         if existing_slot and existing_slot.gcal_event_id:
             if application.status == 'interview_scheduled':
-                return Response(
-                    {'error': 'Interview already scheduled. Use reschedule_interview instead.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                # Already scheduled — delegate to reschedule so the admin doesn't get a dead end
+                return self.reschedule_interview(request, pk=pk)
             # Status was incorrectly reset (e.g. by propose_interview_times) even though a
             # calendar event already exists. Restore the status without creating a duplicate event.
             application.status = 'interview_scheduled'
@@ -819,6 +861,20 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
+        try:
+            send_html_email(
+                subject=f"Your interview has been cancelled — {application.program_name}",
+                template_name='interview_cancelled.html',
+                context={
+                    'full_name': application.full_name,
+                    'program_name': application.program_name,
+                    'frontend_url': settings.FRONTEND_URL,
+                },
+                recipient_email=application.email,
+            )
+        except Exception:
+            pass
+
         return Response({'status': 'cancelled'})
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsAdminUser])
@@ -840,6 +896,53 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             'interview_completed': interview_completed,
             'enrolled': enrolled,
         })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def notify_intake(self, request, pk=None):
+        """Send a next-intake notification email to the applicant."""
+        application = self.get_object()
+
+        intake_id = request.data.get('intake_id')
+        start_date = request.data.get('start_date', '').strip()
+        deadline = request.data.get('deadline', '').strip()
+
+        if intake_id:
+            try:
+                from programs.models import ProgramIntake
+                intake = ProgramIntake.objects.get(id=intake_id)
+                start_date = intake.start_date.strftime('%B %d, %Y')
+                deadline = (
+                    intake.application_deadline.strftime('%B %d, %Y')
+                    if intake.application_deadline else ''
+                )
+            except ProgramIntake.DoesNotExist:
+                return Response({'error': 'Intake not found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not start_date:
+            return Response({'error': 'start_date is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        first_name = (application.full_name or '').split()[0] or 'there'
+        apply_url = f"{settings.FRONTEND_URL}/apply?program={application.program}"
+
+        try:
+            send_html_email(
+                subject=f"New cohort open — {application.program_name} | Nexa Academy",
+                template_name='intake_open_notification.html',
+                context={
+                    'name': first_name,
+                    'program_name': application.program_name,
+                    'start_date': start_date,
+                    'deadline': deadline,
+                    'apply_url': apply_url,
+                    'frontend_url': settings.FRONTEND_URL,
+                },
+                recipient_email=application.email,
+            )
+        except Exception as exc:
+            logger.error('notify_intake failed for %s: %s', application.email, exc)
+            return Response({'error': 'Failed to send email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'sent': True})
 
 
 class DraftApplicationViewSet(viewsets.ViewSet):

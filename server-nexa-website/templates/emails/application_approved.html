@@ -1,18 +1,46 @@
 {% extends "emails/base_email.html" %}
-{% block subject %}Congratulations &mdash; you've been approved{% endblock %}
+{% block subject %}Congratulations &mdash; your application has been approved{% endblock %}
 {% block content %}
-<div style="background:#f0faf4;border-radius:8px;padding:20px;text-align:center;margin-bottom:24px;">
-  <p style="margin:0 0 4px;font-size:24px;font-weight:800;color:#276749;">You've been approved!</p>
-  <p style="margin:0;font-size:13px;color:#48bb78;">{{ program_name }}</p>
+<div style="background:linear-gradient(135deg,#f0faf4 0%,#e6ffed 100%);border-radius:10px;padding:24px;text-align:center;margin-bottom:24px;border:1px solid #c6f6d5;">
+  <p style="margin:0 0 6px;font-size:28px;">&#127881;</p>
+  <p style="margin:0 0 4px;font-size:22px;font-weight:800;color:#276749;line-height:1.2;">You've been approved!</p>
+  {% if program_name %}<p style="margin:0;font-size:13px;color:#48bb78;font-weight:600;">{{ program_name }}</p>{% endif %}
 </div>
-<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">{{ full_name }}, we're genuinely pleased to let you know your application for <strong>{{ program_name }}</strong> has been approved. The next step is scheduling your admissions interview.</p>
+
+<p style="margin:0 0 20px;font-size:15px;color:#4a5568;line-height:1.7;">{{ full_name }}, we're genuinely pleased to let you know your application{% if program_name %} for <strong>{{ program_name }}</strong>{% endif %} has been approved. The next step is scheduling your admissions interview — it's a short, relaxed conversation so we can get to know you better.</p>
+
 {% if start_date or estimated_fees %}
-<div style="background:#f7f9fc;border-radius:8px;padding:16px 20px;margin-bottom:24px;border:1px solid #e2e8f0;">
-  <p style="margin:0 0 8px;font-size:12px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Program Details</p>
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:24px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 10px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Program Details</p>
   {% if start_date %}<p style="margin:0 0 4px;font-size:14px;color:#2d3748;">Start date: <strong>{{ start_date }}</strong></p>{% endif %}
-  {% if estimated_fees %}<p style="margin:0;font-size:14px;color:#2d3748;">Estimated fee: <strong>KSh {{ estimated_fees }}</strong></p>{% endif %}
+  {% if estimated_fees %}<p style="margin:0;font-size:14px;color:#2d3748;">Estimated tuition: <strong>KSh {{ estimated_fees }}</strong></p>{% endif %}
 </div>
 {% endif %}
-<a href="{{ frontend_url }}/student-dashboard" style="display:inline-block;background:#00bf63;color:#fff;padding:12px 24px;border-radius:7px;font-size:14px;font-weight:600;text-decoration:none;">Schedule My Interview &rarr;</a>
-<p style="margin:20px 0 0;font-size:13px;color:#718096;">Questions? Reply to this email or reach us at <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a></p>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:28px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 14px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Your next steps</p>
+  <table cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">1</div>
+      </td>
+      <td style="padding:0 0 12px 10px;font-size:14px;color:#2d3748;line-height:1.5;">Log in to your student portal to schedule your interview</td>
+    </tr>
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">2</div>
+      </td>
+      <td style="padding:0 0 12px 10px;font-size:14px;color:#2d3748;line-height:1.5;">Complete your admissions interview</td>
+    </tr>
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">3</div>
+      </td>
+      <td style="padding:0 0 0 10px;font-size:14px;color:#2d3748;line-height:1.5;">Secure your spot with your initial payment</td>
+    </tr>
+  </table>
+</div>
+
+<a href="{{ frontend_url }}/student-dashboard" style="display:inline-block;background:#00bf63;color:#fff;padding:13px 26px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Schedule My Interview &rarr;</a>
+<p style="margin:20px 0 0;font-size:13px;color:#718096;">Questions? Reply to this email or reach us at <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;font-weight:600;">admissions@nexaacademy.co.ke</a></p>
 {% endblock %}

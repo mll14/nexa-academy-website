@@ -2,9 +2,19 @@
 {% block subject %}An update on your Nexa Academy application{% endblock %}
 {% block content %}
 <p style="margin:0 0 4px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Application Update</p>
-<h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a202c;line-height:1.3;">Thank you for applying, {{ full_name }}.</h2>
-<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">We appreciate the time and effort you put into your application for <strong>{{ program_name }}</strong>. After careful review, we're not able to move forward with your application at this time.</p>
-<p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">This doesn't close the door permanently &mdash; we welcome you to apply again for our next intake. If you'd like feedback or want to discuss your options, please reach out directly. We're happy to chat.</p>
-<a href="mailto:admissions@nexaacademy.co.ke" style="display:inline-block;background:#141a42;color:#fff;padding:12px 24px;border-radius:7px;font-size:14px;font-weight:600;text-decoration:none;">Contact Admissions</a>
-<p style="margin:20px 0 0;font-size:13px;color:#718096;">We wish you all the best, {{ full_name }}.</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:800;color:#1a202c;line-height:1.3;">Thank you for applying, {{ full_name }}.</h2>
+
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">We appreciate the time and thought you put into your application{% if program_name %} for <strong>{{ program_name }}</strong>{% endif %}. After careful review, we're not able to move forward with your application at this time.</p>
+
+<p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">This decision isn't permanent. We welcome you to apply again for our next intake, and many students who reapply go on to complete our programs successfully. If you'd like feedback on your application or want to talk through your options, please reach out &mdash; we're genuinely happy to help.</p>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:28px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 10px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Keep the door open</p>
+  <p style="margin:0 0 8px;font-size:14px;color:#2d3748;line-height:1.5;">&#x2192;&nbsp; Watch for our next intake announcement</p>
+  <p style="margin:0 0 8px;font-size:14px;color:#2d3748;line-height:1.5;">&#x2192;&nbsp; Ask us for feedback on how to strengthen your application</p>
+  <p style="margin:0;font-size:14px;color:#2d3748;line-height:1.5;">&#x2192;&nbsp; Explore our free resources to build more skills before reapplying</p>
+</div>
+
+<a href="mailto:admissions@nexaacademy.co.ke" style="display:inline-block;background:#141a42;color:#fff;padding:13px 26px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Contact Admissions</a>
+<p style="margin:20px 0 0;font-size:13px;color:#718096;">We wish you all the best, {{ full_name }}. We hope to see your application again soon.</p>
 {% endblock %}

@@ -8,11 +8,12 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.db import transaction
-from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake
+from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication
 from .serializers import (
     ProgramSerializer, EnrollmentSerializer, StudentProgramEnrolledSerializer,
     ProgramProgressSerializer, CertificateSerializer, SimpleProgramProgressSerializer,
     EnrollStudentSerializer, ProgramInterestSerializer, ProgramIntakeSerializer,
+    HelpMeLeadSerializer, IncompleteApplicationSerializer,
 )
 from accounts.permissions import IsAdminUser
 from django.conf import settings
@@ -27,9 +28,9 @@ class ProgramViewSet(viewsets.ModelViewSet):
     queryset = Program.objects.all()
     serializer_class = ProgramSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['status', 'level', 'category', 'slug', 'coming_soon']
-    search_fields = ['program_name', 'description', 'instructor']
-    ordering_fields = ['created_at', 'program_name', 'price', 'duration']
+    filterset_fields = ['status', 'slug']
+    search_fields = ['name']
+    ordering_fields = ['created_at', 'name', 'price']
     ordering = ['-created_at']
 
     def get_permissions(self):
@@ -67,30 +68,53 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
     def manual_enroll(self, request):
-        """Manually enroll a student (Admin only)"""
+        """Manually enroll a student (Admin only). Accepts student_id (existing user) or student_name+student_email (new/external)."""
         student_id = request.data.get('student_id')
+        student_name_manual = request.data.get('student_name', '').strip()
+        student_email_manual = request.data.get('student_email', '').strip()
         program_id = request.data.get('program_id')
         amount = request.data.get('amount')
         amount_paid = request.data.get('amount_paid', 0)
-        
-        if not student_id or not program_id or amount is None:
+
+        if not program_id or amount is None:
             return Response(
-                {'error': 'student_id, program_id, and amount are required'},
+                {'error': 'program_id and amount are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-            
-        try:
-            student = User.objects.get(uid=student_id)
-            program = Program.objects.get(program_id=program_id)
-        except (User.DoesNotExist, Program.DoesNotExist):
+
+        if not student_id and not (student_name_manual and student_email_manual):
             return Response(
-                {'error': 'Student or Program not found'},
-                status=status.HTTP_404_NOT_FOUND
+                {'error': 'Provide either student_id or both student_name and student_email'},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        if Enrollment.objects.filter(student=student, program=program).exists():
+        try:
+            program = Program.objects.get(program_id=program_id)
+        except Program.DoesNotExist:
+            return Response({'error': 'Program not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Resolve student — existing account or manual details
+        student = None
+        resolved_name = student_name_manual
+        resolved_email = student_email_manual
+
+        if student_id:
+            try:
+                student = User.objects.get(uid=student_id)
+                resolved_name = student.display_name
+                resolved_email = student.email
+            except User.DoesNotExist:
+                return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Duplicate check (by account if we have one, else by email+program)
+        if student and Enrollment.objects.filter(student=student, program=program).exists():
             return Response(
                 {'error': 'Student is already enrolled in this program'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if not student and Enrollment.objects.filter(student_name=resolved_name, program=program, student__isnull=True).exists():
+            return Response(
+                {'error': 'An enrollment with this name already exists for this program'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -98,43 +122,39 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             enrollment = Enrollment.objects.create(
                 student=student,
                 program=program,
-                student_name=student.display_name,
-                program_name=program.program_name,
+                student_name=resolved_name,
+                program_name=program.name,
                 amount=amount,
                 amount_paid=amount_paid,
                 balance=float(amount) - float(amount_paid),
                 status='active'
             )
-            
-            # Update student_programs_enrolled
-            StudentProgramEnrolled.objects.create(
-                student=student,
-                program=program,
-                program_name=program.program_name,
-                enrollment_date=enrollment.enrollment_date,
-                status='active'
-            )
 
-            # Initialize progress
-            ProgramProgress.objects.create(
-                student=student,
-                program=program,
-                program_name=program.program_name,
-                enrollment_date=enrollment.enrollment_date,
-                lessons_total=program.total_lessons
-            )
-            
-            program.current_enrolled += 1
-            program.save()
+            # Portal records only exist when there's a real user account
+            if student:
+                StudentProgramEnrolled.objects.create(
+                    student=student,
+                    program=program,
+                    program_name=program.name,
+                    enrollment_date=enrollment.enrollment_date,
+                    status='active'
+                )
+                ProgramProgress.objects.create(
+                    student=student,
+                    program=program,
+                    program_name=program.name,
+                    enrollment_date=enrollment.enrollment_date,
+                    lessons_total=0
+                )
 
             # Send manual enrollment email
             try:
                 send_html_email(
-                    subject=f"Enrollment Confirmed - {program.program_name}",
+                    subject=f"Enrollment Confirmed - {program.name}",
                     template_name='welcome_student.html',
                     context={
                         'display_name': student.display_name,
-                        'program_name': program.program_name,
+                        'program_name': program.name,
                         'amount': amount,
                         'amount_paid': amount_paid,
                         'balance': enrollment.balance,
@@ -177,7 +197,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                 student=request.user,
                 program=program,
                 student_name=request.user.display_name,
-                program_name=program.program_name,
+                program_name=program.name,
                 start_date=serializer.validated_data.get('start_date'),
                 end_date=serializer.validated_data.get('end_date'),
                 amount=serializer.validated_data['amount'],
@@ -189,7 +209,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             StudentProgramEnrolled.objects.create(
                 student=request.user,
                 program=program,
-                program_name=program.program_name,
+                program_name=program.name,
                 enrollment_date=enrollment.enrollment_date,
                 start_date=enrollment.start_date,
                 end_date=enrollment.end_date,
@@ -200,16 +220,12 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             ProgramProgress.objects.create(
                 student=request.user,
                 program=program,
-                program_name=program.program_name,
+                program_name=program.name,
                 enrollment_date=enrollment.enrollment_date,
                 start_date=enrollment.start_date,
                 end_date=enrollment.end_date,
-                lessons_total=program.total_lessons
+                lessons_total=0
             )
-
-            # Update program enrollment count
-            program.current_enrolled += 1
-            program.save()
 
         return Response(
             EnrollmentSerializer(enrollment).data,
@@ -360,7 +376,7 @@ class CertificateViewSet(viewsets.ModelViewSet):
                 program_name=progress.program_name,
                 completion_percentage=progress.completion_percentage,
                 grade=request.data.get('grade', 'A'),
-                instructor=request.data.get('instructor', progress.program.instructor)
+                instructor=request.data.get('instructor', '')
             )
 
             progress.certificate_earned = True
@@ -383,9 +399,12 @@ class ProgramIntakeViewSet(viewsets.ModelViewSet):
         program_id = self.request.query_params.get('program')
         if program_id:
             qs = qs.filter(program_id=program_id)
+        program_slug = self.request.query_params.get('program_slug')
+        if program_slug:
+            qs = qs.filter(program__slug=program_slug)
         program_name = self.request.query_params.get('program_name')
         if program_name:
-            qs = qs.filter(program__program_name__iexact=program_name)
+            qs = qs.filter(program__name__iexact=program_name)
         user = self.request.user
         is_admin = user.is_authenticated and getattr(user, 'role', None) == 'admin'
         if not is_admin:
@@ -451,9 +470,9 @@ class CMSIntakeSyncView(APIView):
         # Resolve program
         program = None
         if program_name:
-            program = Program.objects.filter(program_name__iexact=program_name).first()
+            program = Program.objects.filter(name__iexact=program_name).first()
             if not program:
-                program = Program.objects.filter(program_name__icontains=program_name).first()
+                program = Program.objects.filter(name__icontains=program_name).first()
         if not program:
             return Response({'error': f'Program not found: {program_name}'}, status=400)
 
@@ -484,7 +503,7 @@ class CMSIntakeSyncView(APIView):
         )
         logger.info(
             'CMS webhook: %s intake %s for program %s',
-            'created' if created else 'updated', intake.id, program.program_name,
+            'created' if created else 'updated', intake.id, program.name,
         )
         return Response({
             'status': 'created' if created else 'updated',
@@ -508,6 +527,7 @@ class ProgramInterestCreate(APIView):
             program_name=data.get('program_name', '')[:255],
             name=data.get('name', '')[:255],
             email=email,
+            phone=data.get('phone', '')[:30],
             message=data.get('message', '')
         )
 
@@ -565,6 +585,148 @@ class ProgramInterestListView(APIView):
         })
 
 
+class ProgramInterestNotifyView(APIView):
+    """Admin: send an intake-open notification email to ProgramInterest submitters."""
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request):
+        program_slug = request.data.get('program_slug', '').strip()
+        program_name = request.data.get('program_name', '').strip()
+        start_date   = request.data.get('start_date', '').strip()
+        deadline     = request.data.get('deadline', '').strip()
+        apply_url    = request.data.get('apply_url', '').strip()
+        ids          = request.data.get('ids')  # optional list of UUIDs
+
+        if not start_date:
+            return Response({'error': 'start_date is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not program_slug and not ids:
+            return Response({'error': 'program_slug or ids is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        qs = ProgramInterest.objects.all()
+        if ids:
+            qs = qs.filter(id__in=ids)
+        elif program_slug:
+            qs = qs.filter(program_slug=program_slug)
+
+        if not apply_url:
+            if program_slug:
+                apply_url = f"{settings.FRONTEND_URL}/apply?program={program_slug}"
+            else:
+                apply_url = f"{settings.FRONTEND_URL}/apply"
+
+        sent = 0
+        failed = 0
+        for interest in qs:
+            try:
+                context = {
+                    'name': interest.name or 'there',
+                    'program_name': program_name or interest.program_name or program_slug,
+                    'start_date': start_date,
+                    'deadline': deadline,
+                    'apply_url': apply_url,
+                    'frontend_url': settings.FRONTEND_URL,
+                }
+                send_html_email(
+                    subject=f"Applications are now open — {context['program_name']} | Nexa Academy",
+                    template_name='intake_open_notification.html',
+                    context=context,
+                    recipient_email=interest.email,
+                )
+                sent += 1
+            except Exception as e:
+                logger.error('ProgramInterestNotify: failed to email %s: %s', interest.email, e)
+                failed += 1
+
+        return Response({'sent': sent, 'failed': failed})
+
+
+class HelpMeLeadView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        if not email:
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+        lead = HelpMeLead.objects.create(
+            name=request.data.get('name', '')[:255],
+            email=email,
+            phone=request.data.get('phone', '')[:30],
+            message=request.data.get('message', ''),
+        )
+        return Response(HelpMeLeadSerializer(lead).data, status=status.HTTP_201_CREATED)
+
+    def get(self, request):
+        if not (request.user and request.user.is_authenticated and request.user.role == 'admin'):
+            return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+        qs = HelpMeLead.objects.all()
+        search = request.query_params.get('search', '').strip()
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(Q(email__icontains=search) | Q(name__icontains=search))
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+            page_size = min(50, max(1, int(request.query_params.get('page_size', 20))))
+        except (ValueError, TypeError):
+            page, page_size = 1, 20
+        total = qs.count()
+        items = qs[(page - 1) * page_size: page * page_size]
+        return Response({'count': total, 'results': HelpMeLeadSerializer(items, many=True).data})
+
+
+class IncompleteApplicationView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email', '').strip()
+        if not email:
+            return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
+        program_slug = request.data.get('program_slug', '')[:100]
+        obj, _ = IncompleteApplication.objects.update_or_create(
+            email=email,
+            program_slug=program_slug,
+            defaults={
+                'name': request.data.get('name', '')[:255],
+                'phone': request.data.get('phone', '')[:30],
+                'program_name': request.data.get('program_name', '')[:255],
+                'step_reached': request.data.get('step_reached', 1),
+            },
+        )
+        return Response(IncompleteApplicationSerializer(obj).data, status=status.HTTP_200_OK)
+
+    def get(self, request):
+        if not (request.user and request.user.is_authenticated and request.user.role == 'admin'):
+            return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
+
+        from django.db.models import Exists, OuterRef, Q
+        from applications.models import Application
+
+        qs = IncompleteApplication.objects.annotate(
+            has_submitted=Exists(
+                Application.objects.filter(
+                    email=OuterRef('email'),
+                    program=OuterRef('program_slug'),
+                )
+            )
+        ).filter(has_submitted=False)
+
+        search = request.query_params.get('search', '').strip()
+        if search:
+            qs = qs.filter(Q(email__icontains=search) | Q(name__icontains=search) | Q(program_name__icontains=search))
+
+        ordering = request.query_params.get('ordering', '-updated_at')
+        if ordering in ('updated_at', '-updated_at', 'name', '-name', 'created_at', '-created_at'):
+            qs = qs.order_by(ordering)
+
+        try:
+            page = max(1, int(request.query_params.get('page', 1)))
+            page_size = min(50, max(1, int(request.query_params.get('page_size', 20))))
+        except (ValueError, TypeError):
+            page, page_size = 1, 20
+        total = qs.count()
+        items = qs[(page - 1) * page_size: page * page_size]
+        return Response({'count': total, 'results': IncompleteApplicationSerializer(items, many=True).data})
+
+
 # A lightweight Django view that accepts anonymous POSTs and is CSRF-exempt.
 # This bypasses DRF authentication/permission machinery and any global
 # DEFAULT_PERMISSION_CLASSES which may otherwise block anonymous clients.
@@ -597,6 +759,7 @@ def program_interest_create(request):
         program_name=str(payload.get('program_name', ''))[:255],
         name=str(payload.get('name', ''))[:255],
         email=email,
+        phone=str(payload.get('phone', ''))[:30],
         message=str(payload.get('message', '')),
     )
 

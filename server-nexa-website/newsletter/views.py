@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status, filters
 from ubuntu_labs.pagination import StandardResultsSetPagination
 from rest_framework.decorators import action
@@ -5,12 +6,32 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import IntegrityError
-from .models import NewsletterSubscription
-from .serializers import NewsletterSubscriptionSerializer, SubscribeSerializer
+from django.utils import timezone
+from django.core import signing
+from django.http import HttpResponseRedirect
+from .models import NewsletterSubscription, NewsletterCampaign
+from .serializers import NewsletterSubscriptionSerializer, SubscribeSerializer, NewsletterCampaignSerializer
 from accounts.permissions import IsAdminUser
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
 
+logger = logging.getLogger(__name__)
+
+_UNSUB_SALT = 'newsletter-unsubscribe'
+_UNSUB_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+
+def _make_unsubscribe_token(email):
+    return signing.dumps(email, salt=_UNSUB_SALT)
+
+
+def _read_unsubscribe_token(token):
+    return signing.loads(token, salt=_UNSUB_SALT, max_age=_UNSUB_MAX_AGE)
+
+
+def _build_unsubscribe_url(request, email):
+    token = _make_unsubscribe_token(email)
+    return request.build_absolute_uri(f'/api/newsletter/unsubscribe-via-token/?token={token}')
 
 class NewsletterViewSet(viewsets.ModelViewSet):
     queryset = NewsletterSubscription.objects.all()
@@ -53,11 +74,14 @@ class NewsletterViewSet(viewsets.ModelViewSet):
             # Send confirmation email
             try:
                 send_html_email(
-                    subject="Welcome to the Nexa Academy Newsletter",
+                    subject="You're subscribed — welcome to the Nexa Academy Newsletter",
                     template_name='newsletter_confirm.html',
                     context={
                         'name': subscription.name or 'Subscriber',
                         'frontend_url': settings.FRONTEND_URL,
+                        'unsubscribe_url': _build_unsubscribe_url(request, subscription.email),
+                        'preview_text': "You're on the list! Here's what to expect from the Nexa Academy newsletter.",
+                        'header_label': 'Newsletter',
                     },
                     recipient_email=subscription.email,
                 )
@@ -89,7 +113,7 @@ class NewsletterViewSet(viewsets.ModelViewSet):
         try:
             subscription = NewsletterSubscription.objects.get(email=email)
             subscription.unsubscribe()
-            
+
             return Response({
                 'success': True,
                 'message': 'Successfully unsubscribed from newsletter'
@@ -99,6 +123,28 @@ class NewsletterViewSet(viewsets.ModelViewSet):
                 'success': False,
                 'error': 'Email not found'
             }, status=status.HTTP_404_NOT_FOUND)
+
+    @action(detail=False, methods=['get'], permission_classes=[AllowAny], url_path='unsubscribe-via-token')
+    def unsubscribe_via_token(self, request):
+        """One-click unsubscribe via signed token embedded in email links."""
+        token = request.query_params.get('token')
+        if not token:
+            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=error&reason=missing_token")
+
+        try:
+            email = _read_unsubscribe_token(token)
+        except signing.SignatureExpired:
+            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=error&reason=expired")
+        except signing.BadSignature:
+            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=error&reason=invalid")
+
+        try:
+            subscription = NewsletterSubscription.objects.get(email=email)
+            if subscription.status == 'active':
+                subscription.unsubscribe()
+            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=success")
+        except NewsletterSubscription.DoesNotExist:
+            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=error&reason=not_found")
 
     @action(detail=False, methods=['get'])
     def count(self, request):
@@ -111,13 +157,13 @@ class NewsletterViewSet(viewsets.ModelViewSet):
         """Export subscribers as CSV"""
         import csv
         from django.http import HttpResponse
-        
+
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="newsletter_subscribers.csv"'
-        
+
         writer = csv.writer(response)
         writer.writerow(['Email', 'Name', 'Subscribed At', 'Status', 'Source'])
-        
+
         subscribers = self.get_queryset()
         for sub in subscribers:
             writer.writerow([
@@ -127,5 +173,90 @@ class NewsletterViewSet(viewsets.ModelViewSet):
                 sub.status,
                 sub.source
             ])
-        
+
         return response
+
+
+class NewsletterCampaignViewSet(viewsets.ModelViewSet):
+    queryset = NewsletterCampaign.objects.all()
+    serializer_class = NewsletterCampaignSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            qs = qs.filter(status=status_filter)
+        return qs
+
+    def perform_update(self, serializer):
+        # Prevent editing a sent campaign's body/subject
+        instance = self.get_object()
+        if instance.status == 'sent':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Sent campaigns cannot be edited.")
+        serializer.save()
+
+    @action(detail=True, methods=['post'])
+    def send(self, request, pk=None):
+        """Send the campaign to all active subscribers."""
+        campaign = self.get_object()
+
+        if campaign.status == 'sent':
+            return Response(
+                {'error': 'This campaign has already been sent.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        subscribers = NewsletterSubscription.objects.filter(status='active')
+        total = subscribers.count()
+
+        if total == 0:
+            return Response(
+                {'error': 'No active subscribers to send to.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        sent_count = 0
+        failed_count = 0
+
+        for sub in subscribers:
+            try:
+                unsubscribe_url = _build_unsubscribe_url(request, sub.email)
+                send_html_email(
+                    subject=campaign.subject,
+                    template_name='newsletter_campaign.html',
+                    context={
+                        'subject': campaign.subject,
+                        'preview_text': campaign.preview_text or '',
+                        'html_body': campaign.html_body,
+                        'subscriber_name': sub.name or 'Subscriber',
+                        'unsubscribe_url': unsubscribe_url,
+                        'frontend_url': settings.FRONTEND_URL,
+                    },
+                    recipient_email=sub.email,
+                )
+                sent_count += 1
+            except Exception as e:
+                logger.error("Failed to send campaign %s to %s: %s", campaign.campaign_id, sub.email, e)
+                failed_count += 1
+
+        campaign.status = 'sent'
+        campaign.sent_at = timezone.now()
+        campaign.sent_count = sent_count
+        campaign.failed_count = failed_count
+        campaign.save()
+
+        return Response({
+            'success': True,
+            'sent_count': sent_count,
+            'failed_count': failed_count,
+            'total': total,
+        })
+
+    @action(detail=False, methods=['get'])
+    def subscriber_count(self, request):
+        """Quick count for the compose UI."""
+        count = NewsletterSubscription.objects.filter(status='active').count()
+        return Response({'count': count})

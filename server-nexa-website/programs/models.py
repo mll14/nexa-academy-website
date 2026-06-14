@@ -5,12 +5,6 @@ from django.utils import timezone
 from django.utils.text import slugify
 
 class Program(models.Model):
-    LEVEL_CHOICES = (
-        ('Beginner', 'Beginner'),
-        ('Intermediate', 'Intermediate'),
-        ('Advanced', 'Advanced'),
-    )
-
     STATUS_CHOICES = (
         ('active', 'Active'),
         ('draft', 'Draft'),
@@ -18,62 +12,32 @@ class Program(models.Model):
     )
 
     program_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    program_name = models.CharField(max_length=255)
-    description = models.TextField(blank=True, default='')
-    category = models.CharField(max_length=100, blank=True)
-    level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='Beginner')
-    duration = models.IntegerField(null=True, blank=True, help_text="Duration in weeks")
+    slug = models.SlugField(max_length=100, unique=True, blank=True)
+    name = models.CharField(max_length=255)
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    max_students = models.IntegerField(null=True, blank=True)
-    current_enrolled = models.IntegerField(default=0)
-    instructor = models.CharField(max_length=255, blank=True, default='')
-    instructor_email = models.EmailField(blank=True, default='')
-    is_featured = models.BooleanField(default=False)
-    start_date = models.DateTimeField(null=True, blank=True)
-    end_date = models.DateTimeField(null=True, blank=True)
-    modules = models.IntegerField(default=0)
-    total_lessons = models.IntegerField(default=0)
+    original_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    coming_soon = models.BooleanField(default=False)
+    sanity_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
-    thumbnail = models.URLField(blank=True)
-    syllabus = models.URLField(blank=True)
-    requirements = models.JSONField(default=list, blank=True)
-    skills = models.JSONField(default=list, blank=True)
-    offers_certificate = models.BooleanField(default=True)
-
-    # Landing page / CMS content fields
-    slug = models.SlugField(max_length=100, unique=True, blank=True)
-    sanity_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
-    subtitle = models.CharField(max_length=255, blank=True)
-    icon = models.URLField(blank=True, help_text="Small program icon (thumbnail is the hero image).")
-    image = models.URLField(blank=True, help_text="Hero/banner image URL.")
-    original_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Struck-through comparison price.")
-    coming_soon = models.BooleanField(default=False, help_text="Hides from the application form and shows a Coming Soon badge.")
-    duration_months = models.IntegerField(null=True, blank=True, help_text="Duration in months (display only; duration stores weeks).")
-    topics = models.JSONField(default=list, blank=True, help_text='[{"name": "React", "icon": "/icons/react.png"}]')
-    curriculum = models.JSONField(default=list, blank=True, help_text='[{"phase": "Month 1", "title": "...", "weeks": "4 weeks", "topics": ["..."], "project": "..."}]')
-    features = models.JSONField(default=list, blank=True, help_text='[{"icon": "code", "title": "...", "desc": "..."}]')
-    outcomes = models.JSONField(default=list, blank=True, help_text='["Outcome 1", "Outcome 2"]')
-    faq = models.JSONField(default=list, blank=True, help_text='[{"question": "...", "answer": "..."}]')
 
     class Meta:
         db_table = 'programs'
         indexes = [
             models.Index(fields=['status']),
-            models.Index(fields=['category']),
             models.Index(fields=['-created_at']),
             models.Index(fields=['slug']),
         ]
         ordering = ['-created_at']
 
     def save(self, *args, **kwargs):
-        if not self.slug and self.program_name:
-            self.slug = slugify(self.program_name)
+        if not self.slug and self.name:
+            self.slug = slugify(self.name)
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.program_name
+        return self.name
 
 
 class Enrollment(models.Model):
@@ -85,8 +49,9 @@ class Enrollment(models.Model):
 
     enrollment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     student = models.ForeignKey(
-        settings.AUTH_USER_MODEL, 
-        on_delete=models.CASCADE,
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
         related_name='enrollments'
     )
     program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='enrollments')
@@ -116,7 +81,7 @@ class Enrollment(models.Model):
         if not self.student_name:
             self.student_name = self.student.display_name
         if not self.program_name:
-            self.program_name = self.program.program_name
+            self.program_name = self.program.name
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -219,7 +184,7 @@ class ProgramProgress(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.program_name and self.program:
-            self.program_name = self.program.program_name
+            self.program_name = self.program.name
         super().save(*args, **kwargs)
 
 
@@ -271,7 +236,7 @@ class Certificate(models.Model):
         if not self.student_name and self.student:
             self.student_name = self.student.display_name
         if not self.program_name and self.program:
-            self.program_name = self.program.program_name
+            self.program_name = self.program.name
         if not self.certificate_number:
             year = self.issued_date.strftime('%Y')
             # Get last certificate number for this year
@@ -295,6 +260,53 @@ class Certificate(models.Model):
         return f"{self.certificate_number} - {self.student_name}"
 
 
+class HelpMeLead(models.Model):
+    """Submitted by users who don't know which program to choose."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, blank=True)
+    email = models.EmailField()
+    phone = models.CharField(max_length=30, blank=True)
+    message = models.TextField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'help_me_leads'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['email']),
+            models.Index(fields=['-created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.name or self.email} (help-me)"
+
+
+class IncompleteApplication(models.Model):
+    """Partial form submissions auto-saved when a user leaves the application mid-way."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, blank=True)
+    email = models.EmailField()
+    phone = models.CharField(max_length=30, blank=True)
+    program_slug = models.CharField(max_length=100, blank=True)
+    program_name = models.CharField(max_length=255, blank=True)
+    step_reached = models.IntegerField(default=1)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'incomplete_applications'
+        ordering = ['-updated_at']
+        # one record per email+program combo — upserted on each draft save
+        unique_together = [['email', 'program_slug']]
+        indexes = [
+            models.Index(fields=['email']),
+            models.Index(fields=['-updated_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.email} — step {self.step_reached}"
+
+
 class ProgramInterest(models.Model):
     """Stores expressions of interest for upcoming programs."""
 
@@ -303,6 +315,7 @@ class ProgramInterest(models.Model):
     program_name = models.CharField(max_length=255, blank=True)
     name = models.CharField(max_length=255, blank=True)
     email = models.EmailField()
+    phone = models.CharField(max_length=30, blank=True)
     message = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
@@ -347,4 +360,4 @@ class ProgramIntake(models.Model):
         unique_together = ['program', 'start_date']
 
     def __str__(self):
-        return f'{self.program.program_name} — {self.start_date}'
+        return f'{self.program.name} — {self.start_date}'

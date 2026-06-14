@@ -44,11 +44,11 @@ def resolve_program(program_identifier):
         program_slug = str(program_identifier).strip().lower()
         if program_slug in ('software-engineering', 'fullstack', 'software_engineering'):
             return (
-                Program.objects.filter(program_name__icontains='Software Engineering').first()
-                or Program.objects.filter(program_name__icontains='Full Stack').first()
+                Program.objects.filter(name__icontains='Software Engineering').first()
+                or Program.objects.filter(name__icontains='Full Stack').first()
             )
         if program_slug in ('cloud', 'cloud-computing', 'cloud_computing'):
-            return Program.objects.filter(program_name__icontains='Cloud').first()
+            return Program.objects.filter(name__icontains='Cloud').first()
     return None
 
 
@@ -82,7 +82,7 @@ def _maybe_enroll_application(student, program=None, notes='Enrollment confirmed
             status='interview_completed',
         )
         if program:
-            qs = qs.filter(program_name__iexact=program.program_name)
+            qs = qs.filter(program_name__iexact=program.name)
 
         count = qs.count()
         logger.info('Found %d interview_completed application(s) to enroll', count)
@@ -182,9 +182,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 payment_method='Card',  # Paystack handles various methods, but let's label as Card/Online
                 payment_reference=reference,
                 status='pending',
-                description=f"Payment for program {program.program_name if program else program_id}",
+                description=f"Payment for program {program.name if program else program_id}",
                 program=program,
-                program_name=program.program_name if program else ''
+                program_name=program.name if program else ''
             )
             # Return the paystack initialization payload plus public key for inline popup
             data = response.get('data') or {}
@@ -207,9 +207,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             payment_reference=reference,
                             status='completed',
                             confirmed_at=timezone.now(),
-                            description=f"(SIMULATED) Payment for program {program.program_name if program else program_id}",
+                            description=f"(SIMULATED) Payment for program {program.name if program else program_id}",
                             program=program,
-                            program_name=program.program_name if program else ''
+                            program_name=program.name if program else ''
                         )
 
                         # Update or create enrollment
@@ -423,7 +423,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             program = payment.program or resolve_program(program_identifier)
             if program and not payment.program:
                 payment.program = program
-                payment.program_name = program.program_name
+                payment.program_name = program.name
                 payment.save(update_fields=['program', 'program_name'])
 
             if program:
@@ -432,7 +432,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     program=program,
                     defaults={
                         'student_name': student.display_name,
-                        'program_name': program.program_name,
+                        'program_name': program.name,
                         'amount': program.price,
                         'amount_paid': Decimal('0.00'),
                         'balance': program.price,
@@ -441,7 +441,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 )
                 if enrollment.amount != program.price:
                     enrollment.amount = program.price
-                    enrollment.program_name = program.program_name
+                    enrollment.program_name = program.name
                 enrollment.amount_paid = Decimal(enrollment.amount_paid or 0) + amount
                 enrollment.balance = enrollment.amount - enrollment.amount_paid
                 enrollment.save()

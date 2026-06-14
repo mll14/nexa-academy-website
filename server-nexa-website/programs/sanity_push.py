@@ -50,34 +50,23 @@ def push_program(program) -> None:
         type(program).objects.filter(pk=program.pk).update(sanity_id=new_id)
         program.sanity_id = new_id
 
-    doc = {
-        '_id': program.sanity_id,
+    # Only push fields Django owns. Use createIfNotExists + patch so we don't
+    # overwrite content fields (description, curriculum, etc.) managed in Sanity.
+    patch_set = {
         '_type': 'program',
-        'programName': program.program_name,
+        'programName': program.name,
         'slug': {'_type': 'slug', 'current': program.slug or ''},
-        'subtitle': program.subtitle or '',
-        'description': program.description or '',
-        'level': program.level or '',
-        'category': program.category or '',
         'price': float(program.price) if program.price is not None else 0,
-        'durationWeeks': program.duration,
-        'durationMonths': program.duration_months,
-        'instructor': program.instructor or '',
-        'instructorEmail': program.instructor_email or '',
-        'imageUrl': program.image or '',
-        'iconUrl': program.icon or '',
-        'topics': program.topics or [],
-        'outcomes': program.outcomes or [],
-        'faq': program.faq or [],
-        'curriculum': program.curriculum or [],
-        'features': program.features or [],
         'comingSoon': bool(program.coming_soon),
         'isActive': program.status == 'active',
     }
     if program.original_price is not None:
-        doc['originalPrice'] = float(program.original_price)
+        patch_set['originalPrice'] = float(program.original_price)
 
-    _mutate([{'createOrReplace': doc}])
+    _mutate([
+        {'createIfNotExists': {'_id': program.sanity_id, '_type': 'program'}},
+        {'patch': {'id': program.sanity_id, 'set': patch_set}},
+    ])
 
 
 def delete_program(sanity_id: str) -> None:

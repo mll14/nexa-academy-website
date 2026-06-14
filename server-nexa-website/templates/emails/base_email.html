@@ -5,19 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>{% block subject %}Nexa Academy{% endblock %}</title>
   <style>
-    body{margin:0;padding:0;background:#f7f9fc;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
-    .wrap{width:100%;padding:32px 0;}
-    .card{width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;}
-    .hdr{background:#141a42;padding:22px 40px;text-align:center;}
+    body{margin:0;padding:0;background:#f0f2f5;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;}
+    .wrap{width:100%;padding:36px 0;}
+    .card{width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.07);border:1px solid #e2e8f0;}
+    .hdr{background:#141a42;padding:24px 40px;text-align:center;}
     .body{padding:40px;color:#1a202c;}
-    .ftr{background:#f7f9fc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;}
+    .ftr{background:#f7f9fc;padding:24px 40px;text-align:center;border-top:1px solid #e2e8f0;}
     @media only screen and (max-width:620px){
       .card{width:100%!important;border-radius:0!important;}
       .body{padding:24px!important;}
+      .hdr{padding:20px 24px!important;}
+      .ftr{padding:20px 24px!important;}
     }
   </style>
 </head>
 <body>
+{% if preview_text %}<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">{{ preview_text }}&#160;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;</div>{% endif %}
 <table class="wrap" cellpadding="0" cellspacing="0" width="100%">
 <tr><td align="center">
   <table class="card" cellpadding="0" cellspacing="0" width="600">
@@ -27,7 +30,7 @@
              alt="Nexa Academy" width="37" height="40"
              style="display:inline-block;vertical-align:middle;margin-right:10px;border-radius:8px;"/>
         <span style="font-size:18px;font-weight:800;color:#fff;vertical-align:middle;letter-spacing:-0.3px;">Nexa Academy</span>
-        <div style="font-size:11px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1px;margin-top:4px;">Admissions</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1px;margin-top:4px;">{{ header_label|default:"Admissions" }}</div>
       </td>
     </tr>
     <tr>
@@ -37,6 +40,7 @@
       <td class="ftr">
         <p style="margin:0 0 6px;font-size:13px;color:#718096;">Nexa Academy &middot; 10th Floor, JKUAT Towers, CBD Nairobi</p>
         <p style="margin:0;font-size:12px;color:#a0aec0;">info@nexaacademy.co.ke &middot; +254713067311</p>
+        {% block footer_extra %}{% endblock %}
         <p style="margin:8px 0 0;font-size:11px;color:#cbd5e0;">&copy; {% now "Y" %} Nexa Academy. All rights reserved.</p>
       </td>
     </tr>
