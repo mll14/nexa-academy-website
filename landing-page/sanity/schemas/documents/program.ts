@@ -196,7 +196,7 @@ export const programSchema = defineType({
   ],
   preview: {
     select: { title: 'name', subtitle: 'order', media: 'heroImage' },
-    prepare({ title, subtitle, media }: { title: string; subtitle?: number; media: unknown }) {
+    prepare({ title, subtitle, media }: { title: string; subtitle?: number; media: any }) {
       return {
         title,
         subtitle: subtitle != null ? `Order: ${subtitle}` : 'No order set',
