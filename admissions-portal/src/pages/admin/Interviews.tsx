@@ -117,7 +117,7 @@ export function Interviews() {
 
   const [search, setSearch] = useState('')
   const [reschedulingApp, setReschedulingApp] = useState<Application | null>(null)
-  const [rescheduleSlots, setRescheduleSlots] = useState<api.AvailableSlot[]>([])
+  const [rescheduleSlots, setRescheduleSlots] = useState<import('../../types').AvailableSlot[]>([])
   const [rescheduleLoading, setRescheduleLoading] = useState(false)
 
   const { data = [], isLoading, refetch } = useQuery({

@@ -112,8 +112,8 @@ export function Transactions() {
     placeholderData: (prev) => prev,
   })
 
-  const payments: Payment[] = Array.isArray(data) ? data : (data as { results?: Payment[] })?.results ?? []
-  const total: number = Array.isArray(data) ? data.length : (data as { count?: number })?.count ?? 0
+  const payments: Payment[] = Array.isArray(data) ? data : ((data as unknown as { results?: Payment[] })?.results ?? [])
+  const total: number = Array.isArray(data) ? data.length : ((data as unknown as { count?: number })?.count ?? 0)
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
   const checkAllMutation = useMutation({

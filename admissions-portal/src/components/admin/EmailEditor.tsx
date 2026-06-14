@@ -19,7 +19,6 @@ interface EmailEditorProps {
 const CTA_SNIPPET = `<div style="text-align:center;margin:28px 0"><a href="#" style="display:inline-block;background:#6366f1;color:#ffffff;padding:13px 32px;border-radius:8px;font-weight:600;text-decoration:none;font-size:15px;letter-spacing:-0.2px">Click Here →</a></div>`
 const DIVIDER_SNIPPET = `<hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0" />`
 const BLOCKQUOTE_SNIPPET = `<blockquote style="border-left:3px solid #6366f1;margin:16px 0;padding:12px 20px;background:#f5f3ff;border-radius:0 8px 8px 0;color:#4b5563;font-style:italic">Add your quote here...</blockquote>`
-const IMAGE_SNIPPET = `<img src="https://via.placeholder.com/560x280" alt="Image" style="width:100%;border-radius:8px;margin:12px 0" />`
 
 function ToolbarDivider() {
   return <div className="w-px h-5 bg-border mx-1 shrink-0" />

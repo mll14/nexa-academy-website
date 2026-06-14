@@ -8,7 +8,7 @@ import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Textarea } from '../components/ui/textarea'
-import { Select, SelectOption } from '../components/ui/select'
+import { Select } from '../components/ui/select'
 import { Card, CardContent } from '../components/ui/card'
 import { Separator } from '../components/ui/separator'
 import { Badge } from '../components/ui/badge'
@@ -319,11 +319,16 @@ export function Apply() {
                         </div>
                         <div className="sm:col-span-2 space-y-1.5">
                           <Label>Do you have basic knowledge of the chosen program? *</Label>
-                          <Select value={form.hasBasicKnowledge} onChange={set('hasBasicKnowledge')} disabled={loading}>
-                            <SelectOption value="">Choose yes or no</SelectOption>
-                            <SelectOption value="yes">Yes</SelectOption>
-                            <SelectOption value="no">No</SelectOption>
-                          </Select>
+                          <Select
+                            value={form.hasBasicKnowledge}
+                            onChange={(v) => set('hasBasicKnowledge')(v)}
+                            disabled={loading}
+                            options={[
+                              { value: '', label: 'Choose yes or no' },
+                              { value: 'yes', label: 'Yes' },
+                              { value: 'no', label: 'No' },
+                            ]}
+                          />
                           {errors.hasBasicKnowledge && <p className="text-xs text-destructive">{errors.hasBasicKnowledge}</p>}
                         </div>
                         <div className="sm:col-span-2 space-y-1.5">
@@ -352,14 +357,18 @@ export function Apply() {
                         <div className="space-y-4">
                           <div className="space-y-1.5">
                             <Label>Select Program *</Label>
-                            <Select value={form.program} onChange={set('program')} disabled={loading}>
-                              <SelectOption value="">Choose a program</SelectOption>
-                              {programs.map((p) => (
-                                <SelectOption key={p.slug} value={p.slug}>
-                                  {p.name} — KSh {p.price != null ? p.price.toLocaleString() : 'TBA'}
-                                </SelectOption>
-                              ))}
-                            </Select>
+                            <Select
+                              value={form.program}
+                              onChange={(v) => set('program')(v)}
+                              disabled={loading}
+                              options={[
+                                { value: '', label: 'Choose a program' },
+                                ...programs.map((p) => ({
+                                  value: p.slug,
+                                  label: `${p.name} — KSh ${p.price != null ? p.price.toLocaleString() : 'TBA'}`,
+                                })),
+                              ]}
+                            />
                             {errors.program && <p className="text-xs text-destructive">{errors.program}</p>}
                           </div>
 
@@ -372,25 +381,27 @@ export function Apply() {
                                   <p className="text-xs text-muted-foreground">No open intakes — admissions will confirm the start date after reviewing your application.</p>
                                 </div>
                               ) : (
-                                <Select value={form.startDate} onChange={set('startDate')} disabled={loading || intakesLoading || !form.program}>
-                                  <SelectOption value="">{!form.program ? 'Choose a program first' : intakesLoading ? 'Loading…' : 'Select a date'}</SelectOption>
-                                  {intakes.map((intake) => (
-                                    <SelectOption key={intake.id} value={intake.start_date}>
-                                      {new Date(intake.start_date).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' })}
-                                      {intake.seats_remaining != null ? ` (${intake.seats_remaining} seats)` : ''}
-                                    </SelectOption>
-                                  ))}
-                                </Select>
+                                <Select
+                                  value={form.startDate}
+                                  onChange={(v) => set('startDate')(v)}
+                                  disabled={loading || intakesLoading || !form.program}
+                                  placeholder={!form.program ? 'Choose a program first' : intakesLoading ? 'Loading…' : 'Select a date'}
+                                  options={intakes.map((intake) => ({
+                                    value: intake.start_date,
+                                    label: `${new Date(intake.start_date).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' })}${intake.seats_remaining != null ? ` (${intake.seats_remaining} seats)` : ''}`,
+                                  }))}
+                                />
                               )}
                               {errors.startDate && <p className="text-xs text-destructive">{errors.startDate}</p>}
                             </div>
                             <div className="space-y-1.5">
                               <Label>Payment Plan</Label>
-                              <Select value={form.paymentPlan} onChange={set('paymentPlan')} disabled={loading}>
-                                {PAYMENT_PLANS.map((p) => (
-                                  <SelectOption key={p.id} value={p.id}>{p.name} ({p.note})</SelectOption>
-                                ))}
-                              </Select>
+                              <Select
+                                value={form.paymentPlan}
+                                onChange={(v) => set('paymentPlan')(v)}
+                                disabled={loading}
+                                options={PAYMENT_PLANS.map((p) => ({ value: p.id, label: `${p.name} (${p.note})` }))}
+                              />
                             </div>
                           </div>
 

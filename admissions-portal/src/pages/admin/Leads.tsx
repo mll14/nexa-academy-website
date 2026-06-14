@@ -282,7 +282,7 @@ function InterestsTab() {
                 </p>
               </div>
               {item.phone && (
-                <Phone className="w-3.5 h-3.5 text-muted-foreground hidden sm:block shrink-0" title={item.phone} />
+                <Phone className="w-3.5 h-3.5 text-muted-foreground hidden sm:block shrink-0" />
               )}
               <p className="text-xs text-muted-foreground hidden sm:block shrink-0">{formatDate(item.created_at)}</p>
               <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-60 shrink-0" />

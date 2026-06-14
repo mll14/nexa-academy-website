@@ -23,7 +23,7 @@ interface Props {
   onEventClick: (event: CalendarEvent, e: React.MouseEvent) => void
 }
 
-export function DayView({ date, events, onEventClick }: Props) {
+export function DayView({ date: _date, events, onEventClick }: Props) {
   const allDay = events.filter((e) => e.all_day)
   const timed = events.filter((e) => !e.all_day)
   const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => {

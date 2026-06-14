@@ -6,7 +6,7 @@ import { Card, CardContent } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { Select, SelectOption } from '../../components/ui/select'
+import { Select } from '../../components/ui/select'
 import { Badge } from '../../components/ui/badge'
 import { Separator } from '../../components/ui/separator'
 import * as api from '../../lib/api'
@@ -134,10 +134,14 @@ export function Intakes() {
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="sm:col-span-2 space-y-1.5">
           <Label>Program *</Label>
-          <Select value={form.program} onChange={set('program')}>
-            <SelectOption value="">Select a program</SelectOption>
-            {programs.map((p: Program) => <SelectOption key={p.program_id} value={p.program_id}>{p.name}</SelectOption>)}
-          </Select>
+          <Select
+            value={form.program}
+            onChange={(v) => setForm((p) => ({ ...p, program: v }))}
+            options={[
+              { value: '', label: 'Select a program' },
+              ...programs.map((p: Program) => ({ value: p.program_id, label: p.name })),
+            ]}
+          />
         </div>
         <div className="space-y-1.5">
           <Label>Start Date *</Label>
@@ -157,11 +161,15 @@ export function Intakes() {
         </div>
         <div className="space-y-1.5">
           <Label>Status</Label>
-          <Select value={form.status} onChange={set('status') as never}>
-            <SelectOption value="open">Open</SelectOption>
-            <SelectOption value="closed">Closed</SelectOption>
-            <SelectOption value="draft">Draft</SelectOption>
-          </Select>
+          <Select
+            value={form.status}
+            onChange={(v) => setForm((p) => ({ ...p, status: v as IntakeForm['status'] }))}
+            options={[
+              { value: 'open', label: 'Open' },
+              { value: 'closed', label: 'Closed' },
+              { value: 'draft', label: 'Draft' },
+            ]}
+          />
         </div>
         <div className="space-y-1.5">
           <Label>Notes</Label>

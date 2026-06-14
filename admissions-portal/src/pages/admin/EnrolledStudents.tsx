@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   GraduationCap, UserPlus, Search,
   ArrowUpDown, Mail, Phone, BookOpen, Calendar,
-  DollarSign, TrendingUp, Users, ChevronRight,
+  TrendingUp, Users, ChevronRight,
   CheckCircle2, AlertCircle, XCircle,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'

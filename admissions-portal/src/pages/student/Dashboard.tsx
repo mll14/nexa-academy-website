@@ -13,7 +13,7 @@ import { PaymentTab } from './PaymentTab'
 import { useAuth } from '../../context/AuthContext'
 import { useInterval } from '../../hooks/useInterval'
 import * as api from '../../lib/api'
-import { statusText, formatDate } from '../../lib/utils'
+import { statusText } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { Application, Notification, Payment, InterviewSlot } from '../../types'
 
@@ -310,7 +310,7 @@ export function StudentDashboard() {
               <p className="text-xs text-muted-foreground mt-0.5">Start your journey by applying to a program.</p>
             </div>
             <button
-              onClick={() => navigate({ to: '/apply' })}
+              onClick={() => navigate({ to: '/apply' } as never)}
               className="shrink-0 flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
             >
               Apply now <ChevronRight className="w-3.5 h-3.5" />
@@ -401,7 +401,7 @@ export function StudentDashboard() {
               }}
               onRequestPayment={() => setActiveTab('transactions')}
               depositedAmount={depositedAmount}
-              navigateToApply={() => navigate({ to: '/apply' })}
+              navigateToApply={() => navigate({ to: '/apply' } as never)}
             />
           </div>
         )}
