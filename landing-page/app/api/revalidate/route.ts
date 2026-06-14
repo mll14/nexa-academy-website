@@ -1,8 +1,8 @@
+export const runtime = 'edge'
+
 import { revalidateTag } from 'next/cache'
 import { type NextRequest, NextResponse } from 'next/server'
-import crypto from 'node:crypto'
 
-// Maps Sanity document types to cache tags
 const typeToTags: Record<string, string[]> = {
   homePage: ['homePage'],
   page: ['pages'],
@@ -17,16 +17,21 @@ const typeToTags: Record<string, string[]> = {
 
 const UNAUTHORIZED = NextResponse.json({ message: 'Invalid secret' }, { status: 401 })
 
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder()
+  const aBytes = enc.encode(a)
+  const bBytes = enc.encode(b)
+  if (aBytes.length !== bBytes.length) return false
+  let diff = 0
+  for (let i = 0; i < aBytes.length; i++) diff |= aBytes[i] ^ bBytes[i]
+  return diff === 0
+}
+
 export async function POST(req: NextRequest) {
-  // Secret must arrive in the header only — never in the URL (would appear in server logs)
   const secret = req.headers.get('x-sanity-webhook-secret')
   const expected = process.env.SANITY_WEBHOOK_SECRET
 
-  if (!secret || !expected) return UNAUTHORIZED
-
-  const a = Buffer.from(secret)
-  const b = Buffer.from(expected)
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return UNAUTHORIZED
+  if (!secret || !expected || !timingSafeEqual(secret, expected)) return UNAUTHORIZED
 
   try {
     const body = await req.json()
@@ -35,9 +40,7 @@ export async function POST(req: NextRequest) {
 
     const tags = typeToTags[docType] ?? ['pages']
 
-    // Revalidate the specific page slug tag if available
     if (docType === 'page' && docId) {
-      // slug is not in the webhook body — revalidate all pages
       revalidateTag('pages')
     }
 
