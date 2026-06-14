@@ -7,6 +7,7 @@ import { Dialog } from './ui/dialog'
 import { SlotPicker, formatFullDateTime } from './SlotPicker'
 import { DepositProgress } from './DepositProgress'
 import * as api from '../lib/api'
+import type { AvailableSlot } from '../types'
 import { cn } from '../lib/utils'
 import toast from 'react-hot-toast'
 import type { InterviewSlot } from '../types'
@@ -48,11 +49,11 @@ export function ProcessTracker({
 }: Props) {
   const currentIdx = STAGES.findIndex((s) => s.key === currentStatus)
   const [slot, setSlot] = useState<InterviewSlot | null>(initialSlot ?? null)
-  const [allSlots, setAllSlots] = useState<api.AvailableSlot[]>([])
+  const [allSlots, setAllSlots] = useState<AvailableSlot[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [slotsError, setSlotsError] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [rescheduling, setRescheduling] = useState(false)
+  const [, setRescheduling] = useState(false)
   const [slotDialogOpen, setSlotDialogOpen] = useState(false)
 
   useEffect(() => {
@@ -336,4 +337,4 @@ export function ProcessTracker({
 }
 
 // re-export for AvailableSlot type usage in parent
-export type { AvailableSlot } from '../lib/api'
+export type { AvailableSlot } from '../types'

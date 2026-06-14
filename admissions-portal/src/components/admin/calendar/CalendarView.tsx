@@ -24,7 +24,6 @@ function getViewRange(view: View, cursor: Date): { start: Date; end: Date } {
     return { start: monday, end: sunday }
   }
   const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
-  const last = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
   const startPad = (first.getDay() + 6) % 7
   const start = new Date(first); start.setDate(first.getDate() - startPad); start.setHours(0, 0, 0, 0)
   const end = new Date(start); end.setDate(start.getDate() + 41); end.setHours(23, 59, 59, 999)

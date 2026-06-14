@@ -42,7 +42,7 @@ export function StudentDetail() {
     )
   }
 
-  const { user, application, payments, enrollment } = data
+  const { user, application, payments, enrollment } = data as any
 
   const totalPaid = (payments ?? [])
     .filter((p: Payment) => ['completed', 'paid', 'success'].includes(p.status))
