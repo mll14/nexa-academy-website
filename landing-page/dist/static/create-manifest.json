@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "createdAt": "2026-06-14T22:24:47.440Z",
+  "workspaces": [
+    {
+      "name": "nexa-landing",
+      "title": "Nexa Academy",
+      "basePath": "/studio",
+      "projectId": "qg0o7wrr",
+      "dataset": "production",
+      "icon": "<style data-styled=\"true\" data-styled-version=\"6.4.2\">.kXbgBs{font-family:Inter,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Roboto,\"Helvetica Neue\",\"Liberation Sans\",Helvetica,Arial,system-ui,sans-serif;font-weight:500;font-size:13px;transform:translateY(1px);}/*!sc*/\ndata-styled.g108[id=\"sc-iqkkDd\"]{content:\"kXbgBs,\"}/*!sc*/\n</style><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\"><rect width=\"32\" height=\"32\" rx=\"2\" fill=\"#4043e7\"></rect><text x=\"50%\" y=\"50%\" text-anchor=\"middle\" alignment-baseline=\"middle\" fill=\"hsla(239, 78%, 98%, 1)\" class=\"sc-iqkkDd kXbgBs\">NA</text></svg>",
+      "mediaLibrary": {
+        "enabled": false
+      },
+      "schema": "55a2840f.create-schema.json",
+      "tools": "bc196c7c.create-tools.json"
+    }
+  ]
+}
