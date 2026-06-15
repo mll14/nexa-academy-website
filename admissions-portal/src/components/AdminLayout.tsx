@@ -36,7 +36,7 @@ const MORE_NAV = [
   { to: '/admin/leads',        label: 'Leads',        icon: Flame },
   { to: '/admin/messages',     label: 'Messages',     icon: MessageSquare },
   { to: '/admin/newsletter',   label: 'Newsletter',   icon: Mail },
-  { href: 'https://nexaacademy.co.ke/studio', label: 'Sanity Studio', icon: ExternalLink },
+  { href: 'https://nexaacademy.sanity.studio/', label: 'Sanity Studio', icon: ExternalLink },
 ]
 
 interface NavItem { to?: string; href?: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean }
