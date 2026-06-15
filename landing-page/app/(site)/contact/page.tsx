@@ -1,3 +1,5 @@
+export const runtime = 'edge'
+
 import type { Metadata } from 'next'
 import { buildMetadata } from '@/lib/seo'
 import { Mail, Phone, MapPin, ExternalLink } from 'lucide-react'

@@ -1,3 +1,5 @@
+export const runtime = 'edge'
+
 import type { Metadata } from 'next'
 import { sanityFetch } from '@/lib/sanity/client'
 import { homePageQuery, siteSettingsQuery } from '@/lib/sanity/queries'
