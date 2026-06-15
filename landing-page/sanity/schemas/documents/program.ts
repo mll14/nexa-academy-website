@@ -16,7 +16,7 @@ const faqItemObject = defineArrayMember({
   name: 'faqItem',
   fields: [
     defineField({ name: 'question', title: 'Question', type: 'string' }),
-    defineField({ name: 'answer', title: 'Answer', type: 'array', of: [{ type: 'block' }] }),
+    defineField({ name: 'answer', title: 'Answer', type: 'blockContent' }),
   ],
   preview: { select: { title: 'question' } },
 })
@@ -26,7 +26,7 @@ const courseModuleObject = defineArrayMember({
   name: 'courseModule',
   fields: [
     defineField({ name: 'title', title: 'Module Title', type: 'string' }),
-    defineField({ name: 'description', title: 'Description', type: 'array', of: [{ type: 'block' }] }),
+    defineField({ name: 'description', title: 'Description', type: 'blockContent' }),
     defineField({ name: 'isBonus', title: 'Bonus Module?', type: 'boolean', initialValue: false }),
   ],
   preview: { select: { title: 'title', subtitle: 'isBonus' } },
