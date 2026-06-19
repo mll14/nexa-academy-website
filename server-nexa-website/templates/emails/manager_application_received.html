@@ -1,0 +1,34 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}New application submitted &mdash; Nexa Academy{% endblock %}
+{% block content %}
+<p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">New Application</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:800;color:#1a202c;line-height:1.3;">{{ full_name }} has submitted an application.</h2>
+<p style="margin:0 0 20px;font-size:15px;color:#4a5568;line-height:1.7;">A new admissions application is ready for review in the manager workflow.</p>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:24px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 10px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Applicant Details</p>
+  <p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Name: <strong>{{ full_name }}</strong></p>
+  <p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Email: <a href="mailto:{{ email }}" style="color:#141a42;font-weight:600;">{{ email }}</a></p>
+  {% if phone %}<p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Phone: <strong>{{ phone }}</strong></p>{% endif %}
+  {% if source %}<p style="margin:0;font-size:14px;color:#2d3748;">Source: <strong>{{ source }}</strong></p>{% endif %}
+</div>
+
+<div style="background:#f0faf4;border-radius:10px;padding:18px 22px;margin-bottom:24px;border:1px solid #c6f6d5;">
+  <p style="margin:0 0 10px;font-size:11px;color:#276749;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Application</p>
+  {% if program_name %}<p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Program: <strong>{{ program_name }}</strong></p>{% endif %}
+  {% if start_date %}<p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Preferred intake: <strong>{{ start_date }}</strong></p>{% endif %}
+  {% if estimated_fees %}<p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Estimated fees: <strong>{{ estimated_fees }}</strong></p>{% endif %}
+  {% if payment_plan %}<p style="margin:0;font-size:14px;color:#2d3748;">Payment plan: <strong>{{ payment_plan }}</strong></p>{% endif %}
+</div>
+
+{% if message %}
+<div style="background:#fff;border-left:4px solid #141a42;padding:14px 18px;margin-bottom:24px;">
+  <p style="margin:0 0 6px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Applicant Message</p>
+  <p style="margin:0;font-size:14px;color:#4a5568;line-height:1.7;">{{ message }}</p>
+</div>
+{% endif %}
+
+{% if application_url %}
+<a href="{{ application_url }}" style="display:inline-block;background:#141a42;color:#fff;padding:13px 26px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Review Application &rarr;</a>
+{% endif %}
+{% endblock %}

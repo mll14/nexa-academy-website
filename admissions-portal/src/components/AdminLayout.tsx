@@ -33,6 +33,7 @@ const PRIMARY_NAV = [
 
 const MORE_NAV = [
   { to: '/admin/transactions', label: 'Transactions', icon: CreditCard },
+  { to: '/admin/payment-plans', label: 'Payment Plans', icon: CreditCard },
   { to: '/admin/leads',        label: 'Leads',        icon: Flame },
   { to: '/admin/messages',     label: 'Messages',     icon: MessageSquare },
   { to: '/admin/newsletter',   label: 'Newsletter',   icon: Mail },

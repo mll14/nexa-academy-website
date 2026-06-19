@@ -1,6 +1,6 @@
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, User, CreditCard, BookOpen } from 'lucide-react'
+import { ArrowLeft, User, CreditCard, BookOpen, WalletCards } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Card, CardContent } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -42,7 +42,11 @@ export function StudentDetail() {
     )
   }
 
-  const { user, application, payments, enrollment } = data as any
+  const user = data.user
+  const application = data.applications?.[0]
+  const payments = data.payments ?? []
+  const enrollment = data.enrollments?.[0]
+  const reconciliation = data.reconciliation
 
   const totalPaid = (payments ?? [])
     .filter((p: Payment) => ['completed', 'paid', 'success'].includes(p.status))
@@ -55,7 +59,7 @@ export function StudentDetail() {
           <Button variant="ghost" size="sm" onClick={() => navigate({ to: '/admin/applications' })}>
             <ArrowLeft className="w-4 h-4 mr-1" /> Back
           </Button>
-          <h1 className="font-heading text-xl font-bold flex-1">{user.full_name ?? user.email}</h1>
+          <h1 className="font-heading text-xl font-bold flex-1">{user.display_name ?? user.email}</h1>
           {application && (
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${statusBadgeClass(application.status)}`}>
               {statusText(application.status)}
@@ -76,7 +80,7 @@ export function StudentDetail() {
                 { label: 'Email', value: user.email },
                 { label: 'Phone', value: user.phone },
                 { label: 'Role', value: user.role },
-                { label: 'Joined', value: formatDate(user.date_joined) },
+                { label: 'Joined', value: formatDate((user as unknown as Record<string, string>).created_at) },
               ].map(({ label, value }) => (
                 <div key={label} className="flex justify-between text-sm">
                   <span className="text-muted-foreground">{label}</span>
@@ -143,6 +147,58 @@ export function StudentDetail() {
             </CardContent>
           </Card>
         )}
+
+        {/* Financial reconciliation */}
+        <Card>
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <WalletCards className="w-4 h-4 text-primary" />
+                <h2 className="font-semibold text-sm">Financial Reconciliation</h2>
+              </div>
+              {reconciliation && (
+                <Badge className={reconciliation.status === 'paid' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}>
+                  {reconciliation.status === 'paid' ? 'Settled' : 'Outstanding'}
+                </Badge>
+              )}
+            </div>
+            <Separator />
+            {reconciliation ? (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Total Fee', value: reconciliation.total_fee },
+                    { label: 'Paid', value: reconciliation.amount_paid },
+                    { label: 'Remaining', value: reconciliation.amount_remaining },
+                  ].map(({ label, value }) => (
+                    <div key={label} className="rounded-xl border border-border p-3">
+                      <p className="text-xs text-muted-foreground">{label}</p>
+                      <p className="font-bold text-sm mt-1">KSh {Number(value).toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="divide-y divide-border">
+                  {reconciliation.items.map((item) => (
+                    <div key={item.enrollment_id ?? item.program_id ?? item.program_name} className="py-3 last:pb-0">
+                      <div className="flex justify-between gap-3 text-sm">
+                        <div>
+                          <p className="font-semibold">{item.program_name || 'Program fees'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.payment_plan || 'Standard plan'}
+                            {item.installment_amount ? ` · Installment KSh ${Number(item.installment_amount).toLocaleString()}` : ''}
+                          </p>
+                        </div>
+                        <p className="font-semibold text-right">KSh {Number(item.amount_remaining).toLocaleString()} left</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">No reconciliation data available.</p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Payments */}
         {(payments ?? []).length > 0 && (

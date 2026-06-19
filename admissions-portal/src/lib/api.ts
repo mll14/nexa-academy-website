@@ -10,6 +10,8 @@ import type {
   Program,
   Intake,
   Payment,
+  PaymentPlanChangeRequest,
+  FinancialReconciliation,
   Notification,
   ContactMessage,
   PaginatedResponse,
@@ -372,6 +374,62 @@ export async function getPayments(
   return Array.isArray(res) ? res : (res.results ?? []);
 }
 
+export async function getFinancialReconciliation(studentId?: string): Promise<FinancialReconciliation> {
+  return req<FinancialReconciliation>(
+    `/payments/reconciliation/${buildQuery(studentId ? { student: studentId } : {})}`,
+  );
+}
+
+export async function getPaymentPlanRequests(
+  filters: ApiFilters = {},
+): Promise<PaymentPlanChangeRequest[]> {
+  const res = await req<PaginatedResponse<PaymentPlanChangeRequest> | PaymentPlanChangeRequest[]>(
+    `/payment-plan-requests/${buildQuery(filters)}`,
+  );
+  return Array.isArray(res) ? res : (res.results ?? []);
+}
+
+export async function createPaymentPlanRequest(data: {
+  enrollmentId: string;
+  requestedPaymentPlan: string;
+  requestedInstallmentAmount: number;
+  reason?: string;
+}): Promise<PaymentPlanChangeRequest> {
+  return req<PaymentPlanChangeRequest>("/payment-plan-requests/", {
+    method: "POST",
+    body: JSON.stringify({
+      enrollment: data.enrollmentId,
+      requested_payment_plan: data.requestedPaymentPlan,
+      requested_installment_amount: data.requestedInstallmentAmount,
+      reason: data.reason ?? "",
+    }),
+  });
+}
+
+export async function approvePaymentPlanRequest(
+  requestId: string,
+  data: { paymentPlan?: string; installmentAmount?: number; adminNotes?: string },
+): Promise<PaymentPlanChangeRequest> {
+  return req<PaymentPlanChangeRequest>(`/payment-plan-requests/${requestId}/approve/`, {
+    method: "POST",
+    body: JSON.stringify({
+      payment_plan: data.paymentPlan,
+      installment_amount: data.installmentAmount,
+      admin_notes: data.adminNotes ?? "",
+    }),
+  });
+}
+
+export async function rejectPaymentPlanRequest(
+  requestId: string,
+  data: { adminNotes?: string },
+): Promise<PaymentPlanChangeRequest> {
+  return req<PaymentPlanChangeRequest>(`/payment-plan-requests/${requestId}/reject/`, {
+    method: "POST",
+    body: JSON.stringify({ admin_notes: data.adminNotes ?? "" }),
+  });
+}
+
 export async function initializePayment(data: {
   amount: number;
   programId?: string | null;
@@ -455,8 +513,14 @@ export async function markMessageRead(id: string): Promise<void> {
 
 // ── Students (admin) ──────────────────────────────────────────────────────────
 
-export async function getStudentDetail(uid: string): Promise<User> {
-  return req<User>(`/auth/users/${uid}/`);
+export async function getStudentDetail(uid: string): Promise<{
+  user: User;
+  applications: Application[];
+  payments: Payment[];
+  enrollments: Enrollment[];
+  reconciliation?: FinancialReconciliation;
+}> {
+  return req(`/auth/students/${uid}/`);
 }
 
 export async function getStudents(

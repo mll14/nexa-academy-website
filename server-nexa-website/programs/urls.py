@@ -6,6 +6,7 @@ from .webhook_views import SanityWebhookView
 router = DefaultRouter()
 router.register(r'programs', views.ProgramViewSet, basename='program')
 router.register(r'enrollments', views.EnrollmentViewSet, basename='enrollment')
+router.register(r'payment-plan-requests', views.PaymentPlanChangeRequestViewSet, basename='payment-plan-request')
 router.register(r'progress', views.ProgramProgressViewSet, basename='progress')
 router.register(r'certificates', views.CertificateViewSet, basename='certificate')
 router.register(r'intakes', views.ProgramIntakeViewSet, basename='intake')

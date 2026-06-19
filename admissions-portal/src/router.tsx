@@ -10,12 +10,13 @@ import { Login } from "./pages/Login";
 import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPassword } from "./pages/ResetPassword";
 import { Apply } from "./pages/Apply";
-import { StudentDashboard } from "./pages/student/Dashboard";
+import { StudentApplication, StudentDashboard, StudentNotifications, StudentPayments } from "./pages/student/Dashboard";
 import { AdminDashboard } from "./pages/admin/Dashboard";
 import { Applications } from "./pages/admin/Applications";
 import { ApplicationDetail } from "./pages/admin/ApplicationDetail";
 import { Interviews } from "./pages/admin/Interviews";
 import { Transactions } from "./pages/admin/Transactions";
+import { PaymentPlanRequests } from "./pages/admin/PaymentPlanRequests";
 import { Programs } from "./pages/admin/Programs";
 import { Messages } from "./pages/admin/Messages";
 import { EnrolledStudents } from "./pages/admin/EnrolledStudents";
@@ -97,6 +98,24 @@ const studentDashboardRoute = createRoute({
   component: StudentDashboard,
 });
 
+const studentApplicationRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "application",
+  component: StudentApplication,
+});
+
+const studentPaymentsRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "payments",
+  component: StudentPayments,
+});
+
+const studentNotificationsRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "notifications",
+  component: StudentNotifications,
+});
+
 // ─── Admin layout — /admin/* ─────────────────────────────────────────────────
 
 const adminLayoutRoute = createRoute({
@@ -138,6 +157,12 @@ const adminTransactionsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "transactions",
   component: Transactions,
+});
+
+const adminPaymentPlansRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: "payment-plans",
+  component: PaymentPlanRequests,
 });
 
 const adminProgramsRoute = createRoute({
@@ -197,13 +222,19 @@ const routeTree = rootRoute.addChildren([
   forgotPasswordRoute,
   resetPasswordRoute,
   applyRoute,
-  studentLayoutRoute.addChildren([studentDashboardRoute]),
+  studentLayoutRoute.addChildren([
+    studentDashboardRoute,
+    studentApplicationRoute,
+    studentPaymentsRoute,
+    studentNotificationsRoute,
+  ]),
   adminLayoutRoute.addChildren([
     adminDashboardRoute,
     adminApplicationsRoute,
     adminApplicationDetailRoute,
     adminInterviewsRoute,
     adminTransactionsRoute,
+    adminPaymentPlansRoute,
     adminProgramsRoute,
     adminIntakesRoute,
     adminLeadsRoute,

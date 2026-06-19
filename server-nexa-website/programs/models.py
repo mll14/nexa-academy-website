@@ -64,6 +64,8 @@ class Enrollment(models.Model):
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     balance = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_plan = models.CharField(max_length=100, blank=True)
+    installment_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = 'enrollments'
@@ -86,6 +88,48 @@ class Enrollment(models.Model):
 
     def __str__(self):
         return f"{self.student_name} - {self.program_name}"
+
+
+class PaymentPlanChangeRequest(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    )
+
+    request_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name='payment_plan_requests')
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='payment_plan_requests',
+    )
+    current_payment_plan = models.CharField(max_length=100, blank=True)
+    current_installment_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    requested_payment_plan = models.CharField(max_length=100)
+    requested_installment_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reason = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    admin_notes = models.TextField(blank=True)
+    approved_payment_plan = models.CharField(max_length=100, blank=True)
+    approved_installment_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    reviewed_by = models.CharField(max_length=255, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'payment_plan_change_requests'
+        indexes = [
+            models.Index(fields=['student']),
+            models.Index(fields=['enrollment']),
+            models.Index(fields=['status']),
+            models.Index(fields=['-created_at']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.student.email} - {self.requested_payment_plan} ({self.status})"
 
 
 class StudentProgramEnrolled(models.Model):

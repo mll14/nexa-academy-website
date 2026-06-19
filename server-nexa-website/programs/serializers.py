@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication
+from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, PaymentPlanChangeRequest
 from accounts.serializers import UserSerializer
 
 class ProgramSerializer(serializers.ModelSerializer):
@@ -18,6 +18,68 @@ class EnrollmentSerializer(serializers.ModelSerializer):
         model = Enrollment
         fields = '__all__'
         read_only_fields = ['enrollment_id', 'enrollment_date', 'student_name', 'program_name']
+
+
+class PaymentPlanChangeRequestSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student.display_name', read_only=True)
+    student_email = serializers.EmailField(source='student.email', read_only=True)
+    program_name = serializers.CharField(source='enrollment.program_name', read_only=True)
+    enrollment_amount = serializers.DecimalField(source='enrollment.amount', max_digits=10, decimal_places=2, read_only=True)
+    enrollment_balance = serializers.DecimalField(source='enrollment.balance', max_digits=10, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = PaymentPlanChangeRequest
+        fields = [
+            'request_id', 'enrollment', 'student', 'student_name', 'student_email',
+            'program_name', 'enrollment_amount', 'enrollment_balance',
+            'current_payment_plan', 'current_installment_amount',
+            'requested_payment_plan', 'requested_installment_amount', 'reason',
+            'status', 'admin_notes', 'approved_payment_plan',
+            'approved_installment_amount', 'reviewed_by', 'reviewed_at',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'request_id', 'student', 'student_name', 'student_email',
+            'program_name', 'enrollment_amount', 'enrollment_balance',
+            'current_payment_plan', 'current_installment_amount',
+            'status', 'admin_notes', 'approved_payment_plan',
+            'approved_installment_amount', 'reviewed_by', 'reviewed_at',
+            'created_at', 'updated_at',
+        ]
+
+    def validate_requested_payment_plan(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Choose a payment plan')
+        return value
+
+    def validate_requested_installment_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Enter a valid installment amount')
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        enrollment = attrs.get('enrollment')
+        user = getattr(request, 'user', None)
+
+        if not enrollment:
+            raise serializers.ValidationError({'enrollment': 'Enrollment is required'})
+
+        if getattr(user, 'role', None) != 'admin' and enrollment.student_id != getattr(user, 'uid', None):
+            raise serializers.ValidationError({'enrollment': 'You can only request changes for your own enrollment'})
+
+        if PaymentPlanChangeRequest.objects.filter(enrollment=enrollment, status='pending').exists():
+            raise serializers.ValidationError('There is already a pending payment plan change request for this enrollment')
+
+        return attrs
+
+    def create(self, validated_data):
+        enrollment = validated_data['enrollment']
+        validated_data['student'] = enrollment.student
+        validated_data['current_payment_plan'] = enrollment.payment_plan
+        validated_data['current_installment_amount'] = enrollment.installment_amount
+        return super().create(validated_data)
 
 
 class StudentProgramEnrolledSerializer(serializers.ModelSerializer):

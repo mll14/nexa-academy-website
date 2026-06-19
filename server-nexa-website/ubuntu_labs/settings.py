@@ -182,11 +182,14 @@ if FRONTEND_URL:
     if FRONTEND_URL not in CSRF_TRUSTED_ORIGINS:
         CSRF_TRUSTED_ORIGINS = [*CSRF_TRUSTED_ORIGINS, FRONTEND_URL]
 
+ADMISSIONS_PORTAL_URL = config('ADMISSIONS_PORTAL_URL', default='https://admissions.nexaacademy.co.ke').rstrip('/')
+
 EMAIL_BACKEND = 'anymail.backends.resend.EmailBackend'
 ANYMAIL = {
     'RESEND_API_KEY': config('RESEND_API_KEY', default=''),
 }
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='admissions@nexaacademy.co.ke')
+ADMISSIONS_NOTIFICATION_EMAIL = config('ADMISSIONS_NOTIFICATION_EMAIL', default='admissions@nexaacademy.co.ke')
 
 PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
 PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CheckCircle2, Clock, Calendar, CreditCard, Video } from 'lucide-react'
+import { CheckCircle2, Clock, Calendar, CreditCard, RefreshCw, Video } from 'lucide-react'
 import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
@@ -214,7 +214,7 @@ export function ProcessTracker({
                 </p>
                 <p className="text-sm font-bold">{formatFullDateTime(slot.chosen_time)} EAT</p>
               </div>
-              {(slot.meet_url || slot.zoom_link) && (
+              {(slot.meet_url || slot.zoom_link) ? (
                 <a
                   href={slot.meet_url || slot.zoom_link}
                   target="_blank"
@@ -224,6 +224,10 @@ export function ProcessTracker({
                   <Video className="w-4 h-4" />
                   {slot.meet_url ? 'Join Google Meet' : 'Join Meeting'}
                 </a>
+              ) : (
+                <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
+                  Your meeting link will be sent to your email before the interview.
+                </p>
               )}
               {(() => {
                 const hoursUntil = slot.chosen_time
@@ -316,20 +320,31 @@ export function ProcessTracker({
             <Button variant="outline" size="sm" onClick={fetchSlots}>Retry</Button>
           </div>
         ) : (
-          <SlotPicker
-            slots={allSlots}
-            onConfirm={async (time) => {
-              const isReschedule = currentStatus === 'interview_scheduled'
-              if (isReschedule) {
-                await handleReschedule(time)
-              } else {
-                await handleConfirm(time)
-              }
-              setSlotDialogOpen(false)
-            }}
-            submitting={submitting}
-            confirmLabel={currentStatus === 'interview_scheduled' ? 'Reschedule Interview' : 'Confirm Interview'}
-          />
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              <button
+                onClick={fetchSlots}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Refresh slots
+              </button>
+            </div>
+            <SlotPicker
+              slots={allSlots}
+              onConfirm={async (time) => {
+                const isReschedule = currentStatus === 'interview_scheduled'
+                if (isReschedule) {
+                  await handleReschedule(time)
+                } else {
+                  await handleConfirm(time)
+                }
+                setSlotDialogOpen(false)
+              }}
+              submitting={submitting}
+              confirmLabel={currentStatus === 'interview_scheduled' ? 'Reschedule Interview' : 'Confirm Interview'}
+            />
+          </div>
         )}
       </Dialog>
     </div>
