@@ -17,6 +17,7 @@ from applications.models import Application
 from applications.serializers import ApplicationSerializer
 from payments.models import Payment
 from payments.serializers import PaymentSerializer
+from payments.reconciliation import payment_reconciliation_for_student, serialize_reconciliation
 from programs.models import Enrollment
 from programs.serializers import EnrollmentSerializer
 from accounts.permissions import IsAdminUser
@@ -137,6 +138,7 @@ class StudentDetailView(generics.RetrieveAPIView):
             'applications': ApplicationSerializer(applications, many=True).data,
             'payments': PaymentSerializer(payments, many=True).data,
             'enrollments': EnrollmentSerializer(enrollments, many=True).data,
+            'reconciliation': serialize_reconciliation(payment_reconciliation_for_student(user)),
         })
 
 class ForgotPasswordView(APIView):

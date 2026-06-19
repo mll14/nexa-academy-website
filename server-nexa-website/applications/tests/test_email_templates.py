@@ -25,7 +25,7 @@ class EmailTemplateRenderTests(TestCase):
 
     def test_application_received(self):
         html = self._render('application_received.html')
-        self.assertIn('solid first step', html)
+        self.assertIn('Thanks for applying', html)
         self.assertIn('Test User', html)
 
     def test_application_reviewed(self):
@@ -75,6 +75,45 @@ class EmailTemplateRenderTests(TestCase):
         self.assertIn('Welcome to Nexa Academy', html)
         self.assertIn('officially enrolled', html)
         self.assertIn('Go to Student Portal', html)
+
+    def test_manager_application_received(self):
+        html = self._render('manager_application_received.html', {
+            'email': 'applicant@test.com',
+            'phone': '0700000000',
+            'source': 'website',
+            'application_url': 'https://admissions.nexaacademy.co.ke/admin/applications/123',
+        })
+        self.assertIn('New Application', html)
+        self.assertIn('applicant@test.com', html)
+        self.assertIn('Review Application', html)
+
+    def test_manager_interview_scheduled(self):
+        html = self._render('manager_interview_scheduled.html', {
+            'email': 'applicant@test.com',
+            'phone': '0700000000',
+            'chosen_time': 'Wednesday, 19 Feb at 10:00 AM EAT',
+            'meet_url': 'https://meet.google.com/test',
+            'application_url': 'https://admissions.nexaacademy.co.ke/admin/applications/123',
+        })
+        self.assertIn('Interview Scheduled', html)
+        self.assertIn('meet.google.com', html)
+        self.assertIn('Open Application', html)
+
+    def test_manager_deposit_completed(self):
+        html = self._render('manager_deposit_completed.html', {
+            'student_name': 'Test User',
+            'student_email': 'student@test.com',
+            'amount': 'KSh 10,000.00',
+            'reference': 'NEXA-123',
+            'payment_method': 'Card',
+            'payment_type': 'deposit',
+            'total_fee_paid': 'KSh 10,000.00',
+            'fee_balance': 'KSh 75,000.00',
+            'transactions_url': 'https://admissions.nexaacademy.co.ke/admin/transactions',
+        })
+        self.assertIn('Deposit Completed', html)
+        self.assertIn('NEXA-123', html)
+        self.assertIn('View Transactions', html)
 
 
 class EmailSendOnStatusChangeTests(TestCase):

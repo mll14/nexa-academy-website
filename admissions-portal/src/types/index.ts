@@ -161,6 +161,54 @@ export interface Payment {
   updated_at?: string
 }
 
+export interface PaymentPlanChangeRequest {
+  request_id: string
+  enrollment: string
+  student?: string
+  student_name?: string
+  student_email?: string
+  program_name?: string
+  enrollment_amount?: string
+  enrollment_balance?: string
+  current_payment_plan?: string
+  current_installment_amount?: string | null
+  requested_payment_plan: string
+  requested_installment_amount: string
+  reason?: string
+  status: 'pending' | 'approved' | 'rejected'
+  admin_notes?: string
+  approved_payment_plan?: string
+  approved_installment_amount?: string | null
+  reviewed_by?: string
+  reviewed_at?: string
+  created_at: string
+  updated_at?: string
+}
+
+export interface ReconciliationItem {
+  enrollment_id?: string | null
+  program_id?: string | null
+  program_name: string
+  total_fee: string
+  amount_paid: string
+  amount_remaining: string
+  payment_plan: string
+  installment_amount?: string | null
+  status: 'paid' | 'outstanding'
+  last_payment_date?: string | null
+}
+
+export interface FinancialReconciliation {
+  student_id: string
+  student_name: string
+  student_email: string
+  total_fee: string
+  amount_paid: string
+  amount_remaining: string
+  status: 'paid' | 'outstanding'
+  items: ReconciliationItem[]
+}
+
 export interface Enrollment {
   enrollment_id: string
   student: string
@@ -179,6 +227,8 @@ export interface Enrollment {
   amount: number
   amount_paid: number
   balance: number
+  payment_plan?: string
+  installment_amount?: number | string | null
   student_details?: {
     uid: string
     email: string

@@ -12,6 +12,7 @@ from decimal import Decimal
 from ubuntu_labs.email_utils import send_html_email
 from .models import Payment, PaymentHistory
 from .serializers import PaymentSerializer, PaymentHistorySerializer, ProcessPaymentSerializer
+from .reconciliation import payment_reconciliation_for_student, serialize_reconciliation
 from programs.models import Program, Enrollment
 from accounts.permissions import IsAdminUser
 from notifications.models import Notification
@@ -21,6 +22,91 @@ import logging
 from applications.models import Application, ApplicationLog
 
 logger = logging.getLogger(__name__)
+
+
+def _admissions_notification_email():
+    return getattr(settings, 'ADMISSIONS_NOTIFICATION_EMAIL', 'admissions@nexaacademy.co.ke')
+
+
+def _admissions_portal_url(path=''):
+    base = getattr(settings, 'ADMISSIONS_PORTAL_URL', '') or getattr(settings, 'FRONTEND_URL', '')
+    base = base.rstrip('/')
+    if not base:
+        return ''
+    return f"{base}{path}"
+
+
+def _payment_application_for_student(student, program=None):
+    qs = Application.objects.filter(Q(user=student) | Q(email__iexact=student.email))
+    if program:
+        program_filter = Q(program_name__iexact=program.name)
+        program_slug = getattr(program, 'slug', '')
+        if program_slug:
+            program_filter |= Q(program__iexact=program_slug)
+        qs = qs.filter(program_filter)
+    return qs.order_by('-applied_at').first()
+
+
+def _send_manager_deposit_notification(payment, amount=None, program=None, payment_type='deposit'):
+    student = payment.student
+    program = program or payment.program
+    application = _payment_application_for_student(student, program=program)
+    amount = amount if amount is not None else payment.amount
+    recipient = _admissions_notification_email()
+    send_html_email(
+        subject=f"Deposit completed — {student.display_name or student.email}",
+        template_name='manager_deposit_completed.html',
+        context={
+            'student_name': student.display_name or payment.student_name,
+            'student_email': student.email or payment.student_email,
+            'amount': f"KSh {Decimal(str(amount)):,.2f}",
+            'reference': payment.payment_reference or str(payment.payment_id),
+            'payment_method': payment.payment_method,
+            'payment_type': payment_type,
+            'program_name': (program.name if program else payment.program_name),
+            'total_fee_paid': f"KSh {Decimal(str(student.total_fee_paid or 0)):,.2f}",
+            'fee_balance': f"KSh {Decimal(str(student.fee_balance or 0)):,.2f}",
+            'application': application,
+            'application_url': _admissions_portal_url(f"/admin/applications/{application.id}") if application else '',
+            'transactions_url': _admissions_portal_url('/admin/transactions'),
+            'frontend_url': settings.FRONTEND_URL,
+            'header_label': 'Payment Alert',
+            'preview_text': f"Deposit completed by {student.display_name or student.email}",
+        },
+        recipient_email=recipient,
+    )
+
+
+def _send_payment_invoice(payment, amount=None, program=None, payment_type='payment'):
+    student = payment.student
+    program = program or payment.program
+    amount = Decimal(str(amount if amount is not None else payment.amount))
+    reconciliation = payment_reconciliation_for_student(student)
+    context = {
+        'display_name': student.display_name or payment.student_name,
+        'student_name': student.display_name or payment.student_name,
+        'student_email': student.email or payment.student_email,
+        'amount': f"KSh {amount:,.2f}",
+        'reference': payment.payment_reference or str(payment.payment_id),
+        'payment_method': payment.payment_method,
+        'payment_type': payment_type,
+        'program_name': (program.name if program else payment.program_name),
+        'total_fee_paid': f"KSh {Decimal(str(reconciliation['amount_paid'])):,.2f}",
+        'balance': f"KSh {Decimal(str(reconciliation['amount_remaining'])):,.2f}",
+        'fee_balance': f"KSh {Decimal(str(reconciliation['amount_remaining'])):,.2f}",
+        'frontend_url': settings.FRONTEND_URL,
+        'admissions_url': settings.ADMISSIONS_PORTAL_URL,
+        'header_label': 'Payment Invoice',
+        'preview_text': f"Payment invoice for {student.display_name or student.email}",
+    }
+    recipients = [student.email, _admissions_notification_email()]
+    for recipient in dict.fromkeys(email for email in recipients if email):
+        send_html_email(
+            subject='Payment Invoice - Nexa Academy',
+            template_name='payment_confirmation.html',
+            context=context,
+            recipient_email=recipient,
+        )
 
 
 def _recalculate_student_totals(student):
@@ -126,6 +212,17 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if user.role == 'admin':
             return Payment.objects.all()
         return Payment.objects.filter(student=user)
+
+    @action(detail=False, methods=['get'])
+    def reconciliation(self, request):
+        student = request.user
+        student_id = request.query_params.get('student')
+        if student_id and getattr(request.user, 'role', None) == 'admin':
+            from accounts.models import User
+            student = User.objects.filter(uid=student_id).first()
+            if not student:
+                return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(serialize_reconciliation(payment_reconciliation_for_student(student)))
 
     @action(detail=False, methods=['post'])
     def initialize_payment(self, request):
@@ -272,6 +369,22 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             link=f"/student-dashboard/{student.uid}"
                         )
 
+                        try:
+                            _send_payment_invoice(
+                                payment,
+                                amount=Decimal(str(amount)),
+                                program=prog,
+                                payment_type='deposit',
+                            )
+                            _send_manager_deposit_notification(
+                                payment,
+                                amount=Decimal(str(amount)),
+                                program=prog,
+                                payment_type='deposit',
+                            )
+                        except Exception as exc:
+                            logger.error('manager deposit notification failed for payment %s: %s', payment.payment_id, exc)
+
                         # Return simulated success payload
                         return Response({
                             'status': 'success',
@@ -366,21 +479,6 @@ class PaymentViewSet(viewsets.ModelViewSet):
             payment.confirmed_at = timezone.now()
             payment.save()
 
-            # Recompute totals from DB — never use arithmetic
-            _recalculate_student_totals(request.user)
-
-            # Create in-app notification confirming payment and showing remaining balance
-            try:
-                Notification.objects.create(
-                    user=request.user,
-                    type='payment',
-                    title='Payment Received',
-                    message=f"KSh {payment.amount:,.0f} received. Balance: KSh {request.user.fee_balance:,.0f}.",
-                    link=f"/student-dashboard/{request.user.uid}"
-                )
-            except Exception:
-                pass
-
             # If payment is for a specific program, update enrollment
             program_id = serializer.validated_data.get('program_id')
             if program_id:
@@ -396,6 +494,31 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     payment.save()
                 except Enrollment.DoesNotExist:
                     pass
+
+            # Recompute totals from DB after any enrollment adjustment.
+            _recalculate_student_totals(request.user)
+
+            # Create in-app notification confirming payment and showing remaining balance
+            try:
+                Notification.objects.create(
+                    user=request.user,
+                    type='payment',
+                    title='Payment Received',
+                    message=f"KSh {payment.amount:,.0f} received. Balance: KSh {request.user.fee_balance:,.0f}.",
+                    link=f"/student-dashboard/{request.user.uid}"
+                )
+            except Exception:
+                pass
+
+            try:
+                _send_manager_deposit_notification(payment, amount=payment.amount, program=payment.program)
+            except Exception as exc:
+                logger.error('manager deposit notification failed for payment %s: %s', payment.payment_id, exc)
+
+            try:
+                _send_payment_invoice(payment, amount=payment.amount, program=payment.program)
+            except Exception as exc:
+                logger.error('payment invoice email failed for payment %s: %s', payment.payment_id, exc)
 
         return Response(PaymentSerializer(payment).data)
 
@@ -477,20 +600,24 @@ class PaymentViewSet(viewsets.ModelViewSet):
             )
 
             try:
-                context = {
-                    'display_name': student.display_name,
-                    'amount': f"KSh {amount:,.2f}",
-                    'reference': payment.payment_reference,
-                    'frontend_url': settings.FRONTEND_URL,
-                }
-                send_html_email(
-                    subject='Payment Confirmation - Nexa Academy',
-                    template_name='payment_confirmation.html',
-                    context=context,
-                    recipient_email=student.email,
+                _send_payment_invoice(
+                    payment,
+                    amount=amount,
+                    program=program,
+                    payment_type=metadata.get('payment_type', 'payment'),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.error('payment invoice email failed for payment %s: %s', payment.payment_id, exc)
+
+            try:
+                _send_manager_deposit_notification(
+                    payment,
+                    amount=amount,
+                    program=program,
+                    payment_type=metadata.get('payment_type', 'deposit'),
+                )
+            except Exception as exc:
+                logger.error('manager deposit notification failed for payment %s: %s', payment.payment_id, exc)
 
         return payment
 
@@ -642,6 +769,16 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 )
             except Exception:
                 pass
+
+            try:
+                _send_payment_invoice(payment, amount=payment.amount, program=prog)
+            except Exception as exc:
+                logger.error('payment invoice email failed for payment %s: %s', payment.payment_id, exc)
+
+            try:
+                _send_manager_deposit_notification(payment, amount=payment.amount, program=prog)
+            except Exception as exc:
+                logger.error('manager deposit notification failed for payment %s: %s', payment.payment_id, exc)
 
         return Response(PaymentSerializer(payment).data)
 

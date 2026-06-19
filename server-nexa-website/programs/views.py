@@ -1,5 +1,6 @@
 import json
 import logging
+from decimal import Decimal
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,17 +9,19 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.db import transaction
-from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication
+from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, PaymentPlanChangeRequest
 from .serializers import (
     ProgramSerializer, EnrollmentSerializer, StudentProgramEnrolledSerializer,
     ProgramProgressSerializer, CertificateSerializer, SimpleProgramProgressSerializer,
     EnrollStudentSerializer, ProgramInterestSerializer, ProgramIntakeSerializer,
-    HelpMeLeadSerializer, IncompleteApplicationSerializer,
+    HelpMeLeadSerializer, IncompleteApplicationSerializer, PaymentPlanChangeRequestSerializer,
 )
 from accounts.permissions import IsAdminUser
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
 from accounts.models import User
+from applications.models import Application
+from notifications.models import Notification
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +162,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                         'amount_paid': amount_paid,
                         'balance': enrollment.balance,
                         'frontend_url': settings.FRONTEND_URL,
+                        'admissions_url': settings.ADMISSIONS_PORTAL_URL,
                     },
                     recipient_email=student.email,
                 )
@@ -231,6 +235,124 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             EnrollmentSerializer(enrollment).data,
             status=status.HTTP_201_CREATED
         )
+
+
+class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
+    queryset = PaymentPlanChangeRequest.objects.select_related('student', 'enrollment', 'enrollment__program')
+    serializer_class = PaymentPlanChangeRequestSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'enrollment']
+    search_fields = ['student__display_name', 'student__email', 'enrollment__program_name', 'requested_payment_plan']
+    ordering_fields = ['created_at', 'reviewed_at']
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        if self.action in ['update', 'partial_update', 'destroy']:
+            permission_classes = [IsAuthenticated, IsAdminUser]
+        else:
+            permission_classes = [IsAuthenticated]
+        return [permission() for permission in permission_classes]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if getattr(user, 'role', None) == 'admin':
+            return qs
+        return qs.filter(student=user)
+
+    def perform_create(self, serializer):
+        change_request = serializer.save()
+        try:
+            admins = User.objects.filter(role='admin')
+            for admin in admins:
+                Notification.objects.create(
+                    user=admin,
+                    type='payment',
+                    title='Payment Plan Change Requested',
+                    message=f"{change_request.student.display_name} requested {change_request.requested_payment_plan} payments of KSh {change_request.requested_installment_amount:,.2f}.",
+                    link='/admin/payment-plans',
+                )
+        except Exception:
+            logger.exception('Failed to notify admins about payment plan change request %s', change_request.request_id)
+
+    def _sync_application_payment_plan(self, enrollment, payment_plan):
+        Application.objects.filter(
+            user=enrollment.student,
+            program_name__iexact=enrollment.program_name,
+        ).update(payment_plan=payment_plan)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def approve(self, request, pk=None):
+        change_request = self.get_object()
+        if change_request.status != 'pending':
+            return Response({'error': 'Only pending requests can be approved'}, status=status.HTTP_400_BAD_REQUEST)
+
+        approved_plan = (request.data.get('payment_plan') or change_request.requested_payment_plan).strip()
+        approved_amount = request.data.get('installment_amount') or change_request.requested_installment_amount
+        admin_notes = request.data.get('admin_notes', '').strip()
+
+        if not approved_plan:
+            return Response({'error': 'payment_plan is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            approved_amount = Decimal(str(approved_amount))
+        except Exception:
+            return Response({'error': 'Enter a valid installment_amount'}, status=status.HTTP_400_BAD_REQUEST)
+        if approved_amount <= 0:
+            return Response({'error': 'installment_amount must be greater than zero'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            enrollment = change_request.enrollment
+            enrollment.payment_plan = approved_plan
+            enrollment.installment_amount = approved_amount
+            enrollment.save(update_fields=['payment_plan', 'installment_amount'])
+
+            change_request.status = 'approved'
+            change_request.admin_notes = admin_notes
+            change_request.approved_payment_plan = approved_plan
+            change_request.approved_installment_amount = approved_amount
+            change_request.reviewed_by = request.user.email
+            change_request.reviewed_at = timezone.now()
+            change_request.save()
+
+            self._sync_application_payment_plan(enrollment, approved_plan)
+
+            Notification.objects.create(
+                user=change_request.student,
+                type='payment',
+                title='Payment Plan Approved',
+                message=f"Your payment plan was updated to {approved_plan}. Recommended installment: KSh {approved_amount:,.2f}.",
+                link='/student/dashboard',
+            )
+
+        return Response(self.get_serializer(change_request).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def reject(self, request, pk=None):
+        change_request = self.get_object()
+        if change_request.status != 'pending':
+            return Response({'error': 'Only pending requests can be rejected'}, status=status.HTTP_400_BAD_REQUEST)
+
+        admin_notes = request.data.get('admin_notes', '').strip()
+        change_request.status = 'rejected'
+        change_request.admin_notes = admin_notes
+        change_request.reviewed_by = request.user.email
+        change_request.reviewed_at = timezone.now()
+        change_request.save()
+
+        try:
+            Notification.objects.create(
+                user=change_request.student,
+                type='payment',
+                title='Payment Plan Request Rejected',
+                message=admin_notes or 'Your payment plan change request was not approved. Contact admissions for more details.',
+                link='/student/dashboard',
+            )
+        except Exception:
+            logger.exception('Failed to notify student about rejected payment plan request %s', change_request.request_id)
+
+        return Response(self.get_serializer(change_request).data)
 
 
 class ProgramProgressViewSet(viewsets.ModelViewSet):

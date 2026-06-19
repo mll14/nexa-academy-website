@@ -24,6 +24,75 @@ from django.contrib.auth.tokens import PasswordResetTokenGenerator
 logger = logging.getLogger(__name__)
 
 
+def _admissions_notification_email():
+    return getattr(settings, 'ADMISSIONS_NOTIFICATION_EMAIL', 'admissions@nexaacademy.co.ke')
+
+
+def _admissions_portal_url(path=''):
+    base = getattr(settings, 'ADMISSIONS_PORTAL_URL', '') or getattr(settings, 'FRONTEND_URL', '')
+    base = base.rstrip('/')
+    if not base:
+        return ''
+    return f"{base}{path}"
+
+
+def _format_currency(value):
+    if value in (None, ''):
+        return ''
+    try:
+        return f"KSh {value:,.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _send_manager_application_notification(application):
+    recipient = _admissions_notification_email()
+    send_html_email(
+        subject=f"New application submitted — {application.full_name}",
+        template_name='manager_application_received.html',
+        context={
+            'application': application,
+            'full_name': application.full_name,
+            'email': application.email,
+            'phone': application.phone,
+            'program_name': application.program_name or application.program,
+            'start_date': application.start_date,
+            'estimated_fees': _format_currency(application.estimated_fees),
+            'payment_plan': application.payment_plan,
+            'message': application.message,
+            'source': application.source,
+            'application_url': _admissions_portal_url(f"/admin/applications/{application.id}"),
+            'frontend_url': settings.FRONTEND_URL,
+            'header_label': 'Admissions Alert',
+            'preview_text': f"New application from {application.full_name}",
+        },
+        recipient_email=recipient,
+    )
+
+
+def _send_manager_interview_notification(application, chosen_time, meet_url=''):
+    recipient = _admissions_notification_email()
+    send_html_email(
+        subject=f"Interview scheduled — {application.full_name}",
+        template_name='manager_interview_scheduled.html',
+        context={
+            'application': application,
+            'full_name': application.full_name,
+            'email': application.email,
+            'phone': application.phone,
+            'program_name': application.program_name or application.program,
+            'chosen_time': chosen_time,
+            'meet_url': meet_url,
+            'application_url': _admissions_portal_url(f"/admin/applications/{application.id}"),
+            'calendar_url': _admissions_portal_url('/admin/interviews'),
+            'frontend_url': settings.FRONTEND_URL,
+            'header_label': 'Interview Alert',
+            'preview_text': f"{application.full_name} scheduled an interview",
+        },
+        recipient_email=recipient,
+    )
+
+
 def _verify_recaptcha(token: str, remote_ip: str = "", expected_action: str = ""):
     """Verify reCAPTCHA token with Google.
 
@@ -270,6 +339,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             application.save(update_fields=['email_sent'])
         except Exception as exc:
             logger.error('application_received email failed for %s: %s', application.email, exc)
+
+        try:
+            _send_manager_application_notification(application)
+        except Exception as exc:
+            logger.error('manager application notification failed for %s: %s', application.email, exc)
         
         # Send account-setup email only for brand-new accounts so the applicant
         # can set a password via the admissions portal. Uses the same token
@@ -354,6 +428,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     'full_name': application.full_name,
                     'program_name': application.program_name,
                     'frontend_url': settings.FRONTEND_URL,
+                    'admissions_url': settings.ADMISSIONS_PORTAL_URL,
                     'start_date': application.start_date,
                     'estimated_fees': application.estimated_fees,
                 }
@@ -437,6 +512,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
+        try:
+            _send_manager_interview_notification(application, chosen)
+        except Exception as exc:
+            logger.error('manager interview notification failed for %s: %s', application.email, exc)
+
         # Notify admins
         try:
             admins = User.objects.filter(role='admin')
@@ -512,6 +592,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     'full_name': application.full_name,
                     'program_name': application.program_name,
                     'frontend_url': settings.FRONTEND_URL,
+                    'admissions_url': settings.ADMISSIONS_PORTAL_URL,
                 },
                 recipient_email=application.email,
             )
@@ -714,6 +795,15 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             pass
 
         try:
+            _send_manager_interview_notification(
+                application,
+                formatted_time if 'formatted_time' in locals() else chosen_time,
+                result['meet_url'],
+            )
+        except Exception as exc:
+            logger.error('manager interview notification failed for %s: %s', application.email, exc)
+
+        try:
             if application.user:
                 Notification.objects.create(
                     user=application.user,
@@ -810,6 +900,15 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         except Exception:
             pass
 
+        try:
+            _send_manager_interview_notification(
+                application,
+                formatted_time if 'formatted_time' in locals() else new_time,
+                slot.meet_url,
+            )
+        except Exception as exc:
+            logger.error('manager interview notification failed for %s: %s', application.email, exc)
+
         return Response(InterviewSlotSerializer(slot).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
@@ -869,6 +968,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     'full_name': application.full_name,
                     'program_name': application.program_name,
                     'frontend_url': settings.FRONTEND_URL,
+                    'admissions_url': settings.ADMISSIONS_PORTAL_URL,
                 },
                 recipient_email=application.email,
             )
