@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import {
   GraduationCap, UserPlus, Search,
-  ArrowUpDown, Mail, Phone, BookOpen, Calendar,
+  ArrowUpDown,
   TrendingUp, Users, ChevronRight,
   CheckCircle2, AlertCircle, XCircle,
 } from 'lucide-react'
@@ -17,6 +18,8 @@ import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { Enrollment, Program, User } from '../../types'
+
+// DetailRow and BalanceBar kept for EnrollDialog only
 
 function fmtKSh(n: number): string {
   if (n >= 1_000_000) return `KSh ${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
@@ -388,12 +391,12 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
 
 export function EnrolledStudents() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const [search, setSearch]     = useState('')
   const [status, setStatus]     = useState('all')
   const [programId, setProgramId] = useState('all')
   const [ordering, setOrdering] = useState('-enrollment_date')
   const [page, setPage]         = useState(1)
-  const [selected, setSelected] = useState<Enrollment | null>(null)
   const [showEnroll, setShowEnroll] = useState(false)
 
   const { data, isLoading } = useQuery({
@@ -444,7 +447,8 @@ export function EnrolledStudents() {
           </div>
           <Button onClick={() => setShowEnroll(true)}>
             <UserPlus className="w-4 h-4 mr-2" />
-            Enroll Student
+            <span className="sm:hidden">Enroll</span>
+            <span className="hidden sm:inline">Enroll Student</span>
           </Button>
         </div>
 
@@ -478,14 +482,14 @@ export function EnrolledStudents() {
               onChange={(e) => { setSearch(e.target.value); setPage(1) }}
             />
           </div>
-          <div className="flex gap-2.5">
-            <div className="w-44">
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="w-full sm:w-44">
               <Select value={status} onChange={(v) => { setStatus(v); setPage(1) }} options={STATUS_OPTIONS} />
             </div>
-            <div className="w-52">
+            <div className="w-full sm:w-52">
               <Select value={programId} onChange={(v) => { setProgramId(v); setPage(1) }} options={programOptions} />
             </div>
-            <div className="w-44">
+            <div className="w-full sm:w-44">
               <Select value={ordering} onChange={setOrdering} options={SORT_OPTIONS} icon={<ArrowUpDown className="w-3.5 h-3.5" />} />
             </div>
           </div>
@@ -512,7 +516,7 @@ export function EnrolledStudents() {
               return (
                 <div
                   key={e.enrollment_id}
-                  onClick={() => setSelected(e)}
+                  onClick={() => navigate({ to: '/admin/enrolled/$enrollmentId', params: { enrollmentId: e.enrollment_id } })}
                   className="flex items-center gap-4 px-5 py-4 hover:bg-muted/40 transition-colors cursor-pointer group"
                 >
                   <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
@@ -572,62 +576,6 @@ export function EnrolledStudents() {
         )}
       </div>
 
-      {/* Detail dialog */}
-      {selected && (() => {
-        const cfg = enrollmentStatusConfig(selected.status)
-        const StatusIcon = cfg.icon
-        const email = selected.student_details?.email
-        const phone = selected.student_details?.phone
-        return (
-          <Dialog
-            open={!!selected}
-            onClose={() => setSelected(null)}
-            title={selected.student_name || selected.student_details?.display_name || 'Student'}
-            description={email}
-            className="max-w-lg"
-          >
-            <div className="space-y-5">
-              {/* Status */}
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.cls}`}>
-                <StatusIcon className="w-3.5 h-3.5" />{cfg.label}
-              </span>
-
-              {/* Student info */}
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Student</p>
-                <div className="divide-y divide-border">
-                  {email && <DetailRow icon={<Mail className="w-4 h-4" />} label="Email" value={email} />}
-                  {phone && <DetailRow icon={<Phone className="w-4 h-4" />} label="Phone" value={phone} />}
-                  <DetailRow icon={<BookOpen className="w-4 h-4" />} label="Program" value={selected.program_name} />
-                  <DetailRow icon={<Calendar className="w-4 h-4" />} label="Enrolled" value={selected.enrollment_date ? formatDate(selected.enrollment_date) : undefined} />
-                  {selected.start_date && <DetailRow icon={<Calendar className="w-4 h-4" />} label="Start date" value={formatDate(selected.start_date)} />}
-                  {selected.end_date && <DetailRow icon={<Calendar className="w-4 h-4" />} label="End date" value={formatDate(selected.end_date)} />}
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Fee breakdown */}
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-3">Fees</p>
-                <BalanceBar amount={selected.amount} amountPaid={selected.amount_paid ?? 0} />
-                <div className="mt-3 grid grid-cols-3 gap-3">
-                  {[
-                    { label: 'Total fee',  value: `KSh ${selected.amount.toLocaleString('en-KE')}` },
-                    { label: 'Paid',       value: `KSh ${(selected.amount_paid ?? 0).toLocaleString('en-KE')}`, green: true },
-                    { label: 'Balance',    value: `KSh ${(selected.balance ?? 0).toLocaleString('en-KE')}`, warn: (selected.balance ?? 0) > 0 },
-                  ].map(({ label, value, green, warn }) => (
-                    <div key={label} className="bg-muted/40 rounded-xl px-3 py-2.5 text-center">
-                      <p className="text-xs text-muted-foreground">{label}</p>
-                      <p className={`text-sm font-bold mt-0.5 ${green ? 'text-success' : warn ? 'text-warning' : ''}`}>{value}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </Dialog>
-        )
-      })()}
 
       {/* Enroll dialog */}
       <EnrollDialog
