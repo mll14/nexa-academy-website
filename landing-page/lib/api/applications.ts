@@ -138,7 +138,7 @@ export async function getClientPrograms(): Promise<
 }
 
 export async function getClientIntakes(programId: string | number): Promise<
-  Array<{ id: string; start_date: string; seats_remaining: number | null; status: string; application_deadline?: string }>
+  Array<{ id: string; start_date: string; seats_remaining: number | null; status: string; application_deadline?: string; mode: string }>
 > {
   try {
     const res = await fetch(`${BASE_URL}/api/intakes/?program=${programId}`)
