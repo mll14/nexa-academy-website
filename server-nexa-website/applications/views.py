@@ -13,7 +13,8 @@ from html.parser import HTMLParser
 from .models import Application, ApplicationAdminNote, ApplicationLog, DraftApplication, InterviewBlackout, CustomCalendarEvent
 from .serializers import ApplicationAdminNoteSerializer, ApplicationSerializer, ApplicationCreateSerializer, InterviewSlotSerializer, InterviewBlackoutSerializer, CustomCalendarEventSerializer
 from .models import InterviewSlot
-from accounts.permissions import IsAdminUser
+from accounts.permissions import IsAdminUser, HasAppPermission
+from accounts.views import create_audit_log
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
 from notifications.models import Notification
@@ -256,7 +257,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action == 'create':
             permission_classes = [AllowAny]
-        elif self.action in ['update', 'partial_update', 'destroy', 'cancel_interview']:
+        elif self.action == 'destroy':
+            permission_classes = [IsAuthenticated, HasAppPermission('applications.manage')]
+        elif self.action in ['update', 'partial_update', 'cancel_interview']:
             permission_classes = [IsAuthenticated, IsAdminUser]
         else:
             permission_classes = [IsAuthenticated]
@@ -266,6 +269,22 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return ApplicationCreateSerializer
         return ApplicationSerializer
+
+    def perform_destroy(self, instance):
+        create_audit_log(
+            request=self.request,
+            action='delete_application',
+            resource_type='application',
+            resource_id=str(instance.id),
+            resource_summary={
+                'full_name': instance.full_name,
+                'email': instance.email,
+                'program': instance.program_name if hasattr(instance, 'program_name') else str(instance.program),
+                'status': instance.status,
+                'applied_at': instance.applied_at.isoformat() if instance.applied_at else None,
+            },
+        )
+        instance.delete()
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -491,7 +510,20 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             applicant_email=application.email,
             applicant_name=application.full_name
         )
-        
+        create_audit_log(
+            request=request,
+            action='update_application_status',
+            resource_type='application',
+            resource_id=str(application.id),
+            resource_summary={
+                'applicant': application.full_name,
+                'email': application.email,
+                'program': application.program_name,
+                'from': previous_status,
+                'to': new_status,
+            },
+        )
+
         # Send status update email to student
         try:
             email_configs = {
@@ -642,6 +674,18 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         slot.zoom_link = zoom_link
         slot.admin_approved = True
         slot.save()
+        create_audit_log(
+            request=request,
+            action='propose_interview_times',
+            resource_type='application',
+            resource_id=str(application.id),
+            resource_summary={
+                'applicant': application.full_name,
+                'email': application.email,
+                'program': application.program_name,
+                'slots': str(len(times)),
+            },
+        )
 
         # Only transition to 'approved' if not already at or past interview_scheduled.
         # This prevents accidentally resetting a confirmed interview's status.
@@ -711,6 +755,17 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application.status = 'interview_completed'
         application.status_updated_at = timezone.now()
         application.save()
+        create_audit_log(
+            request=request,
+            action='complete_interview',
+            resource_type='application',
+            resource_id=str(application.id),
+            resource_summary={
+                'applicant': application.full_name,
+                'email': application.email,
+                'program': application.program_name,
+            },
+        )
 
         # Log
         try:
@@ -860,6 +915,18 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application.status = 'interview_scheduled'
         application.status_updated_at = timezone.now()
         application.save()
+        create_audit_log(
+            request=request,
+            action='schedule_interview',
+            resource_type='application',
+            resource_id=str(application.id),
+            resource_summary={
+                'applicant': application.full_name,
+                'email': application.email,
+                'program': application.program_name,
+                'time': str(chosen_time),
+            },
+        )
 
         ApplicationLog.objects.create(
             application=application,
@@ -959,6 +1026,19 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         slot.chosen_time = new_dt
         slot.confirmed_at = timezone.now()
         slot.save()
+        create_audit_log(
+            request=request,
+            action='reschedule_interview',
+            resource_type='application',
+            resource_id=str(application.id),
+            resource_summary={
+                'applicant': application.full_name,
+                'email': application.email,
+                'program': application.program_name,
+                'from': str(old_time) if old_time else None,
+                'to': new_time,
+            },
+        )
 
         # Ensure status is interview_scheduled — also auto-heals if it was incorrectly reset.
         previous_status = application.status
@@ -1031,6 +1111,17 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application.status = 'approved'
         application.status_updated_at = timezone.now()
         application.save()
+        create_audit_log(
+            request=request,
+            action='cancel_interview',
+            resource_type='application',
+            resource_id=str(application.id),
+            resource_summary={
+                'applicant': application.full_name,
+                'email': application.email,
+                'program': application.program_name,
+            },
+        )
 
         ApplicationLog.objects.create(
             application=application,
@@ -1207,12 +1298,24 @@ class ApplicationAdminNoteViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         application = serializer.validated_data['application']
         html = _clean_admin_note_html(serializer.validated_data.get('html', ''))
-        serializer.save(
+        note = serializer.save(
             html=html,
             stage=serializer.validated_data.get('stage') or application.status,
             created_by=self.request.user,
             created_by_name=getattr(self.request.user, 'display_name', '') or self.request.user.email,
             created_by_email=self.request.user.email,
+        )
+        create_audit_log(
+            request=self.request,
+            action='add_application_note',
+            resource_type='application',
+            resource_id=str(application.id),
+            resource_summary={
+                'applicant': application.full_name,
+                'email': application.email,
+                'program': application.program_name,
+                'stage': note.stage,
+            },
         )
 
 

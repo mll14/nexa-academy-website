@@ -54,15 +54,19 @@ export function Select({
     triggerRef.current?.focus()
   }, [onChange, closeMenu])
 
-  // Close on outside click or scroll
+  // Close on outside click or page scroll (but not scroll inside the dropdown list)
   useEffect(() => {
     if (!open) return
     const down = (e: MouseEvent) => {
       if (!triggerRef.current?.contains(e.target as Node) && !listRef.current?.contains(e.target as Node)) closeMenu()
     }
+    const onScroll = (e: Event) => {
+      if (listRef.current?.contains(e.target as Node)) return
+      closeMenu()
+    }
     document.addEventListener('mousedown', down)
-    document.addEventListener('scroll', closeMenu, true)
-    return () => { document.removeEventListener('mousedown', down); document.removeEventListener('scroll', closeMenu, true) }
+    document.addEventListener('scroll', onScroll, true)
+    return () => { document.removeEventListener('mousedown', down); document.removeEventListener('scroll', onScroll, true) }
   }, [open, closeMenu])
 
   // Scroll highlighted item into view

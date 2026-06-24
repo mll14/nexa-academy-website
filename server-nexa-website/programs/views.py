@@ -23,6 +23,7 @@ from .serializers import (
     normalize_payment_plan,
 )
 from accounts.permissions import IsAdminUser
+from accounts.views import create_audit_log
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
 from accounts.models import User
@@ -954,6 +955,20 @@ class ProgramInterestDetailView(APIView):
         interest.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
         return Response(ProgramInterestSerializer(interest).data)
 
+    def delete(self, request, pk):
+        if not request.user.has_app_permission('leads.manage'):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        interest = get_object_or_404(ProgramInterest, pk=pk)
+        create_audit_log(
+            request=request,
+            action='delete_lead_program_interest',
+            resource_type='program_interest',
+            resource_id=str(interest.id),
+            resource_summary={'name': interest.name, 'email': interest.email, 'program_name': interest.program_name},
+        )
+        interest.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ProgramInterestNotifyView(APIView):
     """Admin: send an intake-open notification email to ProgramInterest submitters."""
@@ -1059,13 +1074,61 @@ class HelpMeLeadDetailView(APIView):
         if action == 'complete':
             lead.follow_up_completed = True
             lead.follow_up_completed_at = timezone.now()
+            lead.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
         elif action == 'revert':
             lead.follow_up_completed = False
             lead.follow_up_completed_at = None
+            lead.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+        elif action == 'convert_to_pipeline':
+            program_slug = request.data.get('program_slug', '').strip()
+            program_name = request.data.get('program_name', '').strip()
+            if not program_slug and not program_name:
+                return Response({'error': 'program_slug or program_name is required'}, status=400)
+            lead.assigned_program_slug = program_slug
+            lead.assigned_program_name = program_name
+            lead.converted_to_pipeline = True
+            lead.converted_at = timezone.now()
+            lead.follow_up_completed = True
+            if not lead.follow_up_completed_at:
+                lead.follow_up_completed_at = timezone.now()
+            lead.save(update_fields=[
+                'assigned_program_slug', 'assigned_program_name',
+                'converted_to_pipeline', 'converted_at',
+                'follow_up_completed', 'follow_up_completed_at',
+            ])
+            apply_url = f"{getattr(settings, 'FRONTEND_URL', '')}/apply?program={program_slug}"
+            try:
+                send_html_email(
+                    subject=f"You're in the {program_name} application pipeline — Nexa Academy",
+                    template_name='help_me_pipeline.html',
+                    context={
+                        'name': lead.name or 'there',
+                        'program_name': program_name,
+                        'program_slug': program_slug,
+                        'apply_url': apply_url,
+                        'frontend_url': getattr(settings, 'FRONTEND_URL', ''),
+                    },
+                    recipient_email=lead.email,
+                )
+            except Exception:
+                logger.exception('Failed to send pipeline email to %s', lead.email)
         else:
-            return Response({'error': 'action must be "complete" or "revert"'}, status=400)
-        lead.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+            return Response({'error': 'action must be "complete", "revert", or "convert_to_pipeline"'}, status=400)
         return Response(HelpMeLeadSerializer(lead).data)
+
+    def delete(self, request, pk):
+        if not request.user.has_app_permission('leads.manage'):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        lead = get_object_or_404(HelpMeLead, pk=pk)
+        create_audit_log(
+            request=request,
+            action='delete_lead_help_me',
+            resource_type='help_me_lead',
+            resource_id=str(lead.id),
+            resource_summary={'name': lead.name, 'email': lead.email},
+        )
+        lead.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class IncompleteApplicationView(APIView):
@@ -1155,6 +1218,20 @@ class IncompleteApplicationDetailView(APIView):
             return Response({'error': 'action must be "complete" or "revert"'}, status=400)
         incomplete.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
         return Response(IncompleteApplicationSerializer(incomplete).data)
+
+    def delete(self, request, pk):
+        if not request.user.has_app_permission('leads.manage'):
+            return Response({'detail': 'Permission denied.'}, status=status.HTTP_403_FORBIDDEN)
+        incomplete = get_object_or_404(IncompleteApplication, pk=pk)
+        create_audit_log(
+            request=request,
+            action='delete_lead_incomplete',
+            resource_type='incomplete_application',
+            resource_id=str(incomplete.id),
+            resource_summary={'name': incomplete.name, 'email': incomplete.email, 'program_slug': incomplete.program_slug},
+        )
+        incomplete.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # A lightweight Django view that accepts anonymous POSTs and is CSRF-exempt.

@@ -19,30 +19,39 @@ import {
   MoreHorizontal,
   ExternalLink,
   PanelLeftClose,
+  UserCog,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getNotifications } from '../lib/api'
 import { cn } from '../lib/utils'
 
 const PRIMARY_NAV = [
-  { to: '/admin',              label: 'Dashboard',        icon: LayoutDashboard, exact: true },
-  { to: '/admin/applications', label: 'Applications',     icon: Users },
-  { to: '/admin/interviews',   label: 'Interviews',       icon: Calendar },
-  { to: '/admin/appointments', label: 'Appointments',     icon: Calendar },
-  { to: '/admin/programs',     label: 'Programs & Intakes', icon: BookOpen },
-  { to: '/admin/enrolled',     label: 'Enrolled Students', icon: GraduationCap },
+  { to: '/admin',              label: 'Dashboard',          icon: LayoutDashboard, exact: true,  permission: 'dashboard.view' },
+  { to: '/admin/applications', label: 'Applications',       icon: Users,                         permission: 'applications.view' },
+  { to: '/admin/interviews',   label: 'Interviews',         icon: Calendar,                      permission: 'interviews.view' },
+  { to: '/admin/appointments', label: 'Appointments',       icon: Calendar,                      permission: 'appointments.view' },
+  { to: '/admin/programs',     label: 'Programs & Intakes', icon: BookOpen,                      permission: 'programs.view' },
+  { to: '/admin/enrolled',     label: 'Enrolled Students',  icon: GraduationCap,                 permission: 'students.view' },
 ]
 
 const MORE_NAV = [
-  { to: '/admin/transactions', label: 'Transactions', icon: CreditCard },
-  { to: '/admin/payment-plans', label: 'Payment Plans', icon: CreditCard },
-  { to: '/admin/leads',        label: 'Leads',        icon: Flame },
-  { to: '/admin/messages',     label: 'Messages',     icon: MessageSquare },
-  { to: '/admin/newsletter',   label: 'Newsletter',   icon: Mail },
+  { to: '/admin/payments',       label: 'Payments',      icon: CreditCard,     permission: 'transactions.view' },
+  { to: '/admin/leads',         label: 'Leads',         icon: Flame,          permission: 'leads.view' },
+  { to: '/admin/messages',      label: 'Messages',      icon: MessageSquare,  permission: 'messages.view' },
+  { to: '/admin/newsletter',    label: 'Newsletter',    icon: Mail,           permission: 'newsletter.view' },
+  { to: '/admin/users',         label: 'Staff Access',  icon: UserCog,        anyPermissions: ['users.view', 'roles.view', 'roles.manage'] },
   { href: 'https://nexaacademy.sanity.studio/', label: 'Sanity Studio', icon: ExternalLink },
 ]
 
-interface NavItem { to?: string; href?: string; label: string; icon: React.ComponentType<{ className?: string }>; exact?: boolean }
+interface NavItem {
+  to?: string
+  href?: string
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  exact?: boolean
+  permission?: string
+  anyPermissions?: string[]
+}
 
 function MoreSection({
   items,
@@ -126,7 +135,7 @@ interface Props {
 }
 
 export function AdminLayout({ children }: Props) {
-  const { user, logout } = useAuth()
+  const { user, logout, hasPermission } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -141,6 +150,14 @@ export function AdminLayout({ children }: Props) {
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? pathname === to : pathname.startsWith(to)
+
+  const canSee = (item: NavItem) => {
+    if (item.anyPermissions?.length) return item.anyPermissions.some((permission) => hasPermission(permission))
+    return !item.permission || hasPermission(item.permission)
+  }
+
+  const visiblePrimary = PRIMARY_NAV.filter(canSee)
+  const visibleMore = MORE_NAV.filter(canSee)
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -191,7 +208,7 @@ export function AdminLayout({ children }: Props) {
         <nav className={cn('flex-1 overflow-y-auto', sidebarCollapsed ? 'lg:p-2 p-4' : 'p-4')}>
           {/* Primary items */}
           <div className="space-y-1">
-            {PRIMARY_NAV.map(({ to, label, icon: Icon, exact }) => (
+            {visiblePrimary.map(({ to, label, icon: Icon, exact }) => (
               <Link
                 key={to}
                 to={to}
@@ -216,7 +233,7 @@ export function AdminLayout({ children }: Props) {
 
           {/* More section */}
           <MoreSection
-            items={MORE_NAV}
+            items={visibleMore}
             isActive={isActive}
             onNavigate={() => setSidebarOpen(false)}
             collapsed={sidebarCollapsed}
@@ -226,14 +243,23 @@ export function AdminLayout({ children }: Props) {
         {/* User */}
         <div className={cn('border-t border-border', sidebarCollapsed ? 'lg:p-2 p-4' : 'p-4')}>
           <div className={cn('flex items-center gap-3 px-2 py-2', sidebarCollapsed && 'lg:flex-col lg:px-0 lg:gap-2')}>
-            <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+            <Link
+              to="/admin/account"
+              onClick={() => setSidebarOpen(false)}
+              title="My Account"
+              className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0 hover:bg-primary/25 transition-colors"
+            >
               <span className="text-xs font-bold text-primary">
                 {(user?.display_name || user?.email || 'A').charAt(0).toUpperCase()}
               </span>
-            </div>
+            </Link>
             <div className={cn('flex-1 min-w-0', sidebarCollapsed && 'lg:hidden')}>
-              <p className="text-xs font-medium truncate">{user?.display_name || 'Admin'}</p>
-              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+              <Link to="/admin/account" onClick={() => setSidebarOpen(false)} className="block hover:underline underline-offset-2">
+                <p className="text-xs font-medium truncate">{user?.display_name || 'Admin'}</p>
+              </Link>
+              <p className="text-xs text-muted-foreground truncate">
+                {user?.staffRole ? user.staffRole.name : 'Super Admin'}
+              </p>
             </div>
             <div className={cn('flex items-center gap-1', sidebarCollapsed && 'lg:flex-col')}>
               <Link
@@ -270,7 +296,7 @@ export function AdminLayout({ children }: Props) {
       {/* Main */}
       <div className={cn('flex-1 flex flex-col min-w-0 transition-all duration-200', sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64')}>
         {/* Top bar (mobile) */}
-        <header className="lg:hidden flex items-center gap-3 px-4 h-14 border-b border-border bg-card">
+        <header className="lg:hidden fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-4 h-14 border-b border-border bg-card">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-1.5 rounded-lg hover:bg-muted"
@@ -284,7 +310,7 @@ export function AdminLayout({ children }: Props) {
           />
         </header>
 
-        <main className="flex-1 p-6 lg:p-8 overflow-auto">
+        <main className="flex-1 overflow-auto p-6 pt-20 lg:p-8">
           <div className="max-w-5xl mx-auto w-full">
             {children}
           </div>

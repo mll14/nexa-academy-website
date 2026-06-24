@@ -1,0 +1,41 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}You're in the {{ program_name }} application pipeline — Nexa Academy{% endblock %}
+{% block content %}
+<div style="background:linear-gradient(135deg,#f0f4ff 0%,#e8edff 100%);border-radius:10px;padding:24px;text-align:center;margin-bottom:24px;border:1px solid #c3d0f5;">
+  <p style="margin:0 0 6px;font-size:28px;">&#127775;</p>
+  <p style="margin:0 0 4px;font-size:22px;font-weight:800;color:#1a2a7c;line-height:1.2;">We found your program!</p>
+  {% if program_name %}<p style="margin:0;font-size:13px;color:#4a60c8;font-weight:600;">{{ program_name }}</p>{% endif %}
+</div>
+
+<p style="margin:0 0 16px;font-size:15px;color:#4a5568;line-height:1.7;">Hi {{ name }}, our admissions team has reviewed your profile and selected <strong>{{ program_name }}</strong> as the best-fit program for your goals.</p>
+
+<p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">We've added you to the application pipeline — all you need to do now is submit your application to officially secure your place in the review process.</p>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:28px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 14px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Your next steps</p>
+  <table cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#141a42;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">1</div>
+      </td>
+      <td style="padding:0 0 12px 10px;font-size:14px;color:#2d3748;line-height:1.5;">Complete your application for <strong>{{ program_name }}</strong></td>
+    </tr>
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#141a42;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">2</div>
+      </td>
+      <td style="padding:0 0 12px 10px;font-size:14px;color:#2d3748;line-height:1.5;">Attend a short admissions interview with our team</td>
+    </tr>
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#141a42;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">3</div>
+      </td>
+      <td style="padding:0 0 0 10px;font-size:14px;color:#2d3748;line-height:1.5;">Secure your spot with your initial deposit</td>
+    </tr>
+  </table>
+</div>
+
+<a href="{{ apply_url }}" style="display:inline-block;background:#141a42;color:#fff;padding:13px 26px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Apply for {{ program_name }} &rarr;</a>
+
+<p style="margin:20px 0 0;font-size:13px;color:#718096;">Questions about the program or application process? Reply to this email or reach us at <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;font-weight:600;">admissions@nexaacademy.co.ke</a></p>
+{% endblock %}

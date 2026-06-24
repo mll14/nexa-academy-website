@@ -5,7 +5,7 @@ import {
   ArrowLeft, Calendar, Video, Check, X, Clock,
   Mail, Phone, BookOpen, CreditCard, CalendarDays,
   MessageSquare, Activity, User, AlertTriangle, Send,
-  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus,
+  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus, Trash2,
 } from 'lucide-react'
 import type { Payment } from '../../types/index'
 import PaystackPop from '@paystack/inline-js'
@@ -16,11 +16,13 @@ import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Separator } from '../../components/ui/separator'
 import { Dialog } from '../../components/ui/dialog'
+import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 import { SlotPicker } from '../../components/SlotPicker'
 import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
 import { EmailEditor } from '../../components/admin/EmailEditor'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate, formatFullDateTime } from '../../lib/utils'
+import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 import type { AvailableSlot, Intake } from '../../types/index'
 
@@ -269,6 +271,10 @@ export function ApplicationDetail() {
   const { id } = useParams({ from: '/admin/applications/$id' })
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { hasPermission } = useAuth()
+  const canDelete = hasPermission('applications.manage')
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const [newStatus, setNewStatus] = useState('')
   const [showSlotPicker, setShowSlotPicker] = useState(false)
   const [slotsData, setSlotsData] = useState<AvailableSlot[]>([])
@@ -524,9 +530,20 @@ export function ApplicationDetail() {
                 <p className="text-sm text-muted-foreground">{app.email}</p>
               </div>
             </div>
-            <span className={`self-start sm:self-auto inline-flex items-center px-3.5 py-1.5 rounded-full text-sm font-semibold border ${STATUS_COLORS[app.status] ?? 'bg-muted text-foreground border-border'}`}>
-              {statusText(app.status)}
-            </span>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-sm font-semibold border ${STATUS_COLORS[app.status] ?? 'bg-muted text-foreground border-border'}`}>
+                {statusText(app.status)}
+              </span>
+              {canDelete && (
+                <button
+                  onClick={() => setShowDeleteDialog(true)}
+                  className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-border transition-colors"
+                  title="Delete application"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Progress stepper (non-rejected) */}
@@ -1163,6 +1180,27 @@ export function ApplicationDetail() {
           confirmLabel={app?.status === 'interview_scheduled' ? 'Reschedule Interview' : 'Schedule Interview'}
         />
       </Dialog>
+
+      <DeleteConfirmDialog
+        open={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={async () => {
+          setDeleteLoading(true)
+          try {
+            await api.deleteApplication(app.id)
+            toast.success('Application deleted.')
+            navigate({ to: '/admin/applications' })
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Delete failed.')
+          } finally {
+            setDeleteLoading(false)
+          }
+        }}
+        title="Delete Application"
+        itemName={app.full_name}
+        consequences="This application and all its associated logs, interview slots, and status history will be permanently deleted. This cannot be undone."
+        isPending={deleteLoading}
+      />
     </AdminLayout>
   )
 }

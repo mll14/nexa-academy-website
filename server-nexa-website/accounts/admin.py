@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User
+from .models import AppPermission, Role, User
 
 admin.site.site_header = 'Nexa Academy Admin'
 admin.site.site_title = 'Nexa Academy'
@@ -17,7 +17,20 @@ class UserAdmin(BaseUserAdmin):
         (None, {'fields': ('email', 'password')}),
         ('Personal info', {'fields': ('display_name', 'phone', 'photo_url', 'id_number')}),
         ('Academic', {'fields': ('batch_year', 'fee_balance', 'total_fee_paid', 'notes')}),
-        ('Permissions', {'fields': ('role', 'status', 'is_active', 'is_staff', 'is_superuser', 'permissions')}),
+        (
+            'Permissions',
+            {
+                'fields': (
+                    'role',
+                    'staff_role',
+                    'individual_permissions',
+                    'status',
+                    'is_active',
+                    'is_staff',
+                    'is_superuser',
+                )
+            },
+        ),
         ('Important dates', {'fields': ('last_login', 'created_at', 'updated_at')}),
     )
     
@@ -29,3 +42,21 @@ class UserAdmin(BaseUserAdmin):
     )
     
     readonly_fields = ['uid', 'created_at', 'updated_at', 'last_login']
+    filter_horizontal = ['individual_permissions']
+
+
+@admin.register(Role)
+class RoleAdmin(admin.ModelAdmin):
+    list_display = ['name', 'slug', 'is_system', 'created_at']
+    search_fields = ['name', 'slug', 'description']
+    list_filter = ['is_system']
+    ordering = ['name']
+    filter_horizontal = ['permissions']
+
+
+@admin.register(AppPermission)
+class AppPermissionAdmin(admin.ModelAdmin):
+    list_display = ['codename', 'name', 'resource', 'action', 'created_at']
+    search_fields = ['codename', 'name', 'resource', 'action']
+    list_filter = ['resource', 'action']
+    ordering = ['resource', 'action']

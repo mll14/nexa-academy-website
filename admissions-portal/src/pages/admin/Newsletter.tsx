@@ -12,6 +12,7 @@ import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { Select } from '../../components/ui/select'
 import { Dialog } from '../../components/ui/dialog'
+import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 import { EmailEditor } from '../../components/admin/EmailEditor'
 import * as api from '../../lib/api'
 import toast from 'react-hot-toast'
@@ -327,6 +328,7 @@ function CampaignsTab({
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 15
+  const [deleteTarget, setDeleteTarget] = useState<NewsletterCampaign | null>(null)
 
   const params = {
     status: statusFilter === 'all' ? undefined : statusFilter,
@@ -341,7 +343,7 @@ function CampaignsTab({
 
   const deleteMutation = useMutation({
     mutationFn: api.deleteCampaign,
-    onSuccess: () => { toast.success('Campaign deleted'); qc.invalidateQueries({ queryKey: ['campaigns'] }) },
+    onSuccess: () => { toast.success('Campaign deleted'); setDeleteTarget(null); qc.invalidateQueries({ queryKey: ['campaigns'] }) },
     onError: () => toast.error('Could not delete campaign'),
   })
 
@@ -358,10 +360,7 @@ function CampaignsTab({
   const total = Array.isArray(data) ? data.length : (data?.count ?? 0)
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
-  const handleDelete = (c: NewsletterCampaign) => {
-    if (!window.confirm(`Delete "${c.subject}"?`)) return
-    deleteMutation.mutate(c.campaign_id)
-  }
+  const handleDelete = (c: NewsletterCampaign) => setDeleteTarget(c)
 
   return (
     <div className="space-y-4">
@@ -387,7 +386,9 @@ function CampaignsTab({
         </button>
         <div className="ml-auto">
           <Button className="gap-1.5" onClick={onCompose}>
-            <Plus className="w-4 h-4" /> New Campaign
+            <Plus className="w-4 h-4" />
+            <span className="sm:hidden">New</span>
+            <span className="hidden sm:inline">New Campaign</span>
           </Button>
         </div>
       </div>
@@ -404,7 +405,9 @@ function CampaignsTab({
             <Mail className="w-8 h-8 opacity-30" />
             <p className="text-sm">No campaigns yet — create your first one!</p>
             <Button size="sm" className="gap-1.5 mt-2" onClick={onCompose}>
-              <Plus className="w-4 h-4" /> New Campaign
+              <Plus className="w-4 h-4" />
+              <span className="sm:hidden">New</span>
+              <span className="hidden sm:inline">New Campaign</span>
             </Button>
           </div>
         ) : (
@@ -495,6 +498,16 @@ function CampaignsTab({
           </div>
         </div>
       )}
+
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.campaign_id)}
+        title="Delete Campaign"
+        itemName={deleteTarget?.subject ?? ''}
+        consequences="This campaign and its content will be permanently deleted. Sent campaigns cannot be recalled — only unsent drafts are safely deletable. This cannot be undone."
+        isPending={deleteMutation.isPending}
+      />
     </div>
   )
 }
@@ -690,7 +703,9 @@ export function Newsletter() {
             </p>
           </div>
           <Button className="gap-1.5" onClick={goCompose}>
-            <Plus className="w-4 h-4" /> New Campaign
+            <Plus className="w-4 h-4" />
+            <span className="sm:hidden">New</span>
+            <span className="hidden sm:inline">New Campaign</span>
           </Button>
         </div>
 

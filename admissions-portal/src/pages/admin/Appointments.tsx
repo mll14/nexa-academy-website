@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import {
   Search, Video, MapPin, ChevronRight, Calendar, Plus,
   User, Briefcase, Clock, Mail, Check, ChevronLeft,
   AlertCircle, Loader2,
+  Phone, ExternalLink, CheckCircle2, AlertTriangle, FileText, XCircle,
 } from 'lucide-react'
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
@@ -14,7 +14,11 @@ import { Dialog } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { UnderlineTabs } from '../../components/ui/tabs'
+import { Button } from '../../components/ui/button'
+import { Separator } from '../../components/ui/separator'
+import { Textarea } from '../../components/ui/textarea'
 import * as api from '../../lib/api'
+import { formatDate, formatFullDateTime } from '../../lib/utils'
 import type { Appointment, AppointmentType, AppointmentHost, AvailableSlot } from '../../types'
 
 // ── List page constants ───────────────────────────────────────────────────────
@@ -61,6 +65,242 @@ function formatAppointmentTime(iso: string): string {
     weekday: 'short', day: 'numeric', month: 'short',
     hour: '2-digit', minute: '2-digit', hour12: true,
   })
+}
+
+function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value?: string | null }) {
+  return (
+    <div className="flex items-start gap-3 py-2.5">
+      <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
+      <div className="flex-1 flex justify-between items-start gap-4">
+        <span className="text-sm text-muted-foreground shrink-0">{label}</span>
+        <span className="text-sm font-medium text-right break-all">{value ?? '—'}</span>
+      </div>
+    </div>
+  )
+}
+
+function AppointmentDetailDialog({
+  appointmentId,
+  onClose,
+}: {
+  appointmentId: string | null
+  onClose: () => void
+}) {
+  const qc = useQueryClient()
+  const [notes, setNotes] = useState('')
+  const [notesEditing, setNotesEditing] = useState(false)
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false)
+
+  const { data: appt, isLoading } = useQuery({
+    queryKey: ['admin', 'appointment', appointmentId],
+    queryFn: () => api.getAppointment(appointmentId!),
+    enabled: !!appointmentId,
+  })
+
+  useEffect(() => {
+    setNotes(appt?.admin_notes ?? '')
+    setNotesEditing(false)
+    setShowCancelConfirm(false)
+  }, [appt?.id, appt?.admin_notes])
+
+  const updateMutation = useMutation({
+    mutationFn: (data: { status?: string; admin_notes?: string }) =>
+      api.updateAppointment(appointmentId!, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'appointment', appointmentId] })
+      qc.invalidateQueries({ queryKey: ['admin', 'appointments'] })
+      toast.success('Updated.')
+      setNotesEditing(false)
+    },
+    onError: () => toast.error('Update failed.'),
+  })
+
+  const cancelMutation = useMutation({
+    mutationFn: () => api.cancelAppointment(appointmentId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'appointment', appointmentId] })
+      qc.invalidateQueries({ queryKey: ['admin', 'appointments'] })
+      toast.success('Appointment cancelled.')
+      setShowCancelConfirm(false)
+    },
+    onError: () => toast.error('Could not cancel appointment.'),
+  })
+
+  return (
+    <Dialog
+      open={!!appointmentId}
+      onClose={onClose}
+      title="Appointment Details"
+      description={appt ? `Appointment ID: ${appt.id}` : undefined}
+      className="max-w-lg"
+    >
+      {isLoading || !appt ? (
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : (() => {
+        const isCancelled = appt.status === 'cancelled'
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between bg-muted/40 rounded-2xl px-5 py-4 gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium">Scheduled for</p>
+                <p className="text-2xl font-bold font-heading mt-0.5 leading-tight">
+                  {formatFullDateTime(appt.chosen_time)}
+                </p>
+              </div>
+              <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-semibold ${STATUS_STYLES[appt.status] ?? 'bg-muted text-muted-foreground'}`}>
+                {appt.status_label}
+              </span>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Attendee</p>
+              <div className="divide-y divide-border">
+                <DetailRow icon={<User className="w-4 h-4" />} label="Name" value={appt.name} />
+                <DetailRow icon={<Mail className="w-4 h-4" />} label="Email" value={appt.email} />
+                <DetailRow icon={<Phone className="w-4 h-4" />} label="Phone" value={appt.phone} />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Appointment</p>
+              <div className="divide-y divide-border">
+                <DetailRow
+                  icon={appt.appointment_type === 'virtual' ? <Video className="w-4 h-4" /> : <MapPin className="w-4 h-4" />}
+                  label="Format"
+                  value={appt.appointment_type_label}
+                />
+                <DetailRow icon={<User className="w-4 h-4" />} label="Host" value={appt.host_label} />
+                <DetailRow icon={<Calendar className="w-4 h-4" />} label="Booked on" value={formatDate(appt.created_at)} />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Purpose</p>
+              <p className="text-sm text-muted-foreground px-1 whitespace-pre-wrap">{appt.reason}</p>
+            </div>
+
+            {appt.appointment_type === 'virtual' && appt.meet_url && (
+              <>
+                <Separator />
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-2">Meeting Link</p>
+                  <a
+                    href={appt.meet_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors break-all"
+                  >
+                    <ExternalLink className="w-4 h-4 shrink-0" />
+                    {appt.meet_url}
+                  </a>
+                </div>
+              </>
+            )}
+
+            <Separator />
+
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-2">Admin Notes</p>
+              {notesEditing ? (
+                <div className="space-y-3">
+                  <Textarea
+                    rows={4}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Internal notes about this appointment…"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => updateMutation.mutate({ admin_notes: notes })}
+                      disabled={updateMutation.isPending}
+                    >
+                      {updateMutation.isPending ? 'Saving…' : 'Save Notes'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { setNotes(appt.admin_notes ?? ''); setNotesEditing(false) }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground px-1 whitespace-pre-wrap">
+                    {appt.admin_notes || 'No notes yet.'}
+                  </p>
+                  <Button size="sm" variant="outline" onClick={() => setNotesEditing(true)}>
+                    {appt.admin_notes ? 'Edit Notes' : 'Add Notes'}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {!isCancelled && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Actions</p>
+                  {STATUS_OPTIONS.filter((option) => option.value !== appt.status).map(({ value, label }) => (
+                    <Button
+                      key={value}
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => updateMutation.mutate({ status: value })}
+                      disabled={updateMutation.isPending}
+                    >
+                      {value === 'completed' ? (
+                        <CheckCircle2 className="w-4 h-4 mr-2 text-success" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 mr-2 text-warning" />
+                      )}
+                      Mark as {label}
+                    </Button>
+                  ))}
+
+                  {!showCancelConfirm ? (
+                    <Button
+                      className="w-full justify-start"
+                      variant="outline"
+                      onClick={() => setShowCancelConfirm(true)}
+                    >
+                      <XCircle className="w-4 h-4 mr-2 text-destructive" />
+                      Cancel Appointment
+                    </Button>
+                  ) : (
+                    <div className="space-y-2 pt-1">
+                      <Button
+                        className="w-full"
+                        onClick={() => cancelMutation.mutate()}
+                        disabled={cancelMutation.isPending}
+                      >
+                        {cancelMutation.isPending ? 'Cancelling…' : 'Yes, Cancel It'}
+                      </Button>
+                      <Button
+                        className="w-full"
+                        variant="outline"
+                        onClick={() => setShowCancelConfirm(false)}
+                      >
+                        Keep Appointment
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )
+      })()}
+    </Dialog>
+  )
 }
 
 // ── Create appointment dialog ─────────────────────────────────────────────────
@@ -588,7 +828,6 @@ function CreateAppointmentDialog({ open, onClose }: { open: boolean; onClose: ()
 // ── Appointments list page ────────────────────────────────────────────────────
 
 export function Appointments() {
-  const navigate = useNavigate()
   const [statusTab, setStatusTab] = useState<string>('all')
   const [apptType, setApptType] = useState('')
   const [host, setHost] = useState('')
@@ -596,6 +835,7 @@ export function Appointments() {
   const [ordering, setOrdering] = useState('-chosen_time')
   const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'appointments', { statusTab, apptType, host, search, ordering, page }],
@@ -619,6 +859,10 @@ export function Appointments() {
   return (
     <AdminLayout>
       <CreateAppointmentDialog open={createOpen} onClose={() => setCreateOpen(false)} />
+      <AppointmentDetailDialog
+        appointmentId={selectedAppointmentId}
+        onClose={() => setSelectedAppointmentId(null)}
+      />
 
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
@@ -632,7 +876,9 @@ export function Appointments() {
             onClick={() => setCreateOpen(true)}
             className="flex items-center gap-1.5 bg-primary text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
           >
-            <Plus className="w-4 h-4" /> Create Appointment
+            <Plus className="w-4 h-4" />
+            <span className="sm:hidden">Create</span>
+            <span className="hidden sm:inline">Create Appointment</span>
           </button>
         </div>
 
@@ -708,7 +954,7 @@ export function Appointments() {
                   <tr
                     key={appt.id}
                     className="hover:bg-muted/30 cursor-pointer transition-colors"
-                    onClick={() => navigate({ to: '/admin/appointments/$id', params: { id: appt.id } })}
+                    onClick={() => setSelectedAppointmentId(appt.id)}
                   >
                     <td className="px-4 py-3">
                       <p className="font-medium">{appt.name}</p>
