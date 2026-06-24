@@ -592,7 +592,7 @@ export function AppointmentBookingClient({ data }: { data: AppointmentsPageData 
                                 e.preventDefault()
                                 const v = attendeeInput.trim().toLowerCase()
                                 if (/\S+@\S+\.\S+/.test(v) && !form.attendees.includes(v) && v !== form.email.toLowerCase()) {
-                                  set('attendees', [...form.attendees, v])
+                                  setField('attendees', [...form.attendees, v])
                                   setAttendeeInput('')
                                 }
                               }
@@ -603,7 +603,7 @@ export function AppointmentBookingClient({ data }: { data: AppointmentsPageData 
                             onClick={() => {
                               const v = attendeeInput.trim().toLowerCase()
                               if (/\S+@\S+\.\S+/.test(v) && !form.attendees.includes(v) && v !== form.email.toLowerCase()) {
-                                set('attendees', [...form.attendees, v])
+                                setField('attendees', [...form.attendees, v])
                                 setAttendeeInput('')
                               }
                             }}
@@ -617,7 +617,7 @@ export function AppointmentBookingClient({ data }: { data: AppointmentsPageData 
                             {form.attendees.map((a) => (
                               <span key={a} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
                                 {a}
-                                <button type="button" onClick={() => set('attendees', form.attendees.filter(x => x !== a))} className="hover:text-destructive transition-colors">✕</button>
+                                <button type="button" onClick={() => setField('attendees', form.attendees.filter(x => x !== a))} className="hover:text-destructive transition-colors">✕</button>
                               </span>
                             ))}
                           </div>
