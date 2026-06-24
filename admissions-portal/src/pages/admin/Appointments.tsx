@@ -656,19 +656,19 @@ export function Appointments() {
           </div>
           <Select
             value={apptType}
-            onChange={(e) => { setApptType(e.target.value); setPage(1) }}
+            onChange={(value) => { setApptType(value); setPage(1) }}
             options={TYPE_OPTIONS}
             className="w-40"
           />
           <Select
             value={host}
-            onChange={(e) => { setHost(e.target.value); setPage(1) }}
+            onChange={(value) => { setHost(value); setPage(1) }}
             options={HOST_OPTIONS}
             className="w-52"
           />
           <Select
             value={ordering}
-            onChange={(e) => setOrdering(e.target.value)}
+            onChange={(value) => setOrdering(value)}
             options={SORT_OPTIONS}
             className="w-44"
           />
