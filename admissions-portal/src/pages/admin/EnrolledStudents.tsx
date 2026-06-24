@@ -21,8 +21,6 @@ import type { Enrollment, Program, User } from '../../types'
 
 import { Pagination } from '../../components/ui/pagination'
 
-// DetailRow and BalanceBar kept for EnrollDialog only
-
 function fmtKSh(n: number): string {
   if (n >= 1_000_000) return `KSh ${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
   if (n >= 1_000)     return `KSh ${(n / 1_000).toFixed(0)}K`
@@ -54,42 +52,6 @@ function enrollmentStatusConfig(s: string) {
   }
 }
 
-
-function BalanceBar({ amount, amountPaid }: { amount: number; amountPaid: number }) {
-  const pct = amount > 0 ? Math.min(100, Math.round((amountPaid / amount) * 100)) : 0
-  const balanced = amountPaid >= amount
-  return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between text-xs">
-        <span className="text-muted-foreground">Payment progress</span>
-        <span className={`font-semibold ${balanced ? 'text-success' : 'text-warning'}`}>{pct}%</span>
-      </div>
-      <div className="h-2 bg-muted rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${balanced ? 'bg-success' : 'bg-warning'}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>Paid: KSh {amountPaid.toLocaleString('en-KE')}</span>
-        <span>Total: KSh {amount.toLocaleString('en-KE')}</span>
-      </div>
-    </div>
-  )
-}
-
-function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value?: string | null }) {
-  if (!value) return null
-  return (
-    <div className="flex items-start gap-3 py-2.5">
-      <span className="text-muted-foreground mt-0.5 shrink-0">{icon}</span>
-      <div className="flex-1 flex justify-between items-start gap-4">
-        <span className="text-sm text-muted-foreground shrink-0">{label}</span>
-        <span className="text-sm font-medium text-right">{value}</span>
-      </div>
-    </div>
-  )
-}
 
 // ─── Student picker: search existing OR enter manually ───────────────────────
 

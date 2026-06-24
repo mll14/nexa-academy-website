@@ -5,7 +5,7 @@ import {
   Search, Video, MapPin, ChevronRight, Calendar, Plus,
   User, Briefcase, Clock, Mail, Check, ChevronLeft,
   AlertCircle, Loader2,
-  Phone, ExternalLink, CheckCircle2, AlertTriangle, FileText, XCircle,
+  Phone, ExternalLink, CheckCircle2, AlertTriangle, XCircle,
 } from 'lucide-react'
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
@@ -59,6 +59,12 @@ const STATUS_STYLES: Record<string, string> = {
 }
 
 const PAGE_SIZE = 10
+
+const APPT_STATUS_OPTIONS = [
+  { value: 'scheduled',  label: 'Scheduled' },
+  { value: 'completed',  label: 'Completed' },
+  { value: 'no_show',    label: 'No Show' },
+]
 
 function formatAppointmentTime(iso: string): string {
   const d = new Date(iso)
@@ -250,7 +256,7 @@ function AppointmentDetailDialog({
                 <Separator />
                 <div className="space-y-2">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Actions</p>
-                  {STATUS_OPTIONS.filter((option) => option.value !== appt.status).map(({ value, label }) => (
+                  {APPT_STATUS_OPTIONS.filter((option) => option.value !== appt.status).map(({ value, label }) => (
                     <Button
                       key={value}
                       className="w-full justify-start"

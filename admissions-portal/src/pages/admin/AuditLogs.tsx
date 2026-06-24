@@ -35,7 +35,7 @@ export function AuditLogs() {
 
   useEffect(() => {
     setLoading(true)
-    getAuditLogs(filter || undefined)
+    getAuditLogs(filter ? { action: filter } : {})
       .then(setLogs)
       .catch(() => toast.error('Failed to load audit logs.'))
       .finally(() => setLoading(false))
