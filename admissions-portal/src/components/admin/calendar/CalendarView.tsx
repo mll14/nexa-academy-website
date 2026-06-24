@@ -11,9 +11,9 @@ import { ExternalEventPopup } from './ExternalEventPopup'
 import type { CalendarEvent } from '../../../lib/calendarService'
 import {
   getBlackouts, createBlackout, deleteBlackout,
-  createCustomCalEvent, deleteCustomCalEvent,
+  createCustomCalEvent,
 } from '../../../lib/api'
-import type { Blackout, CustomCalEvent } from '../../../lib/api'
+import type { Blackout } from '../../../lib/api'
 import toast from 'react-hot-toast'
 
 type View = 'today' | 'week' | 'month'

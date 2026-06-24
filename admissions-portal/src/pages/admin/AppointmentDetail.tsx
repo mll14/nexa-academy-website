@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
@@ -7,7 +7,6 @@ import {
   Video,
   MapPin,
   Calendar,
-  Clock,
   Mail,
   Phone,
   User,
@@ -20,7 +19,7 @@ import {
 import { AdminLayout } from '../../components/AdminLayout'
 import { Button } from '../../components/ui/button'
 import * as api from '../../lib/api'
-import type { AppointmentStatus } from '../../types'
+import type { Appointment, AppointmentStatus } from '../../types'
 
 const STATUS_STYLES: Record<string, string> = {
   scheduled: 'bg-blue-100 text-blue-700 border-blue-200',
@@ -52,13 +51,14 @@ export function AppointmentDetail() {
   const [notesEditing, setNotesEditing] = useState(false)
   const [showCancelConfirm, setShowCancelConfirm] = useState(false)
 
-  const { data: appt, isLoading, error } = useQuery({
+  const { data: appt, isLoading, error } = useQuery<Appointment>({
     queryKey: ['admin', 'appointment', id],
     queryFn: () => api.getAppointment(id),
-    onSuccess: (data) => {
-      setNotes(data.admin_notes ?? '')
-    },
   })
+
+  useEffect(() => {
+    setNotes(appt?.admin_notes ?? '')
+  }, [appt])
 
   const updateMutation = useMutation({
     mutationFn: (data: { status?: string; admin_notes?: string }) =>
