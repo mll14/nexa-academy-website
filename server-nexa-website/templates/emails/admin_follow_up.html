@@ -1,0 +1,11 @@
+{% extends 'emails/base_email.html' %}
+{% block subject %}{{ subject }}{% endblock %}
+{% block content %}
+<p style="margin:0 0 16px;font-size:15px;color:#1a202c;">Hi{% if name %} {{ name }}{% endif %},</p>
+<div style="font-size:15px;color:#1a202c;line-height:1.7;white-space:pre-wrap;">{{ message }}</div>
+<p style="margin:24px 0 0;font-size:14px;color:#718096;">
+  Best regards,<br/>
+  The Nexa Academy Admissions Team<br/>
+  <a href="mailto:admissions@nexaacademy.co.ke" style="color:#2d3a8c;text-decoration:none;">admissions@nexaacademy.co.ke</a>
+</p>
+{% endblock %}

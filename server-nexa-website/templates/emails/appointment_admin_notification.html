@@ -1,0 +1,41 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}New appointment: {{ name }} — {{ chosen_time }}{% endblock %}
+{% block content %}
+<p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">New Appointment Booked</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:800;color:#1a202c;line-height:1.3;">{{ name }} has booked an appointment.</h2>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:20px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 8px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Appointment Details</p>
+  <p style="margin:0 0 5px;font-size:14px;color:#2d3748;">Date &amp; Time: <strong>{{ chosen_time }}</strong></p>
+  <p style="margin:0 0 5px;font-size:14px;color:#2d3748;">Type: <strong>{{ appointment_type }}</strong></p>
+  <p style="margin:0 0 5px;font-size:14px;color:#2d3748;">With: <strong>{{ host_label }}</strong></p>
+  <p style="margin:0;font-size:14px;color:#2d3748;">Purpose: <strong>{{ reason }}</strong></p>
+</div>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:20px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 8px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Contact Details</p>
+  <p style="margin:0 0 5px;font-size:14px;color:#2d3748;">Name: <strong>{{ name }}</strong></p>
+  <p style="margin:0 0 5px;font-size:14px;color:#2d3748;">Email: <a href="mailto:{{ email }}" style="color:#141a42;">{{ email }}</a></p>
+  <p style="margin:0;font-size:14px;color:#2d3748;">Phone: <a href="tel:{{ phone }}" style="color:#141a42;">{{ phone }}</a></p>
+</div>
+
+{% if is_virtual %}
+{% if meet_url %}
+<div style="background:#eef9f2;border-radius:10px;padding:18px 22px;margin-bottom:20px;border:1px solid #c3e6cb;">
+  <p style="margin:0 0 8px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Google Meet Link</p>
+  <a href="{{ meet_url }}" style="font-size:14px;color:#141a42;word-break:break-all;">{{ meet_url }}</a>
+</div>
+{% endif %}
+{% else %}
+<div style="background:#fff8e1;border-radius:10px;padding:18px 22px;margin-bottom:20px;border:1px solid #ffe082;">
+  <p style="margin:0 0 6px;font-size:11px;color:#f59e0b;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Physical Meeting</p>
+  <p style="margin:0;font-size:14px;color:#2d3748;">Visitor will be coming to: <strong>{{ office_location }}</strong></p>
+</div>
+{% endif %}
+
+<div style="text-align:center;margin:24px 0;">
+  <a href="{{ portal_url }}/admin/appointments/{{ appointment_id }}" style="display:inline-block;background:#141a42;color:#fff;font-size:14px;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;">View in Admissions Portal</a>
+</div>
+
+<p style="margin:0;font-size:12px;color:#a0aec0;text-align:center;">Appointment ID: {{ appointment_id }}</p>
+{% endblock %}

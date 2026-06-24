@@ -37,7 +37,7 @@ interface UnderlineTabsProps {
 
 export function UnderlineTabs({ tabs, active, onChange, className }: UnderlineTabsProps) {
   return (
-    <div className={cn('flex gap-0 border-b border-border', className)}>
+    <div className={cn('flex gap-0 border-b border-border overflow-y-hidden', className)}>
       {tabs.map(({ value, label }) => (
         <button
           key={value}

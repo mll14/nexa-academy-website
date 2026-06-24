@@ -27,6 +27,7 @@ const PRIMARY_NAV = [
   { to: '/admin',              label: 'Dashboard',        icon: LayoutDashboard, exact: true },
   { to: '/admin/applications', label: 'Applications',     icon: Users },
   { to: '/admin/interviews',   label: 'Interviews',       icon: Calendar },
+  { to: '/admin/appointments', label: 'Appointments',     icon: Calendar },
   { to: '/admin/programs',     label: 'Programs & Intakes', icon: BookOpen },
   { to: '/admin/enrolled',     label: 'Enrolled Students', icon: GraduationCap },
 ]

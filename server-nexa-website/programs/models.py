@@ -311,6 +311,8 @@ class HelpMeLead(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=30, blank=True)
     message = models.TextField(blank=True)
+    follow_up_completed = models.BooleanField(default=False)
+    follow_up_completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -334,6 +336,8 @@ class IncompleteApplication(models.Model):
     program_slug = models.CharField(max_length=100, blank=True)
     program_name = models.CharField(max_length=255, blank=True)
     step_reached = models.IntegerField(default=1)
+    follow_up_completed = models.BooleanField(default=False)
+    follow_up_completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -361,6 +365,8 @@ class ProgramInterest(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=30, blank=True)
     message = models.TextField(blank=True)
+    follow_up_completed = models.BooleanField(default=False)
+    follow_up_completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -375,11 +381,53 @@ class ProgramInterest(models.Model):
         return f"Interest: {self.email} -> {self.program_slug or self.program_name}"
 
 
+class LeadAdminNote(models.Model):
+    LEAD_TYPE_CHOICES = (
+        ('program_interest', 'Program Interest'),
+        ('help_me', 'Help Me Lead'),
+        ('incomplete_application', 'Incomplete Application'),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lead_type = models.CharField(max_length=40, choices=LEAD_TYPE_CHOICES)
+    lead_id = models.UUIDField()
+    stage = models.CharField(max_length=80)
+    html = models.TextField()
+    text = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='lead_admin_notes',
+    )
+    created_by_name = models.CharField(max_length=255, blank=True)
+    created_by_email = models.EmailField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'lead_admin_notes'
+        indexes = [
+            models.Index(fields=['lead_type', 'lead_id', '-created_at']),
+            models.Index(fields=['created_by']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.lead_type}:{self.lead_id} note by {self.created_by_email or self.created_by_name}"
+
+
 class ProgramIntake(models.Model):
     STATUS_CHOICES = (
         ('open', 'Open'),
         ('closed', 'Closed'),
         ('draft', 'Draft'),
+    )
+    MODE_CHOICES = (
+        ('full_time_hybrid', 'Full-time Hybrid'),
+        ('full_time_remote', 'Full-time Remote'),
+        ('part_time_hybrid', 'Part-time Hybrid'),
+        ('part_time_remote', 'Part-time Remote'),
     )
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     sanity_id = models.CharField(max_length=255, blank=True, null=True, unique=True)
@@ -390,6 +438,7 @@ class ProgramIntake(models.Model):
     max_seats = models.IntegerField(null=True, blank=True)
     seats_remaining = models.IntegerField(null=True, blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    mode = models.CharField(max_length=20, choices=MODE_CHOICES, default='full_time_hybrid')
     notes = models.CharField(max_length=500, blank=True)
     # CMS integration fields
     source = models.CharField(max_length=10, default='site')  # 'site' or 'cms'

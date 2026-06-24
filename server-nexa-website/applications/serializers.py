@@ -1,11 +1,26 @@
 from rest_framework import serializers
-from .models import Application, ApplicationLog, DraftApplication
-from .models import InterviewSlot
+from .models import Application, ApplicationAdminNote, ApplicationLog, DraftApplication
+from .models import InterviewSlot, InterviewBlackout, CustomCalendarEvent
 
 class ApplicationLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ApplicationLog
         fields = '__all__'
+
+
+class ApplicationAdminNoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ApplicationAdminNote
+        fields = [
+            'id', 'application', 'stage', 'html', 'text',
+            'created_by', 'created_by_name', 'created_by_email', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_by', 'created_by_name', 'created_by_email', 'created_at']
+
+    def validate_html(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError('Note content is required')
+        return value
 
 
 class InterviewSlotSerializer(serializers.ModelSerializer):
@@ -72,6 +87,41 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
         if not has_knowledge:
             attrs['knowledge_description'] = ''
 
+        return attrs
+
+
+class InterviewBlackoutSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InterviewBlackout
+        fields = ['id', 'date', 'start_time', 'end_time', 'reason', 'gcal_event_id', 'created_by', 'created_at']
+        read_only_fields = ['id', 'gcal_event_id', 'created_by', 'created_at']
+
+    def validate(self, attrs):
+        start = attrs.get('start_time')
+        end = attrs.get('end_time')
+        if (start is None) != (end is None):
+            raise serializers.ValidationError('Both start_time and end_time must be provided together, or both omitted for a full-day block.')
+        if start and end and end <= start:
+            raise serializers.ValidationError('end_time must be after start_time.')
+        return attrs
+
+
+class CustomCalendarEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomCalendarEvent
+        fields = [
+            'id', 'title', 'date', 'start_time', 'end_time', 'all_day',
+            'category', 'description', 'with_meet', 'meet_url', 'attendees',
+            'gcal_event_id', 'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'meet_url', 'gcal_event_id', 'created_by', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        if not attrs.get('all_day'):
+            if not attrs.get('start_time') or not attrs.get('end_time'):
+                raise serializers.ValidationError('start_time and end_time are required for timed events.')
+            if attrs['end_time'] <= attrs['start_time']:
+                raise serializers.ValidationError('end_time must be after start_time.')
         return attrs
 
 

@@ -877,3 +877,80 @@ class PaymentViewSet(viewsets.ModelViewSet):
             'enrolled_count': len(enrolled),
             'errors': errors,
         })
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    def admin_send_payment_link(self, request):
+        """
+        Admin initiates a Paystack payment link for a specific student and emails it to them.
+        Body: { student_uid, amount, description?, program_id? }
+        """
+        from accounts.models import User
+
+        student_uid = (request.data.get('student_uid') or '').strip()
+        amount = request.data.get('amount')
+        description = (request.data.get('description') or '').strip()
+        program_id = request.data.get('program_id')
+
+        if not student_uid:
+            return Response({'error': 'student_uid is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not amount:
+            return Response({'error': 'amount is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            student = User.objects.get(uid=student_uid)
+        except User.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        program = resolve_program(program_id)
+        reference = f"NEXA-{uuid.uuid4().hex[:10].upper()}"
+
+        admissions_base = getattr(settings, 'ADMISSIONS_PORTAL_URL', settings.FRONTEND_URL).rstrip('/')
+
+        paystack = PaystackProvider()
+        ps_response = paystack.initialize_transaction(
+            email=student.email,
+            amount=amount,
+            reference=reference,
+            callback_url=f"{admissions_base}/student/dashboard",
+            metadata={
+                'admin_initiated': True,
+                'admin_uid': str(request.user.uid),
+                'program_id': str(program_id) if program_id else '',
+                'payment_type': 'admin_payment',
+            },
+        )
+
+        if not ps_response.get('status'):
+            logger.error('Paystack init failed for admin payment link: %s', ps_response)
+            return Response(
+                {'error': ps_response.get('message', 'Payment initialization failed')},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        ps_data = ps_response.get('data') or {}
+        authorization_url = ps_data.get('authorization_url', '')
+
+        payment = Payment.objects.create(
+            student=student,
+            student_name=student.display_name,
+            student_email=student.email,
+            amount=amount,
+            payment_method='Card',
+            payment_reference=reference,
+            status='pending',
+            description=description or 'Payment request from Nexa Academy admissions',
+            program=program,
+            program_name=program.name if program else '',
+        )
+
+        logger.info('Admin payment initialized for %s (ref: %s)', student.email, reference)
+
+        return Response({
+            'payment_id': str(payment.payment_id),
+            'reference': reference,
+            'access_code': ps_data.get('access_code', ''),
+            'authorization_url': authorization_url,
+            'public_key': getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+            'student_email': student.email,
+            'amount': str(amount),
+        })

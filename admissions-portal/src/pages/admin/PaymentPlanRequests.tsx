@@ -21,6 +21,12 @@ const STATUS_OPTIONS = [
   { value: 'all', label: 'All requests' },
 ]
 
+const PLAN_OPTIONS = [
+  { value: 'One-time Payment', label: 'One-time Payment' },
+  { value: '2 Installments', label: '2 Installments' },
+  { value: '3 Installments', label: '3 Installments' },
+]
+
 function statusClass(status: string) {
   if (status === 'approved') return 'bg-success/10 text-success border-success/20'
   if (status === 'rejected') return 'bg-destructive/10 text-destructive border-destructive/20'
@@ -180,7 +186,7 @@ export function PaymentPlanRequests() {
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label>Approved plan</Label>
-                    <Input value={approvedPlan} onChange={(e) => setApprovedPlan(e.target.value)} />
+                    <Select value={approvedPlan} onChange={setApprovedPlan} options={PLAN_OPTIONS} />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Approved installment (KSh)</Label>

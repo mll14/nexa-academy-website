@@ -18,6 +18,12 @@ import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { Enrollment, Program, User } from '../../types'
 
+function fmtKSh(n: number): string {
+  if (n >= 1_000_000) return `KSh ${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (n >= 1_000)     return `KSh ${(n / 1_000).toFixed(0)}K`
+  return `KSh ${n.toLocaleString('en-KE')}`
+}
+
 const PAGE_SIZE = 20
 
 const STATUS_OPTIONS = [
@@ -448,13 +454,13 @@ export function EnrolledStudents() {
             { label: 'Total enrolled', value: String(total), icon: <Users className="w-5 h-5" /> },
             { label: 'Active',         value: String(active), icon: <CheckCircle2 className="w-5 h-5" /> },
             { label: 'Completed',      value: String(completed), icon: <GraduationCap className="w-5 h-5" /> },
-            { label: 'Revenue paid',   value: `KSh ${revenue.toLocaleString('en-KE')}`, icon: <TrendingUp className="w-5 h-5" />, sub: balance > 0 ? `KSh ${balance.toLocaleString('en-KE')} outstanding` : 'All paid up' },
+            { label: 'Revenue paid',   value: fmtKSh(revenue), icon: <TrendingUp className="w-5 h-5" />, sub: balance > 0 ? `${fmtKSh(balance)} outstanding` : 'All paid up' },
           ].map(({ label, value, icon, sub }) => (
             <div key={label} className="bg-card border border-border rounded-2xl px-5 py-4 flex items-start gap-4">
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">{icon}</div>
               <div className="min-w-0">
                 <p className="text-xs text-muted-foreground font-medium">{label}</p>
-                <p className="text-xl font-bold font-heading mt-0.5 truncate">{value}</p>
+                <p className="text-xl font-bold font-heading mt-0.5 leading-tight">{value}</p>
                 {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
               </div>
             </div>

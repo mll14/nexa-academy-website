@@ -1,6 +1,26 @@
 from rest_framework import serializers
-from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, PaymentPlanChangeRequest
+from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, LeadAdminNote, PaymentPlanChangeRequest
 from accounts.serializers import UserSerializer
+
+PAYMENT_PLAN_LABELS = {
+    'full': 'One-time Payment',
+    'one-time payment': 'One-time Payment',
+    'full payment': 'One-time Payment',
+    '2 installments': '2 Installments',
+    '2 instalments': '2 Installments',
+    '2-installments': '2 Installments',
+    'installment2': '2 Installments',
+    '3 installments': '3 Installments',
+    '3 instalments': '3 Installments',
+    '3-installments': '3 Installments',
+    'installment3': '3 Installments',
+}
+
+
+def normalize_payment_plan(value):
+    key = (value or '').strip().lower()
+    return PAYMENT_PLAN_LABELS.get(key)
+
 
 class ProgramSerializer(serializers.ModelSerializer):
     class Meta:
@@ -48,10 +68,10 @@ class PaymentPlanChangeRequestSerializer(serializers.ModelSerializer):
         ]
 
     def validate_requested_payment_plan(self, value):
-        value = (value or '').strip()
-        if not value:
-            raise serializers.ValidationError('Choose a payment plan')
-        return value
+        normalized = normalize_payment_plan(value)
+        if not normalized:
+            raise serializers.ValidationError('Choose One-time Payment, 2 Installments, or 3 Installments')
+        return normalized
 
     def validate_requested_installment_amount(self, value):
         if value <= 0:
@@ -120,22 +140,52 @@ class EnrollStudentSerializer(serializers.Serializer):
 class ProgramInterestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProgramInterest
-        fields = ['id', 'program_slug', 'program_name', 'name', 'email', 'phone', 'message', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'program_slug', 'program_name', 'name', 'email', 'phone', 'message',
+                  'follow_up_completed', 'follow_up_completed_at', 'created_at']
+        read_only_fields = ['id', 'created_at', 'follow_up_completed_at']
 
 
 class HelpMeLeadSerializer(serializers.ModelSerializer):
     class Meta:
         model = HelpMeLead
-        fields = ['id', 'name', 'email', 'phone', 'message', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'name', 'email', 'phone', 'message',
+                  'follow_up_completed', 'follow_up_completed_at', 'created_at']
+        read_only_fields = ['id', 'created_at', 'follow_up_completed_at']
 
 
 class IncompleteApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = IncompleteApplication
-        fields = ['id', 'name', 'email', 'phone', 'program_slug', 'program_name', 'step_reached', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'email', 'phone', 'program_slug', 'program_name', 'step_reached',
+                  'follow_up_completed', 'follow_up_completed_at', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'follow_up_completed_at']
+
+
+class LeadAdminNoteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LeadAdminNote
+        fields = [
+            'id', 'lead_type', 'lead_id', 'stage', 'html', 'text',
+            'created_by', 'created_by_name', 'created_by_email', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_by', 'created_by_name', 'created_by_email', 'created_at']
+
+    def validate(self, attrs):
+        lead_type = attrs.get('lead_type')
+        lead_id = attrs.get('lead_id')
+        model_by_type = {
+            'program_interest': ProgramInterest,
+            'help_me': HelpMeLead,
+            'incomplete_application': IncompleteApplication,
+        }
+        model = model_by_type.get(lead_type)
+        if not model:
+            raise serializers.ValidationError({'lead_type': 'Choose a valid lead type'})
+        if not model.objects.filter(id=lead_id).exists():
+            raise serializers.ValidationError({'lead_id': 'Lead not found'})
+        if not (attrs.get('html') or '').strip():
+            raise serializers.ValidationError({'html': 'Note content is required'})
+        return attrs
 
 
 class ProgramIntakeSerializer(serializers.ModelSerializer):
@@ -146,7 +196,7 @@ class ProgramIntakeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'program', 'program_name', 'start_date', 'end_date',
             'application_deadline', 'max_seats', 'seats_remaining',
-            'status', 'notes', 'source', 'cms_id', 'last_synced_at',
+            'status', 'mode', 'notes', 'source', 'cms_id', 'last_synced_at',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'source', 'cms_id', 'last_synced_at', 'created_at', 'updated_at']

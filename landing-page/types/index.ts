@@ -597,6 +597,8 @@ export interface SanityProgram {
   seo?: SEO
 }
 
+export type IntakeMode = 'full_time_hybrid' | 'full_time_remote' | 'part_time_hybrid' | 'part_time_remote'
+
 export interface ApiIntake {
   id: string
   program: string | number
@@ -604,5 +606,6 @@ export interface ApiIntake {
   end_date?: string
   application_deadline?: string
   status: 'open' | 'closed' | 'draft'
+  mode: IntakeMode
   seats_remaining?: number
 }

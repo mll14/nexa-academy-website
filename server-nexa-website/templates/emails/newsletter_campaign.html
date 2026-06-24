@@ -1,93 +1,22 @@
-<!DOCTYPE html>
-<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <title>{{ subject }}</title>
-  <style>
-    body { margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
-    table { border-collapse: collapse; }
-    img { border: 0; display: block; max-width: 100%; height: auto; }
+{% extends "emails/base_email.html" %}
+{% block subject %}{{ subject }}{% endblock %}
 
-    .wrapper { width: 100%; background-color: #f0f2f5; padding: 36px 0; }
-    .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.07); border: 1px solid #e2e8f0; }
+{% block content %}
+<div style="font-size:15px;color:#1a202c;line-height:1.7;">
+  {{ html_body|safe }}
+</div>
 
-    /* Header */
-    .header { background: #141a42; padding: 24px 40px; text-align: center; }
+<div style="margin:28px 0 0;padding:18px 20px;background:#f7f9fc;border:1px solid #e2e8f0;border-radius:10px;">
+  <p style="margin:0;font-size:13px;color:#718096;line-height:1.7;">
+    You're receiving this because you subscribed to Nexa Academy updates.
+  </p>
+</div>
+{% endblock %}
 
-    /* Body */
-    .body { padding: 40px; color: #1a202c; font-size: 15px; line-height: 1.7; }
-    .body h1 { font-size: 26px; font-weight: 800; color: #1a202c; margin: 0 0 16px; letter-spacing: -0.4px; line-height: 1.3; }
-    .body h2 { font-size: 20px; font-weight: 700; color: #1a202c; margin: 28px 0 12px; letter-spacing: -0.3px; line-height: 1.35; }
-    .body h3 { font-size: 16px; font-weight: 600; color: #2d3748; margin: 24px 0 8px; }
-    .body p { margin: 0 0 16px; color: #4a5568; }
-    .body ul, .body ol { padding-left: 20px; margin: 0 0 16px; color: #4a5568; }
-    .body li { margin-bottom: 6px; }
-    .body hr { border: none; border-top: 1px solid #e2e8f0; margin: 28px 0; }
-    .body a { color: #141a42; text-decoration: underline; }
-    .body img { border-radius: 8px; margin: 16px 0; }
-    .body blockquote { border-left: 3px solid #00bf63; margin: 16px 0; padding: 12px 20px; background: #f0faf4; border-radius: 0 8px 8px 0; color: #4a5568; font-style: italic; }
-
-    /* CTA button */
-    .body a[style*="background"] { text-decoration: none !important; }
-
-    /* Footer */
-    .footer { background-color: #f7f9fc; border-top: 1px solid #e2e8f0; padding: 24px 40px; text-align: center; }
-    .footer p { margin: 0 0 8px; color: #718096; font-size: 12px; line-height: 1.6; }
-    .footer a { color: #a0aec0; text-decoration: underline; }
-
-    @media only screen and (max-width: 620px) {
-      .container { border-radius: 0 !important; }
-      .header { padding: 20px 24px !important; }
-      .body { padding: 28px 24px !important; }
-      .footer { padding: 20px 24px !important; }
-      .body h1 { font-size: 22px !important; }
-    }
-  </style>
-</head>
-<body>
-  {% if preview_text %}
-  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
-    {{ preview_text }}&#160;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;&#847;
-  </div>
-  {% endif %}
-
-  <div class="wrapper">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td align="center" style="padding: 36px 16px;">
-          <div class="container">
-
-            <!-- Header -->
-            <div class="header">
-              <img src="{{ frontend_url }}/nexa-academy-small-logo.png"
-                   alt="Nexa Academy" width="37" height="40"
-                   style="display:inline-block;vertical-align:middle;margin-right:10px;border-radius:8px;"/>
-              <span style="font-size:18px;font-weight:800;color:#fff;vertical-align:middle;letter-spacing:-0.3px;">Nexa Academy</span>
-              <p style="margin:6px 0 0;font-size:11px;color:rgba(255,255,255,0.45);text-transform:uppercase;letter-spacing:1px;">Newsletter</p>
-            </div>
-
-            <!-- Campaign body -->
-            <div class="body">
-              {{ html_body|safe }}
-            </div>
-
-            <!-- Footer -->
-            <div class="footer">
-              <p>You're receiving this because you subscribed to Nexa Academy updates.</p>
-              <p>
-                <a href="{{ unsubscribe_url }}">Unsubscribe</a>
-                &nbsp;&middot;&nbsp;
-                <a href="{{ frontend_url }}">Visit our website</a>
-              </p>
-              <p style="margin:0;font-size:11px;color:#cbd5e0;">&copy; {% now "Y" %} Nexa Academy &middot; Nairobi, Kenya</p>
-            </div>
-
-          </div>
-        </td>
-      </tr>
-    </table>
-  </div>
-</body>
-</html>
+{% block footer_extra %}
+<p style="margin:10px 0 0;font-size:12px;">
+  <a href="{{ unsubscribe_url }}" style="color:#a0aec0;text-decoration:underline;">Unsubscribe</a>
+  &nbsp;&middot;&nbsp;
+  <a href="{{ frontend_url }}" style="color:#a0aec0;text-decoration:underline;">Visit Website</a>
+</p>
+{% endblock %}

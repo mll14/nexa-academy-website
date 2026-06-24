@@ -1,0 +1,38 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}Payment request — Nexa Academy{% endblock %}
+{% block content %}
+<p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Payment Request</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:800;color:#1a202c;line-height:1.3;">Hi {{ display_name }}, you have a payment due.</h2>
+<p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">Our admissions team has sent you a payment link. Click the button below to complete your payment securely via Paystack.</p>
+
+<div style="background:#f0faf4;border-radius:10px;padding:20px 24px;margin-bottom:24px;border:1px solid #c6f6d5;">
+  <p style="margin:0 0 10px;font-size:11px;color:#276749;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Payment Details</p>
+  <p style="margin:0 0 6px;font-size:24px;font-weight:800;color:#1a202c;">{{ amount }}</p>
+  {% if program_name %}<p style="margin:0 0 4px;font-size:14px;color:#4a5568;">Program: <strong>{{ program_name }}</strong></p>{% endif %}
+  {% if description %}<p style="margin:0 0 4px;font-size:14px;color:#4a5568;">{{ description }}</p>{% endif %}
+  {% if reference %}<p style="margin:0;font-size:13px;color:#718096;">Reference: <code style="background:#e6ffed;padding:2px 6px;border-radius:4px;font-size:12px;color:#276749;font-weight:600;">{{ reference }}</code></p>{% endif %}
+</div>
+
+{% if authorization_url %}
+<table cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+  <tr>
+    <td style="background:#141a42;border-radius:8px;padding:14px 32px;">
+      <a href="{{ authorization_url }}" style="color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;display:block;">
+        Pay Now &rarr;
+      </a>
+    </td>
+  </tr>
+</table>
+<p style="margin:0 0 24px;font-size:13px;color:#718096;">
+  Or copy this link into your browser:<br />
+  <a href="{{ authorization_url }}" style="color:#141a42;word-break:break-all;">{{ authorization_url }}</a>
+</p>
+{% endif %}
+
+<div style="background:#f7f9fc;border-radius:10px;padding:16px 20px;margin-bottom:24px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 6px;font-size:13px;color:#718096;font-weight:600;">Secure payment powered by Paystack</p>
+  <p style="margin:0;font-size:13px;color:#718096;line-height:1.6;">You can pay using M-Pesa, Visa, Mastercard, or bank transfer. Your financial information is never shared with us directly.</p>
+</div>
+
+<p style="margin:0;font-size:13px;color:#718096;">Questions? <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a> &middot; <a href="tel:+254713067311" style="color:#141a42;">+254713067311</a></p>
+{% endblock %}

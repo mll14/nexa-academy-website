@@ -16,9 +16,9 @@ interface EmailEditorProps {
   previewText?: string
 }
 
-const CTA_SNIPPET = `<div style="text-align:center;margin:28px 0"><a href="#" style="display:inline-block;background:#6366f1;color:#ffffff;padding:13px 32px;border-radius:8px;font-weight:600;text-decoration:none;font-size:15px;letter-spacing:-0.2px">Click Here →</a></div>`
-const DIVIDER_SNIPPET = `<hr style="border:none;border-top:1px solid #e5e7eb;margin:28px 0" />`
-const BLOCKQUOTE_SNIPPET = `<blockquote style="border-left:3px solid #6366f1;margin:16px 0;padding:12px 20px;background:#f5f3ff;border-radius:0 8px 8px 0;color:#4b5563;font-style:italic">Add your quote here...</blockquote>`
+const CTA_SNIPPET = `<div style="text-align:center;margin:28px 0"><a href="#" style="display:inline-block;background:#00bf63;color:#ffffff;padding:13px 28px;border-radius:8px;font-weight:700;text-decoration:none;font-size:14px;letter-spacing:0.2px">Explore Programs &rarr;</a></div>`
+const DIVIDER_SNIPPET = `<hr style="border:none;border-top:1px solid #e2e8f0;margin:28px 0" />`
+const BLOCKQUOTE_SNIPPET = `<blockquote style="border-left:3px solid #00bf63;margin:16px 0;padding:12px 20px;background:#f0faf4;border-radius:0 8px 8px 0;color:#4a5568;font-style:italic">Add your quote here...</blockquote>`
 
 function ToolbarDivider() {
   return <div className="w-px h-5 bg-border mx-1 shrink-0" />
@@ -64,33 +64,33 @@ function buildEmailHtml(subject: string, previewText: string, html: string): str
   <title>${subject || 'Email Preview'}</title>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 0; background-color: #f4f4f5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    body { margin: 0; padding: 0; background-color: #f0f2f5; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
     table { border-collapse: collapse; }
     img { border: 0; display: block; max-width: 100%; height: auto; }
-    a { color: #6366f1; }
-    .wrapper { width: 100%; background-color: #f4f4f5; padding: 32px 0; }
-    .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    .header { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 32px 40px; text-align: center; }
-    .header-logo { display: inline-flex; align-items: center; gap: 10px; }
-    .header-logo-icon { width: 36px; height: 36px; background: rgba(255,255,255,0.2); border-radius: 8px; display: inline-block; line-height: 36px; text-align: center; font-size: 18px; }
-    .header-title { color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: -0.3px; margin: 0; }
-    .header-tagline { color: rgba(255,255,255,0.75); font-size: 13px; margin: 6px 0 0; }
-    .body { padding: 40px; color: #1f2937; font-size: 15px; line-height: 1.7; }
-    .body h1 { font-size: 26px; font-weight: 700; color: #111827; margin: 0 0 16px; letter-spacing: -0.4px; line-height: 1.3; }
-    .body h2 { font-size: 20px; font-weight: 700; color: #111827; margin: 28px 0 12px; letter-spacing: -0.3px; line-height: 1.35; }
-    .body h3 { font-size: 16px; font-weight: 600; color: #374151; margin: 24px 0 8px; }
-    .body p { margin: 0 0 16px; }
-    .body ul, .body ol { padding-left: 20px; margin: 0 0 16px; }
+    a { color: #141a42; }
+    .wrapper { width: 100%; background-color: #f0f2f5; padding: 36px 0; }
+    .container { max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.07); border: 1px solid #e2e8f0; }
+    .header { background: #141a42; padding: 24px 40px; text-align: center; }
+    .header-title { color: #ffffff; font-size: 18px; font-weight: 800; letter-spacing: -0.3px; margin: 0; vertical-align: middle; }
+    .header-label { margin: 6px 0 0; font-size: 11px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 1px; }
+    .body { padding: 40px; color: #1a202c; font-size: 15px; line-height: 1.7; }
+    .body h1 { font-size: 26px; font-weight: 800; color: #1a202c; margin: 0 0 16px; letter-spacing: -0.4px; line-height: 1.3; }
+    .body h2 { font-size: 20px; font-weight: 700; color: #1a202c; margin: 28px 0 12px; letter-spacing: -0.3px; line-height: 1.35; }
+    .body h3 { font-size: 16px; font-weight: 600; color: #2d3748; margin: 24px 0 8px; }
+    .body p { margin: 0 0 16px; color: #4a5568; }
+    .body ul, .body ol { padding-left: 20px; margin: 0 0 16px; color: #4a5568; }
     .body li { margin-bottom: 6px; }
-    .body hr { border: none; border-top: 1px solid #e5e7eb; margin: 28px 0; }
-    .body a { color: #6366f1; text-decoration: underline; }
+    .body hr { border: none; border-top: 1px solid #e2e8f0; margin: 28px 0; }
+    .body a { color: #141a42; text-decoration: underline; }
     .body img { border-radius: 8px; margin: 16px 0; }
-    .body blockquote { border-left: 3px solid #6366f1; margin: 16px 0; padding: 12px 20px; background: #f5f3ff; border-radius: 0 8px 8px 0; color: #4b5563; font-style: italic; }
+    .body blockquote { border-left: 3px solid #00bf63; margin: 16px 0; padding: 12px 20px; background: #f0faf4; border-radius: 0 8px 8px 0; color: #4a5568; font-style: italic; }
     .body a[style*="background"] { text-decoration: none !important; }
-    .footer { background-color: #f9fafb; border-top: 1px solid #e5e7eb; padding: 28px 40px; text-align: center; }
-    .footer p { margin: 0 0 8px; color: #6b7280; font-size: 12px; line-height: 1.6; }
-    .footer a { color: #6b7280; text-decoration: underline; }
-    .footer .brand { color: #9ca3af; font-size: 11px; margin-top: 12px; }
+    .notice { margin: 28px 0 0; padding: 18px 20px; background: #f7f9fc; border: 1px solid #e2e8f0; border-radius: 10px; }
+    .notice p { margin: 0; font-size: 13px; color: #718096; line-height: 1.7; }
+    .footer { background-color: #f7f9fc; border-top: 1px solid #e2e8f0; padding: 24px 40px; text-align: center; }
+    .footer p { margin: 0 0 8px; color: #718096; font-size: 12px; line-height: 1.6; }
+    .footer a { color: #a0aec0; text-decoration: underline; }
+    .footer .brand { color: #cbd5e0; font-size: 11px; margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -98,24 +98,25 @@ function buildEmailHtml(subject: string, previewText: string, html: string): str
   <div class="wrapper">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
       <tr>
-        <td align="center" style="padding: 32px 16px;">
+        <td align="center" style="padding: 36px 16px;">
           <div class="container">
             <div class="header">
-              <div class="header-logo">
-                <span class="header-logo-icon">🎓</span>
-                <span class="header-title">Nexa Academy</span>
-              </div>
-              <p class="header-tagline">Kenya's leading coding bootcamp</p>
+              <span class="header-title">Nexa Academy</span>
+              <p class="header-label">Newsletter</p>
             </div>
-            <div class="body">${body}</div>
+            <div class="body">
+              ${body}
+              <div class="notice"><p>You're receiving this because you subscribed to Nexa Academy updates.</p></div>
+            </div>
             <div class="footer">
-              <p>You're receiving this because you subscribed to Nexa Academy updates.</p>
+              <p>Nexa Academy &middot; 10th Floor, JKUAT Towers, CBD Nairobi</p>
+              <p>info@nexaacademy.co.ke &middot; +254713067311</p>
               <p>
                 <a href="#">Unsubscribe</a>
                 &nbsp;·&nbsp;
-                <a href="#">Visit our website</a>
+                <a href="#">Visit Website</a>
               </p>
-              <p class="brand">© Nexa Academy · Nairobi, Kenya</p>
+              <p class="brand">© Nexa Academy. All rights reserved.</p>
             </div>
           </div>
         </td>
@@ -343,14 +344,14 @@ export function EmailEditor({ value, onChange, previewSubject = '', previewText 
             [contenteditable] ul, [contenteditable] ol { padding-left: 1.4em; margin: 0 0 0.75em; }
             [contenteditable] li { margin-bottom: 0.25em; }
             [contenteditable] hr { border: none; border-top: 1px solid #e5e7eb; margin: 1.5em 0; }
-            [contenteditable] a  { color: #6366f1; text-decoration: underline; }
+            [contenteditable] a  { color: #141a42; text-decoration: underline; }
             [contenteditable] blockquote {
-              border-left: 3px solid #6366f1;
+              border-left: 3px solid #00bf63;
               margin: 1em 0;
               padding: 0.6em 1em;
-              background: #f5f3ff;
+              background: #f0faf4;
               border-radius: 0 6px 6px 0;
-              color: #4b5563;
+              color: #4a5568;
               font-style: italic;
             }
             [contenteditable] img { max-width: 100%; border-radius: 6px; margin: 0.75em 0; }

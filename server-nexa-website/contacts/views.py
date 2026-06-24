@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
+from django.utils import timezone
 from .models import ContactMessage
 from .serializers import ContactMessageSerializer
 from django.conf import settings
@@ -14,7 +15,7 @@ class ContactMessageViewSet(viewsets.ModelViewSet):
     queryset = ContactMessage.objects.all()
     serializer_class = ContactMessageSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['is_read', 'status']
+    filterset_fields = ['is_read', 'status', 'follow_up_completed']
     search_fields = ['name', 'email', 'subject', 'message']
     ordering_fields = ['created_at', 'name', 'is_read']
     ordering = ['-created_at']
@@ -114,3 +115,21 @@ class ContactMessageViewSet(viewsets.ModelViewSet):
         message.is_read = True
         message.save()
         return Response({'success': True, 'is_read': message.is_read})
+
+    @action(detail=True, methods=['post'])
+    def mark_completed(self, request, pk=None):
+        """Mark a message follow-up as completed"""
+        message = self.get_object()
+        message.follow_up_completed = True
+        message.follow_up_completed_at = timezone.now()
+        message.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+        return Response({'success': True, 'follow_up_completed': True})
+
+    @action(detail=True, methods=['post'])
+    def revert_completed(self, request, pk=None):
+        """Revert a message follow-up completion (undo accidental mark)"""
+        message = self.get_object()
+        message.follow_up_completed = False
+        message.follow_up_completed_at = None
+        message.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+        return Response({'success': True, 'follow_up_completed': False})

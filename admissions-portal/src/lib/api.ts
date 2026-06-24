@@ -19,6 +19,7 @@ import type {
   AvailableSlot,
   InterviewSlot,
   Enrollment,
+  Appointment,
 } from "../types";
 
 const BASE = import.meta.env.VITE_API_URL ?? "/api";
@@ -208,6 +209,30 @@ export async function getApplications(
 
 export async function getApplicationById(id: string): Promise<Application> {
   return req<Application>(`/applications/${id}/`);
+}
+
+export async function getApplicationNotes(applicationId: string): Promise<import('../types').AdminNote[]> {
+  const res = await req<PaginatedResponse<import('../types').AdminNote> | import('../types').AdminNote[]>(
+    `/application-notes/${buildQuery({ application: applicationId })}`,
+  );
+  return Array.isArray(res) ? res : (res.results ?? []);
+}
+
+export async function createApplicationNote(data: {
+  applicationId: string;
+  stage: string;
+  html: string;
+  text?: string;
+}): Promise<import('../types').AdminNote> {
+  return req<import('../types').AdminNote>('/application-notes/', {
+    method: 'POST',
+    body: JSON.stringify({
+      application: data.applicationId,
+      stage: data.stage,
+      html: data.html,
+      text: data.text ?? '',
+    }),
+  });
 }
 
 export async function updateApplicationStatus(
@@ -454,6 +479,23 @@ export async function initializePayment(data: {
   });
 }
 
+export async function adminSendPaymentLink(data: {
+  studentUid: string;
+  amount: number;
+  description?: string;
+  programId?: string;
+}): Promise<{ payment_id: string; reference: string; access_code: string; authorization_url: string; public_key: string; student_email: string; amount: string }> {
+  return req("/payments/admin_send_payment_link/", {
+    method: "POST",
+    body: JSON.stringify({
+      student_uid: data.studentUid,
+      amount: data.amount,
+      description: data.description,
+      program_id: data.programId,
+    }),
+  });
+}
+
 export async function verifyPayment(reference: string): Promise<{
   status: string;
   payment?: { status: string };
@@ -507,8 +549,47 @@ export async function getMessages(
   return res;
 }
 
+export async function sendFollowUp(data: {
+  to: string
+  name?: string
+  subject: string
+  message: string
+}): Promise<{ sent: boolean }> {
+  return req('/admin/send-follow-up/', { method: 'POST', body: JSON.stringify(data) })
+}
+
 export async function markMessageRead(id: string): Promise<void> {
   await req(`/messages/${id}/mark_read/`, { method: "POST" });
+}
+
+export async function markMessageCompleted(id: string): Promise<void> {
+  await req(`/messages/${id}/mark_completed/`, { method: "POST" });
+}
+
+export async function revertMessageCompleted(id: string): Promise<void> {
+  await req(`/messages/${id}/revert_completed/`, { method: "POST" });
+}
+
+export async function markLeadCompleted(
+  leadType: 'interests' | 'help-me' | 'incomplete',
+  id: string,
+): Promise<unknown> {
+  const path =
+    leadType === 'interests' ? `/programs/program-interests/${id}/`
+    : leadType === 'help-me' ? `/programs/help-me/${id}/`
+    : `/programs/incomplete/${id}/`
+  return req(path, { method: 'PATCH', body: JSON.stringify({ action: 'complete' }) })
+}
+
+export async function revertLeadCompleted(
+  leadType: 'interests' | 'help-me' | 'incomplete',
+  id: string,
+): Promise<unknown> {
+  const path =
+    leadType === 'interests' ? `/programs/program-interests/${id}/`
+    : leadType === 'help-me' ? `/programs/help-me/${id}/`
+    : `/programs/incomplete/${id}/`
+  return req(path, { method: 'PATCH', body: JSON.stringify({ action: 'revert' }) })
 }
 
 // ── Students (admin) ──────────────────────────────────────────────────────────
@@ -540,6 +621,10 @@ export async function getProgramInterests(filters: ApiFilters = {}) {
   )
 }
 
+export async function getProgramInterest(id: string) {
+  return req<import('../types').ProgramInterest>(`/programs/program-interests/${id}/`)
+}
+
 export async function notifyProgramInterests(data: {
   program_slug?: string
   program_name?: string
@@ -560,10 +645,47 @@ export async function getHelpMeLeads(filters: ApiFilters = {}) {
   )
 }
 
+export async function getHelpMeLead(id: string) {
+  return req<import('../types').HelpMeLead>(`/programs/help-me/${id}/`)
+}
+
 export async function getIncompleteApplications(filters: ApiFilters = {}) {
   return req<{ count: number; results: import('../types').IncompleteApplication[] }>(
     `/programs/incomplete/${buildQuery(filters)}`
   )
+}
+
+export async function getIncompleteApplication(id: string) {
+  return req<import('../types').IncompleteApplication>(`/programs/incomplete/${id}/`)
+}
+
+export async function getLeadNotes(filters: {
+  lead_type: 'program_interest' | 'help_me' | 'incomplete_application'
+  lead_id: string
+}): Promise<import('../types').AdminNote[]> {
+  const res = await req<PaginatedResponse<import('../types').AdminNote> | import('../types').AdminNote[]>(
+    `/lead-notes/${buildQuery(filters)}`,
+  )
+  return Array.isArray(res) ? res : (res.results ?? [])
+}
+
+export async function createLeadNote(data: {
+  lead_type: 'program_interest' | 'help_me' | 'incomplete_application'
+  lead_id: string
+  stage: string
+  html: string
+  text?: string
+}): Promise<import('../types').AdminNote> {
+  return req<import('../types').AdminNote>('/lead-notes/', {
+    method: 'POST',
+    body: JSON.stringify({
+      lead_type: data.lead_type,
+      lead_id: data.lead_id,
+      stage: data.stage,
+      html: data.html,
+      text: data.text ?? '',
+    }),
+  })
 }
 
 export async function getEnrollments(
@@ -671,4 +793,128 @@ export async function manualEnroll(data: {
       amount_paid: data.amountPaid ?? 0,
     }),
   });
+}
+
+// ── Appointments ──────────────────────────────────────────────────────────────
+
+export async function getAppointments(filters: ApiFilters = {}): Promise<PaginatedResponse<Appointment>> {
+  return req<PaginatedResponse<Appointment>>(`/appointments/${buildQuery(filters)}`);
+}
+
+export async function getAppointment(id: string): Promise<Appointment> {
+  return req<Appointment>(`/appointments/${id}/`);
+}
+
+export async function updateAppointment(
+  id: string,
+  data: { status?: string; admin_notes?: string },
+): Promise<Appointment> {
+  return req<Appointment>(`/appointments/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function cancelAppointment(id: string): Promise<Appointment> {
+  return req<Appointment>(`/appointments/${id}/cancel/`, { method: "PATCH" });
+}
+
+export async function getAppointmentAvailableSlots(): Promise<AvailableSlot[]> {
+  const res = await req<AvailableSlot[] | { results: AvailableSlot[] }>('/appointments/available_slots/')
+  return Array.isArray(res) ? res : (res.results ?? [])
+}
+
+export async function createAppointment(data: {
+  name: string
+  email: string
+  phone: string
+  appointment_type: import('../types').AppointmentType
+  host: import('../types').AppointmentHost
+  chosen_time: string
+  reason: string
+  attendees?: string[]
+}): Promise<Appointment> {
+  return req<Appointment>('/appointments/', { method: 'POST', body: JSON.stringify(data) })
+}
+
+// ── Interview blackouts ───────────────────────────────────────────────────────
+
+export interface Blackout {
+  id: number
+  date: string
+  start_time: string | null
+  end_time: string | null
+  reason: string
+  gcal_event_id: string
+  created_by: string
+  created_at: string
+}
+
+export async function getBlackouts(): Promise<Blackout[]> {
+  const res = await req<Blackout[] | { results: Blackout[] }>('/interview-blackouts/')
+  return Array.isArray(res) ? res : (res.results ?? [])
+}
+
+export async function createBlackout(data: {
+  date: string
+  start_time?: string | null
+  end_time?: string | null
+  reason?: string
+}): Promise<Blackout> {
+  return req<Blackout>('/interview-blackouts/', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteBlackout(id: number): Promise<void> {
+  await req(`/interview-blackouts/${id}/`, { method: 'DELETE' })
+}
+
+// ── Custom calendar events ────────────────────────────────────────────────────
+
+export interface CustomCalEvent {
+  id: string
+  title: string
+  date: string
+  start_time: string | null
+  end_time: string | null
+  all_day: boolean
+  category: 'interview_follow_up' | 'lead_follow_up' | 'personal' | 'meeting' | 'other'
+  description: string
+  with_meet: boolean
+  meet_url: string
+  attendees: string[]
+  gcal_event_id: string
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export async function getCustomCalEvents(params?: { date_from?: string; date_to?: string }): Promise<CustomCalEvent[]> {
+  const qs = params ? `?${new URLSearchParams(Object.entries(params).filter(([,v]) => v) as [string, string][]).toString()}` : ''
+  const res = await req<CustomCalEvent[] | { results: CustomCalEvent[] }>(`/calendar-events-custom/${qs}`)
+  return Array.isArray(res) ? res : (res.results ?? [])
+}
+
+export async function createCustomCalEvent(data: {
+  title: string
+  date: string
+  start_time?: string | null
+  end_time?: string | null
+  all_day: boolean
+  category: string
+  description?: string
+  with_meet?: boolean
+  attendees?: string[]
+}): Promise<CustomCalEvent> {
+  return req<CustomCalEvent>('/calendar-events-custom/', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateCustomCalEvent(id: string, data: Partial<CustomCalEvent>): Promise<CustomCalEvent> {
+  return req<CustomCalEvent>(`/calendar-events-custom/${id}/`, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteCustomCalEvent(id: string): Promise<void> {
+  await req(`/calendar-events-custom/${id}/`, { method: 'DELETE' })
 }

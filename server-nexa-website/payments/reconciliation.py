@@ -58,7 +58,8 @@ def payment_reconciliation_for_student(student):
         enrollment_fields.append('installment_amount')
 
     enrollments = Enrollment.objects.filter(student=student).only(*enrollment_fields).order_by('-enrollment_date')
-    completed = Payment.objects.filter(student=student, status='completed')
+    payments = Payment.objects.filter(student=student).order_by('payment_date', 'created_at')
+    completed = payments.filter(status='completed')
     total_paid = money(completed_total(completed))
 
     items = []
@@ -85,6 +86,7 @@ def payment_reconciliation_for_student(student):
             'payment_plan': payment_plan or 'Standard plan',
             'installment_amount': installment,
             'status': 'paid' if remaining <= 0 and total_fee > 0 else 'outstanding',
+            'ledger_date': enrollment.enrollment_date,
             'last_payment_date': program_payments.order_by('-payment_date').values_list('payment_date', flat=True).first(),
         })
 
@@ -105,12 +107,51 @@ def payment_reconciliation_for_student(student):
                 'payment_plan': application.payment_plan or 'Standard plan',
                 'installment_amount': None,
                 'status': 'paid' if remaining <= 0 and total_fee > 0 else 'outstanding',
+                'ledger_date': application.applied_at,
                 'last_payment_date': completed.order_by('-payment_date').values_list('payment_date', flat=True).first(),
             })
 
     total_fee = money(sum((item['total_fee'] for item in items), ZERO))
     amount_paid = money(total_paid if total_paid > allocated_paid else allocated_paid)
     amount_remaining = max(ZERO, total_fee - amount_paid)
+    ledger = []
+    running_balance = ZERO
+
+    for item in items:
+        debit = money(item['total_fee'])
+        if debit <= ZERO:
+            continue
+        running_balance = money(running_balance + debit)
+        ledger.append({
+            'date': item.get('ledger_date'),
+            'type': 'fee',
+            'description': f"{item['program_name'] or 'Program'} fee",
+            'program_name': item['program_name'],
+            'reference': item['payment_plan'],
+            'status': 'posted',
+            'debit': debit,
+            'credit': ZERO,
+            'balance': running_balance,
+            'applied': True,
+        })
+
+    for payment in payments:
+        is_completed = payment.status == 'completed'
+        credit = money(payment.amount) if is_completed else ZERO
+        if is_completed:
+            running_balance = max(ZERO, money(running_balance - credit))
+        ledger.append({
+            'date': payment.payment_date,
+            'type': 'payment',
+            'description': payment.description or payment.program_name or 'Payment received',
+            'program_name': payment.program_name,
+            'reference': payment.payment_reference or payment.transaction_id or str(payment.payment_id),
+            'status': payment.status,
+            'debit': ZERO,
+            'credit': credit,
+            'balance': running_balance,
+            'applied': is_completed,
+        })
 
     return {
         'student_id': str(student.uid),
@@ -121,6 +162,7 @@ def payment_reconciliation_for_student(student):
         'amount_remaining': amount_remaining,
         'status': 'paid' if amount_remaining <= 0 and total_fee > 0 else 'outstanding',
         'items': items,
+        'ledger': ledger,
     }
 
 

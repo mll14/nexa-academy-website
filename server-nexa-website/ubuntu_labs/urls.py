@@ -37,6 +37,7 @@ urlpatterns = [
     # AI assistant retrieval endpoints
     path('api/ai/', include('aiassistant.urls')),
     path('api/', include('content.urls')),
+    path('api/', include('appointments.urls')),
     # Backward compatibility for older frontend bundles still posting to /api/token/
     path('api/token/', EmailTokenObtainPairView.as_view(), name='token_obtain_pair_legacy'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

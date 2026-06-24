@@ -53,6 +53,8 @@ class CalendarEventsView(APIView):
         events = []
         events.extend(self._collect_source('interview', self._interview_events, start_dt, end_dt))
         events.extend(self._collect_source('intake', self._intake_events, start_dt, end_dt))
+        events.extend(self._collect_source('blackout', self._blackout_events, start_dt, end_dt))
+        events.extend(self._collect_source('custom', self._custom_events, start_dt, end_dt))
         events.extend(self._collect_source('external', self._external_events, start_dt, end_dt))
         events.sort(key=lambda e: e['start'])
 
@@ -117,6 +119,93 @@ class CalendarEventsView(APIView):
                     'seats_remaining': intake.seats_remaining,
                 },
             })
+        return result
+
+    def _blackout_events(self, start_dt, end_dt):
+        from .models import InterviewBlackout
+        from datetime import datetime as dt_cls
+        from zoneinfo import ZoneInfo
+        EAT = ZoneInfo('Africa/Nairobi')
+
+        blackouts = InterviewBlackout.objects.filter(
+            date__range=(start_dt.date(), end_dt.date())
+        )
+        result = []
+        for b in blackouts:
+            label = f'\U0001f6ab Blocked' + (f' — {b.reason}' if b.reason else '')
+            if b.start_time is None:
+                result.append({
+                    'id': f'blackout-{b.id}',
+                    'type': 'blackout',
+                    'title': label,
+                    'start': b.date.isoformat(),
+                    'end': b.date.isoformat(),
+                    'all_day': True,
+                    'meta': {'blackout_id': b.id, 'reason': b.reason},
+                })
+            else:
+                start_eat = dt_cls.combine(b.date, b.start_time).replace(tzinfo=EAT)
+                end_eat = dt_cls.combine(b.date, b.end_time).replace(tzinfo=EAT)
+                result.append({
+                    'id': f'blackout-{b.id}',
+                    'type': 'blackout',
+                    'title': label,
+                    'start': start_eat.isoformat(),
+                    'end': end_eat.isoformat(),
+                    'all_day': False,
+                    'meta': {'blackout_id': b.id, 'reason': b.reason},
+                })
+        return result
+
+    def _custom_events(self, start_dt, end_dt):
+        from .models import CustomCalendarEvent
+        from datetime import datetime as dt_cls
+        from zoneinfo import ZoneInfo
+        EAT = ZoneInfo('Africa/Nairobi')
+
+        CATEGORY_COLORS = {
+            'interview_follow_up': 'blue',
+            'lead_follow_up': 'green',
+            'personal': 'purple',
+            'meeting': 'orange',
+            'other': 'gray',
+        }
+
+        evs = CustomCalendarEvent.objects.filter(date__range=(start_dt.date(), end_dt.date()))
+        result = []
+        for ev in evs:
+            if ev.all_day or ev.start_time is None:
+                result.append({
+                    'id': f'custom-{ev.id}',
+                    'type': 'custom',
+                    'title': ev.title,
+                    'start': ev.date.isoformat(),
+                    'end': ev.date.isoformat(),
+                    'all_day': True,
+                    'meta': {
+                        'custom_event_id': str(ev.id),
+                        'category': ev.category,
+                        'color': CATEGORY_COLORS.get(ev.category, 'gray'),
+                        'description': ev.description,
+                    },
+                })
+            else:
+                s = dt_cls.combine(ev.date, ev.start_time).replace(tzinfo=EAT)
+                e = dt_cls.combine(ev.date, ev.end_time).replace(tzinfo=EAT)
+                result.append({
+                    'id': f'custom-{ev.id}',
+                    'type': 'custom',
+                    'title': ev.title,
+                    'start': s.isoformat(),
+                    'end': e.isoformat(),
+                    'all_day': False,
+                    'meta': {
+                        'custom_event_id': str(ev.id),
+                        'category': ev.category,
+                        'color': CATEGORY_COLORS.get(ev.category, 'gray'),
+                        'description': ev.description,
+                    },
+                })
         return result
 
     def _external_events(self, start_dt, end_dt):

@@ -25,7 +25,7 @@ import { Textarea } from '@/components/ui/Textarea'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Separator } from '@/components/ui/Separator'
 import { Badge } from '@/components/ui/Badge'
-import { submitApplication, saveDraft, getClientPrograms, getClientIntakes } from '@/lib/api/applications'
+import { submitApplication, saveDraft, getClientPrograms, getClientIntakes, submitComingSoonInterest } from '@/lib/api/applications'
 import type { ApplicationSection as ApplicationSectionType } from '@/types'
 
 // ── types ──────────────────────────────────────────────────────────────────────
@@ -34,6 +34,7 @@ interface ApiProgram {
   slug: string
   title: string
   price: number | null
+  coming_soon: boolean
   duration_months?: number
   durationMonths?: number
 }
@@ -43,6 +44,14 @@ interface ApiIntake {
   start_date: string
   seats_remaining: number | null
   status: string
+  mode: string
+}
+
+const INTAKE_MODE_LABELS: Record<string, string> = {
+  full_time_hybrid: 'Full-time Hybrid',
+  full_time_remote: 'Full-time Remote',
+  part_time_hybrid: 'Part-time Hybrid',
+  part_time_remote: 'Part-time Remote',
 }
 
 interface FormData {
@@ -200,7 +209,8 @@ export function ApplicationSection({ section }: { section: ApplicationSectionTyp
   const validateStep2 = () => {
     const e: typeof errors = {}
     if (!formData.program) e.program = 'Please choose a program'
-    if (!formData.startDate) e.startDate = 'Please choose a start date'
+    const selectedProg = programs.find((p) => String(p.id) === formData.program || p.slug === formData.program)
+    if (!selectedProg?.coming_soon && !formData.startDate) e.startDate = 'Please choose a start date'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -261,8 +271,35 @@ export function ApplicationSection({ section }: { section: ApplicationSectionTyp
     }
   }
 
+  // ── interest submit (coming-soon programs) ──
+  const handleInterestSubmit = async () => {
+    setLoading(true)
+    try {
+      const prog = programs.find((p) => String(p.id) === formData.program || p.slug === formData.program)
+      const result = await submitComingSoonInterest({
+        name: formData.fullName.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone || undefined,
+        program_slug: String(prog?.slug ?? formData.program),
+        program_name: prog?.title ?? formData.program,
+        message: formData.message?.trim() || undefined,
+      })
+      if (result.success) {
+        setApplicationData({ full_name: formData.fullName, email: formData.email, program_name: prog?.title ?? formData.program })
+        setShowSuccess(true)
+      } else {
+        throw new Error(result.error ?? 'Failed to submit')
+      }
+    } catch (err) {
+      alert(`Submission failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // ── fee display helpers ──
   const prog = programs.find((p) => String(p.id) === formData.program || p.slug === formData.program)
+  const isComingSoon = prog?.coming_soon ?? false
   const basePrice = prog?.price ?? 0
   const inst2Per = Math.round((basePrice * 1.1) / 2 / 500) * 500
   const inst2Total = inst2Per * 2
@@ -410,66 +447,89 @@ export function ApplicationSection({ section }: { section: ApplicationSectionTyp
                       <option value="">Select a program…</option>
                       {programs.map((p) => (
                         <option key={String(p.id)} value={String(p.id)}>
-                          {p.title}{p.price ? ` — KSh ${Number(p.price).toLocaleString()}` : ''}
+                          {p.title}{p.coming_soon ? ' — Coming Soon' : p.price ? ` — KSh ${Number(p.price).toLocaleString()}` : ''}
                         </option>
                       ))}
                     </select>
                   </Field>
 
-                  <Field label="Start Date" required error={errors.startDate}>
-                    {intakesLoading ? (
-                      <div className="h-11 rounded-lg bg-muted animate-pulse" />
-                    ) : intakes.length === 0 ? (
-                      <div className="flex items-center gap-2 h-11 px-3 rounded-lg border border-border text-sm text-muted-foreground">
-                        <AlertCircle className="w-4 h-4" />
-                        {formData.program ? 'No open intakes available' : 'Select a program first'}
+                  {isComingSoon ? (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <CalendarDays className="w-4 h-4 text-primary shrink-0" />
+                        <p className="text-sm font-semibold text-primary">This program is coming soon</p>
                       </div>
-                    ) : (
-                      <select
-                        value={formData.startDate}
-                        onChange={(e) => set('startDate', e.target.value)}
-                        className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
-                      >
-                        <option value="">Choose a start date…</option>
-                        {intakes.map((i) => (
-                          <option key={i.id} value={i.start_date}>
-                            {fmtDate(i.start_date)}
-                            {i.seats_remaining != null ? ` (${i.seats_remaining} seats left)` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </Field>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Payment Plan</label>
-                    <div className="grid gap-2">
-                      {PAYMENT_PLANS.map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => set('paymentPlan', p.id)}
-                          className={`flex items-center justify-between h-12 px-4 rounded-lg border text-sm font-medium transition-colors ${
-                            formData.paymentPlan === p.id
-                              ? 'border-primary bg-primary/5 text-primary'
-                              : 'border-border text-muted-foreground hover:border-primary/40'
-                          }`}
-                        >
-                          <span>{p.name}</span>
-                          <span className={`text-xs ${formData.paymentPlan === p.id ? 'text-primary/70' : 'text-muted-foreground'}`}>{p.note}</span>
-                        </button>
-                      ))}
+                      <p className="text-sm text-muted-foreground">
+                        Enrolment isn't open yet. Leave your details and we'll notify you as soon as applications open.
+                      </p>
+                      <Field label="Message (optional)">
+                        <Textarea
+                          placeholder="Any questions or anything you'd like us to know?"
+                          value={formData.message}
+                          onChange={(e) => set('message', e.target.value)}
+                          rows={3}
+                        />
+                      </Field>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <Field label="Start Date" required error={errors.startDate}>
+                        {intakesLoading ? (
+                          <div className="h-11 rounded-lg bg-muted animate-pulse" />
+                        ) : intakes.length === 0 ? (
+                          <div className="flex items-center gap-2 h-11 px-3 rounded-lg border border-border text-sm text-muted-foreground">
+                            <AlertCircle className="w-4 h-4" />
+                            {formData.program ? 'No open intakes available' : 'Select a program first'}
+                          </div>
+                        ) : (
+                          <select
+                            value={formData.startDate}
+                            onChange={(e) => set('startDate', e.target.value)}
+                            className="h-11 w-full rounded-lg border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 appearance-none"
+                          >
+                            <option value="">Choose a start date…</option>
+                            {intakes.map((i) => (
+                              <option key={i.id} value={i.start_date}>
+                                {fmtDate(i.start_date)}
+                                {i.mode ? ` · ${INTAKE_MODE_LABELS[i.mode] ?? i.mode}` : ''}
+                                {i.seats_remaining != null ? ` · ${i.seats_remaining} seats left` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </Field>
 
-                  <Field label="Additional Message (optional)">
-                    <Textarea
-                      placeholder="Anything else you'd like us to know?"
-                      value={formData.message}
-                      onChange={(e) => set('message', e.target.value)}
-                      rows={3}
-                    />
-                  </Field>
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Payment Plan</label>
+                        <div className="grid gap-2">
+                          {PAYMENT_PLANS.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => set('paymentPlan', p.id)}
+                              className={`flex items-center justify-between h-12 px-4 rounded-lg border text-sm font-medium transition-colors ${
+                                formData.paymentPlan === p.id
+                                  ? 'border-primary bg-primary/5 text-primary'
+                                  : 'border-border text-muted-foreground hover:border-primary/40'
+                              }`}
+                            >
+                              <span>{p.name}</span>
+                              <span className={`text-xs ${formData.paymentPlan === p.id ? 'text-primary/70' : 'text-muted-foreground'}`}>{p.note}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <Field label="Additional Message (optional)">
+                        <Textarea
+                          placeholder="Anything else you'd like us to know?"
+                          value={formData.message}
+                          onChange={(e) => set('message', e.target.value)}
+                          rows={3}
+                        />
+                      </Field>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -480,7 +540,7 @@ export function ApplicationSection({ section }: { section: ApplicationSectionTyp
                     <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center">
                       <ClipboardList className="w-3.5 h-3.5 text-primary" />
                     </div>
-                    <h2 className="font-semibold">Review Your Application</h2>
+                    <h2 className="font-semibold">{isComingSoon ? 'Confirm Your Interest' : 'Review Your Application'}</h2>
                   </div>
 
                   {/* Personal section */}
@@ -498,67 +558,106 @@ export function ApplicationSection({ section }: { section: ApplicationSectionTyp
                       <dt className="text-muted-foreground">Name</dt><dd className="font-medium">{formData.fullName}</dd>
                       <dt className="text-muted-foreground">Email</dt><dd className="font-medium">{formData.email}</dd>
                       <dt className="text-muted-foreground">Phone</dt><dd className="font-medium">{formData.phone}</dd>
-                      <dt className="text-muted-foreground">Experience</dt>
-                      <dd className="font-medium">{formData.hasBasicKnowledge === 'yes' ? 'Has prior knowledge' : 'New to the field'}</dd>
-                    </dl>
-                  </div>
-
-                  {/* Program section */}
-                  <div className="rounded-xl border border-border p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
-                        <BookOpen className="w-3.5 h-3.5" /> Program
-                      </p>
-                      <button onClick={() => setStep(2)} className="text-xs text-primary hover:underline flex items-center gap-1">
-                        <PenLine className="w-3 h-3" /> Edit
-                      </button>
-                    </div>
-                    <Separator />
-                    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-                      <dt className="text-muted-foreground">Program</dt>
-                      <dd className="font-medium">{prog?.title ?? formData.program}</dd>
-                      <dt className="text-muted-foreground">Start Date</dt>
-                      <dd className="font-medium flex items-center gap-1"><CalendarDays className="w-3.5 h-3.5 text-primary" />{fmtDate(formData.startDate)}</dd>
-                      <dt className="text-muted-foreground">Payment</dt>
-                      <dd className="font-medium">{PAYMENT_PLANS.find((p) => p.id === formData.paymentPlan)?.name}</dd>
-                    </dl>
-                  </div>
-
-                  {/* Fee summary */}
-                  <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 space-y-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-primary flex items-center gap-1.5">
-                      <Wallet className="w-3.5 h-3.5" /> Fee Summary
-                    </p>
-                    <Separator />
-                    <dl className="space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <dt className="text-muted-foreground">Plan</dt>
-                        <dd className="font-medium">{financeSummary.label}</dd>
-                      </div>
-                      {financeSummary.count > 1 && (
-                        <div className="flex justify-between">
-                          <dt className="text-muted-foreground">Per instalment</dt>
-                          <dd className="font-medium">KSh {financeSummary.per.toLocaleString()}</dd>
-                        </div>
+                      {!isComingSoon && (
+                        <>
+                          <dt className="text-muted-foreground">Experience</dt>
+                          <dd className="font-medium">{formData.hasBasicKnowledge === 'yes' ? 'Has prior knowledge' : 'New to the field'}</dd>
+                        </>
                       )}
-                      <Separator />
-                      <div className="flex justify-between font-semibold">
-                        <dt>Total</dt>
-                        <dd className="text-primary text-base">KSh {estimatedFees.toLocaleString()}</dd>
-                      </div>
-                      {financeSummary.savings > 0 && (
-                        <p className="text-xs text-green-600 flex items-center gap-1">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          Saving KSh {financeSummary.savings.toLocaleString()} {financeSummary.savingsLabel}
+                    </dl>
+                  </div>
+
+                  {isComingSoon ? (
+                    /* Coming-soon interest review */
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-primary flex items-center gap-1.5">
+                          <BookOpen className="w-3.5 h-3.5" /> Interest Registration
                         </p>
-                      )}
-                    </dl>
-                    <p className="text-[11px] text-muted-foreground">{planNote}</p>
-                  </div>
+                        <button onClick={() => setStep(2)} className="text-xs text-primary hover:underline flex items-center gap-1">
+                          <PenLine className="w-3 h-3" /> Edit
+                        </button>
+                      </div>
+                      <Separator />
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                        <dt className="text-muted-foreground">Program</dt>
+                        <dd className="font-medium">{prog?.title ?? formData.program}</dd>
+                        <dt className="text-muted-foreground">Status</dt>
+                        <dd className="font-medium text-primary">Coming Soon — Interest Only</dd>
+                        {formData.message && (
+                          <>
+                            <dt className="text-muted-foreground">Message</dt>
+                            <dd className="font-medium">{formData.message}</dd>
+                          </>
+                        )}
+                      </dl>
+                      <p className="text-xs text-muted-foreground">
+                        We'll email you at <strong>{formData.email}</strong> as soon as enrolment opens.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Program section */}
+                      <div className="rounded-xl border border-border p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1.5">
+                            <BookOpen className="w-3.5 h-3.5" /> Program
+                          </p>
+                          <button onClick={() => setStep(2)} className="text-xs text-primary hover:underline flex items-center gap-1">
+                            <PenLine className="w-3 h-3" /> Edit
+                          </button>
+                        </div>
+                        <Separator />
+                        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                          <dt className="text-muted-foreground">Program</dt>
+                          <dd className="font-medium">{prog?.title ?? formData.program}</dd>
+                          <dt className="text-muted-foreground">Start Date</dt>
+                          <dd className="font-medium flex items-center gap-1"><CalendarDays className="w-3.5 h-3.5 text-primary" />{fmtDate(formData.startDate)}</dd>
+                          {(() => { const si = intakes.find((i) => i.start_date === formData.startDate); return si?.mode ? (<><dt className="text-muted-foreground">Mode</dt><dd className="font-medium">{INTAKE_MODE_LABELS[si.mode] ?? si.mode}</dd></>) : null })()}
+                          <dt className="text-muted-foreground">Payment</dt>
+                          <dd className="font-medium">{PAYMENT_PLANS.find((p) => p.id === formData.paymentPlan)?.name}</dd>
+                        </dl>
+                      </div>
+
+                      {/* Fee summary */}
+                      <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-primary flex items-center gap-1.5">
+                          <Wallet className="w-3.5 h-3.5" /> Fee Summary
+                        </p>
+                        <Separator />
+                        <dl className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">Plan</dt>
+                            <dd className="font-medium">{financeSummary.label}</dd>
+                          </div>
+                          {financeSummary.count > 1 && (
+                            <div className="flex justify-between">
+                              <dt className="text-muted-foreground">Per instalment</dt>
+                              <dd className="font-medium">KSh {financeSummary.per.toLocaleString()}</dd>
+                            </div>
+                          )}
+                          <Separator />
+                          <div className="flex justify-between font-semibold">
+                            <dt>Total</dt>
+                            <dd className="text-primary text-base">KSh {estimatedFees.toLocaleString()}</dd>
+                          </div>
+                          {financeSummary.savings > 0 && (
+                            <p className="text-xs text-green-600 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              Saving KSh {financeSummary.savings.toLocaleString()} {financeSummary.savingsLabel}
+                            </p>
+                          )}
+                        </dl>
+                        <p className="text-[11px] text-muted-foreground">{planNote}</p>
+                      </div>
+                    </>
+                  )}
 
                   <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/60 rounded-lg px-3 py-2.5">
                     <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-primary" />
-                    By submitting you agree to our terms of service and privacy policy. We'll contact you within 24 hours.
+                    {isComingSoon
+                      ? 'By registering your interest you agree to our privacy policy. We\'ll only contact you about this program.'
+                      : 'By submitting you agree to our terms of service and privacy policy. We\'ll contact you within 24 hours.'}
                   </div>
                 </div>
               )}
@@ -583,12 +682,14 @@ export function ApplicationSection({ section }: { section: ApplicationSectionTyp
                   </button>
                 ) : (
                   <button
-                    onClick={handleSubmit}
+                    onClick={isComingSoon ? handleInterestSubmit : handleSubmit}
                     disabled={loading}
                     className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-60 disabled:pointer-events-none transition-colors"
                   >
                     {loading ? (
                       <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Submitting…</>
+                    ) : isComingSoon ? (
+                      <><CheckCircle2 className="w-4 h-4" /> Register Interest</>
                     ) : (
                       <><CheckCircle2 className="w-4 h-4" /> Submit Application</>
                     )}

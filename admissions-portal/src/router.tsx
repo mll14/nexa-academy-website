@@ -10,6 +10,7 @@ import { Login } from "./pages/Login";
 import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPassword } from "./pages/ResetPassword";
 import { Apply } from "./pages/Apply";
+import { Unsubscribe } from "./pages/Unsubscribe";
 import { StudentApplication, StudentDashboard, StudentNotifications, StudentPayments } from "./pages/student/Dashboard";
 import { AdminDashboard } from "./pages/admin/Dashboard";
 import { Applications } from "./pages/admin/Applications";
@@ -21,9 +22,12 @@ import { Programs } from "./pages/admin/Programs";
 import { Messages } from "./pages/admin/Messages";
 import { EnrolledStudents } from "./pages/admin/EnrolledStudents";
 import { Leads } from "./pages/admin/Leads";
+import { LeadDetail } from "./pages/admin/LeadDetail";
 import { StudentDetail } from "./pages/admin/StudentDetail";
 import { Notifications } from "./pages/admin/Notifications"
 import { Newsletter } from "./pages/admin/Newsletter";
+import { Appointments } from "./pages/admin/Appointments";
+import { AppointmentDetail } from "./pages/admin/AppointmentDetail";
 
 // ─── Root ────────────────────────────────────────────────────────────────────
 
@@ -77,6 +81,16 @@ const applyRoute = createRoute({
     program: typeof s.program === "string" ? s.program : undefined,
   }),
   component: Apply,
+});
+
+const unsubscribeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/unsubscribe",
+  validateSearch: (s: Record<string, unknown>) => ({
+    status: s.status === "error" ? "error" : "success",
+    reason: typeof s.reason === "string" ? s.reason : undefined,
+  }),
+  component: Unsubscribe,
 });
 
 // ─── Student layout — /student/* ─────────────────────────────────────────────
@@ -184,6 +198,12 @@ const adminLeadsRoute = createRoute({
   component: Leads,
 });
 
+const adminLeadDetailRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: "leads/$leadType/$id",
+  component: LeadDetail,
+});
+
 const adminEnrolledRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "enrolled",
@@ -214,6 +234,18 @@ const adminNewsletterRoute = createRoute({
   component: Newsletter,
 });
 
+const adminAppointmentsRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: "appointments",
+  component: Appointments,
+});
+
+const adminAppointmentDetailRoute = createRoute({
+  getParentRoute: () => adminLayoutRoute,
+  path: "appointments/$id",
+  component: AppointmentDetail,
+});
+
 // ─── Route tree ──────────────────────────────────────────────────────────────
 
 const routeTree = rootRoute.addChildren([
@@ -222,6 +254,7 @@ const routeTree = rootRoute.addChildren([
   forgotPasswordRoute,
   resetPasswordRoute,
   applyRoute,
+  unsubscribeRoute,
   studentLayoutRoute.addChildren([
     studentDashboardRoute,
     studentApplicationRoute,
@@ -238,11 +271,14 @@ const routeTree = rootRoute.addChildren([
     adminProgramsRoute,
     adminIntakesRoute,
     adminLeadsRoute,
+    adminLeadDetailRoute,
     adminEnrolledRoute,
     adminMessagesRoute,
     adminStudentDetailRoute,
     adminNotificationsRoute,
     adminNewsletterRoute,
+    adminAppointmentsRoute,
+    adminAppointmentDetailRoute,
   ]),
 ]);
 

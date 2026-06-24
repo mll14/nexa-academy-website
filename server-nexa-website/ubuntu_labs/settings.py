@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'chatbot',
     'aiassistant',
     'content',
+    'appointments',
     'drf_spectacular',
 ]
 
@@ -214,6 +215,9 @@ GCAL_SLOT_START_HOUR = config('GCAL_SLOT_START_HOUR', default=10, cast=int)
 GCAL_SLOT_END_HOUR = config('GCAL_SLOT_END_HOUR', default=16, cast=int)
 GCAL_LUNCH_START_HOUR = config('GCAL_LUNCH_START_HOUR', default=13, cast=int)
 GCAL_LUNCH_END_HOUR = config('GCAL_LUNCH_END_HOUR', default=14, cast=int)
+NEXA_OFFICE_LOCATION = config('NEXA_OFFICE_LOCATION', default='10th Floor, JKUAT Towers, CBD Nairobi')
+ADMISSIONS_EMAIL = config('ADMISSIONS_EMAIL', default='admissions@nexaacademy.co.ke')
+PORTAL_URL = config('PORTAL_URL', default='https://admissions.nexaacademy.co.ke')
 
 # CMS integration
 CMS_WEBHOOK_TOKEN = config('CMS_WEBHOOK_TOKEN', default='')
