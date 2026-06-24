@@ -6,6 +6,7 @@ import { sanityFetch } from '@/lib/sanity/client'
 import { buildMetadata } from '@/lib/seo'
 import { defineQuery } from 'groq'
 import { AppointmentBookingClient } from './AppointmentBookingClient'
+import { RecaptchaProvider } from '@/components/application/RecaptchaProvider'
 
 interface Cta { label?: string; url?: string }
 interface Feature { title: string; description: string }
@@ -71,7 +72,9 @@ export default async function AppointmentsPage() {
         Loading…
       </div>
     }>
-      <AppointmentBookingClient data={data ?? {}} />
+      <RecaptchaProvider>
+        <AppointmentBookingClient data={data ?? {}} />
+      </RecaptchaProvider>
     </Suspense>
   )
 }

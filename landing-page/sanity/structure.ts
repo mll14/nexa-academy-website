@@ -13,6 +13,7 @@ import {
   MenuIcon,
   BookIcon,
   EditIcon,
+  ClipboardIcon,
 } from '@sanity/icons'
 
 export const structure = (S: StructureBuilder) =>
@@ -24,6 +25,11 @@ export const structure = (S: StructureBuilder) =>
         .title('Home Page')
         .icon(HomeIcon)
         .child(S.document().schemaType('homePage').documentId('homePage')),
+
+      S.listItem()
+        .title('Appointments Page')
+        .icon(CalendarIcon)
+        .child(S.document().schemaType('appointmentsPage').documentId('appointmentsPage')),
 
       S.divider(),
 

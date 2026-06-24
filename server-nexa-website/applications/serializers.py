@@ -30,6 +30,7 @@ class InterviewSlotSerializer(serializers.ModelSerializer):
             'id', 'application', 'proposed_times', 'chosen_time',
             'zoom_link', 'gcal_event_id', 'meet_url',
             'admin_approved', 'completed', 'notes', 'confirmed_at', 'created_at',
+            'extra_guests', 'student_gmail',
         ]
         read_only_fields = ['id', 'created_at']
 

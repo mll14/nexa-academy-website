@@ -312,6 +312,16 @@ export async function cancelInterview(applicationId: string): Promise<void> {
   });
 }
 
+export async function updateInterviewDetails(
+  applicationId: string,
+  data: { extra_guests?: string[] },
+): Promise<InterviewSlot> {
+  return req<InterviewSlot>(
+    `/applications/${applicationId}/update_interview_details/`,
+    { method: 'PATCH', body: JSON.stringify(data) },
+  );
+}
+
 export async function completeInterview(
   applicationId: string,
 ): Promise<Application> {

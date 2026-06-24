@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Calendar, Video, Check, X, Clock,
   Mail, Phone, BookOpen, CreditCard, CalendarDays,
   MessageSquare, Activity, User, AlertTriangle, Send,
-  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight,
+  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus,
 } from 'lucide-react'
 import type { Payment } from '../../types/index'
 import PaystackPop from '@paystack/inline-js'
@@ -18,6 +18,7 @@ import { Separator } from '../../components/ui/separator'
 import { Dialog } from '../../components/ui/dialog'
 import { SlotPicker } from '../../components/SlotPicker'
 import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
+import { EmailEditor } from '../../components/admin/EmailEditor'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -274,7 +275,9 @@ export function ApplicationDetail() {
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [showNotifyDialog, setShowNotifyDialog] = useState(false)
   const [selectedIntakeId, setSelectedIntakeId] = useState('')
-  const [leftTab, setLeftTab] = useState<'details' | 'payments' | 'notes'>('details')
+  const [leftTab, setLeftTab] = useState<'details' | 'payments' | 'notes' | 'email'>('details')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
   const [showPayLinkDialog, setShowPayLinkDialog] = useState(false)
   const [payLinkAmount, setPayLinkAmount] = useState('')
   const [payLinkDescription, setPayLinkDescription] = useState('')
@@ -342,6 +345,25 @@ export function ApplicationDetail() {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  const sendEmailMutation = useMutation({
+    mutationFn: () => api.sendFollowUp({
+      to: app!.email,
+      name: app!.full_name,
+      subject: emailSubject,
+      message: emailBody,
+    }),
+    onSuccess: () => {
+      toast.success(`Email sent to ${app?.email}`)
+      setEmailSubject('')
+      setEmailBody('')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const [extraGuests, setExtraGuests] = useState<string[]>([])
+  const [newGuestEmail, setNewGuestEmail] = useState('')
+  const [savingGuests, setSavingGuests] = useState(false)
 
   const [payLinkLoading, setPayLinkLoading] = useState(false)
 
@@ -416,6 +438,36 @@ export function ApplicationDetail() {
     confirmMutation.mutate(time, {
       onSuccess: () => setShowSlotPicker(false),
     })
+  }
+
+  // Sync extra guests local state when slot data changes identity
+  const slotId = app?.interview_slot?.id
+  useEffect(() => {
+    setExtraGuests(app?.interview_slot?.extra_guests ?? [])
+    setNewGuestEmail('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slotId])
+
+  const guestsChanged = JSON.stringify(extraGuests) !== JSON.stringify(app?.interview_slot?.extra_guests ?? [])
+
+  const handleSaveGuests = async () => {
+    setSavingGuests(true)
+    try {
+      await api.updateInterviewDetails(id, { extra_guests: extraGuests })
+      qc.invalidateQueries({ queryKey: ['admin', 'application', id] })
+      toast.success('Attendees updated — notification sent to applicant.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update attendees.')
+    } finally {
+      setSavingGuests(false)
+    }
+  }
+
+  const addGuest = () => {
+    const email = newGuestEmail.trim()
+    if (!email || extraGuests.includes(email)) return
+    setExtraGuests((prev) => [...prev, email])
+    setNewGuestEmail('')
   }
 
   if (isLoading) {
@@ -548,7 +600,8 @@ export function ApplicationDetail() {
                 { id: 'details', label: 'Details', icon: User },
                 { id: 'payments', label: `Payments${payments.length ? ` (${payments.length})` : ''}`, icon: CreditCard },
                 { id: 'notes', label: 'Notes', icon: MessageSquare },
-              ] as { id: 'details' | 'payments' | 'notes'; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
+                { id: 'email', label: 'Email', icon: Mail },
+              ] as { id: 'details' | 'payments' | 'notes' | 'email'; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setLeftTab(id)}
@@ -579,6 +632,57 @@ export function ApplicationDetail() {
                 title="Internal Notes"
                 emptyText="No internal notes for this application yet."
               />
+            )}
+
+            {leftTab === 'email' && (
+              <div className="space-y-4">
+                {/* Recipient strip */}
+                <div className="flex items-center gap-3 rounded-2xl border border-border bg-muted/30 px-4 py-3">
+                  <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-muted-foreground">To</p>
+                    <p className="text-sm font-medium truncate">{app.full_name} &lt;{app.email}&gt;</p>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">via admissions@nexaacademy.co.ke</span>
+                </div>
+
+                {/* Subject */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Subject *</label>
+                  <Input
+                    placeholder="e.g. Next steps for your application"
+                    value={emailSubject}
+                    onChange={(e) => setEmailSubject(e.target.value)}
+                  />
+                </div>
+
+                {/* Rich email editor */}
+                <div style={{ minHeight: 420 }}>
+                  <EmailEditor
+                    value={emailBody}
+                    onChange={setEmailBody}
+                    previewSubject={emailSubject}
+                    previewText=""
+                  />
+                </div>
+
+                {/* Send bar */}
+                <div className="flex items-center justify-between gap-3 pt-1">
+                  <p className="text-xs text-muted-foreground">
+                    This email is sent directly to the applicant and is not logged as a newsletter campaign.
+                  </p>
+                  <Button
+                    className="shrink-0 gap-1.5"
+                    disabled={!emailSubject.trim() || !emailBody.trim() || sendEmailMutation.isPending}
+                    onClick={() => sendEmailMutation.mutate()}
+                  >
+                    {sendEmailMutation.isPending
+                      ? <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                      : <Send className="w-4 h-4" />}
+                    {sendEmailMutation.isPending ? 'Sending…' : 'Send Email'}
+                  </Button>
+                </div>
+              </div>
             )}
 
             {leftTab === 'details' && <>
@@ -838,6 +942,51 @@ export function ApplicationDetail() {
                         {slot.meet_url ? 'Open Google Meet' : 'Open Meeting Link'}
                       </a>
                     )}
+
+                    {/* Extra attendees */}
+                    <div className="space-y-2 pt-1 border-t border-primary/10">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-1">Extra Attendees</p>
+                      {extraGuests.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {extraGuests.map((g) => (
+                            <span key={g} className="flex items-center gap-1 text-xs bg-muted rounded-full px-2.5 py-1">
+                              {g}
+                              <button
+                                onClick={() => setExtraGuests((prev) => prev.filter((e) => e !== g))}
+                                className="hover:text-destructive transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-1.5">
+                        <Input
+                          type="email"
+                          placeholder="Add email…"
+                          value={newGuestEmail}
+                          onChange={(e) => setNewGuestEmail(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addGuest() } }}
+                          className="text-xs h-8"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 px-2.5 shrink-0"
+                          disabled={!newGuestEmail.trim() || extraGuests.includes(newGuestEmail.trim())}
+                          onClick={addGuest}
+                        >
+                          <UserPlus className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      {guestsChanged && (
+                        <Button size="sm" className="w-full" disabled={savingGuests} onClick={handleSaveGuests}>
+                          {savingGuests ? 'Saving…' : 'Save Attendees'}
+                        </Button>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-1 gap-2 pt-1">
                       <Button
                         size="sm"
