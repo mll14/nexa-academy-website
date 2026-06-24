@@ -62,7 +62,15 @@ interface Intake {
   application_deadline?: string;
   seats_remaining: number | null;
   status: string;
+  mode: string;
 }
+
+const MODE_OPTIONS = [
+  { value: "full_time_hybrid", label: "Full-time Hybrid", intensity: "Full-time", format: "Hybrid", desc: "On-site + online sessions, 40 hrs/wk" },
+  { value: "full_time_remote", label: "Full-time Remote", intensity: "Full-time", format: "Remote", desc: "100% online learning, 40 hrs/wk" },
+  { value: "part_time_hybrid", label: "Part-time Hybrid", intensity: "Part-time", format: "Hybrid", desc: "On-site + online sessions, 20 hrs/wk" },
+  { value: "part_time_remote", label: "Part-time Remote", intensity: "Part-time", format: "Remote", desc: "100% online learning, 20 hrs/wk" },
+]
 
 interface SuccessData {
   id?: string;
@@ -352,6 +360,7 @@ export function ApplicationPageClient({
   const [programsLoading, setProgramsLoading] = useState(true);
   const [intakes, setIntakes] = useState<Intake[]>([]);
   const [intakesLoading, setIntakesLoading] = useState(false);
+  const [selectedMode, setSelectedMode] = useState("");
   const { executeRecaptcha } = useGoogleReCaptcha();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -408,21 +417,33 @@ export function ApplicationPageClient({
   useEffect(() => {
     if (!form.program) {
       setIntakes([]);
+      setSelectedMode("");
       setForm((f) => ({ ...f, startDate: "" }));
       return;
     }
+    setSelectedMode("");
+    setForm((f) => ({ ...f, startDate: "" }));
     fetchIntakes(form.program);
   }, [form.program, fetchIntakes]);
 
-  // Auto-select first available intake
+  // Auto-select first available intake for the selected mode
+  const modeFilteredIntakes = selectedMode
+    ? intakes.filter((i) => i.mode === selectedMode)
+    : [];
+
   useEffect(() => {
-    if (
-      intakes.length > 0 &&
-      !intakes.find((i) => i.start_date === form.startDate)
-    ) {
-      setForm((f) => ({ ...f, startDate: intakes[0].start_date }));
+    if (!selectedMode) {
+      setForm((f) => ({ ...f, startDate: "" }));
+      return;
     }
-  }, [intakes, form.startDate]);
+    const filtered = intakes.filter((i) => i.mode === selectedMode);
+    if (filtered.length > 0 && !filtered.find((i) => i.start_date === form.startDate)) {
+      setForm((f) => ({ ...f, startDate: filtered[0].start_date }));
+    } else if (filtered.length === 0) {
+      setForm((f) => ({ ...f, startDate: "" }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedMode, intakes]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -436,7 +457,10 @@ export function ApplicationPageClient({
 
   const currentProgram = programs.find((p) => p.slug === form.program);
   const selectedIntake =
-    intakes.find((i) => i.start_date === form.startDate) ?? null;
+    intakes.find((i) => i.start_date === form.startDate && i.mode === selectedMode) ?? null;
+  const availableModes = MODE_OPTIONS.filter((m) =>
+    intakes.some((i) => i.mode === m.value),
+  );
   const base = currentProgram?.price ?? 0;
   const totalFee = calcFee(base, form.paymentPlan);
   const inst2Per = Math.round((base * 1.1) / 2 / 500) * 500;
@@ -503,12 +527,20 @@ export function ApplicationPageClient({
   function validateStep2() {
     const e: Record<string, string> = {};
     if (!form.program) e.program = "Please choose a program";
-    // Only require a start date when there are open intakes to choose from
+    if (
+      !selectedMode &&
+      !currentProgram?.coming_soon &&
+      form.program !== "__help_me__" &&
+      intakes.length > 0
+    )
+      e.mode = "Please choose a program type";
+    // Only require a start date when there are open intakes for the selected mode
     if (
       !form.startDate &&
       !currentProgram?.coming_soon &&
       form.program !== "__help_me__" &&
-      intakes.length > 0
+      selectedMode &&
+      modeFilteredIntakes.length > 0
     )
       e.startDate = "Please choose a start date";
     if (
@@ -815,9 +847,52 @@ export function ApplicationPageClient({
                             </div>
                           )}
 
+                          {/* Stage 1: Program type (mode) selection */}
                           {form.program !== "__help_me__" &&
                             !currentProgram?.coming_soon &&
-                            intakes.length > 0 && (
+                            !intakesLoading &&
+                            availableModes.length > 0 && (
+                              <div className="sm:col-span-2 space-y-3">
+                                <Field
+                                  label="Program Type"
+                                  required
+                                  error={errors.mode}
+                                >
+                                  <div className="grid grid-cols-2 gap-3">
+                                    {availableModes.map((m) => (
+                                      <button
+                                        key={m.value}
+                                        type="button"
+                                        disabled={loading}
+                                        onClick={() => {
+                                          setSelectedMode(m.value);
+                                          setErrors((f) => ({ ...f, mode: "", startDate: "" }));
+                                        }}
+                                        className={`flex flex-col items-start gap-1 rounded-xl border px-4 py-3 text-left text-sm transition-colors ${
+                                          selectedMode === m.value
+                                            ? "border-primary bg-primary/5 text-primary"
+                                            : "border-border hover:border-primary/50"
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="font-semibold text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                                            {m.intensity}
+                                          </span>
+                                          <span className="font-medium">{m.format}</span>
+                                        </div>
+                                        <span className="text-xs text-muted-foreground">{m.desc}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                </Field>
+                              </div>
+                            )}
+
+                          {/* Stage 2: Date selection filtered by mode */}
+                          {form.program !== "__help_me__" &&
+                            !currentProgram?.coming_soon &&
+                            selectedMode &&
+                            modeFilteredIntakes.length > 0 && (
                               <Field
                                 label="Preferred Start Date"
                                 required
@@ -829,50 +904,40 @@ export function ApplicationPageClient({
                                     setForm((f) => ({ ...f, startDate: v }));
                                     setErrors((f) => ({ ...f, startDate: "" }));
                                   }}
-                                  disabled={
-                                    loading || intakesLoading || !form.program
-                                  }
+                                  disabled={loading || intakesLoading || !form.program}
                                 >
                                   <SelectTrigger>
                                     <SelectValue
                                       placeholder={
-                                        !form.program
-                                          ? "Choose a program first"
-                                          : intakesLoading
-                                            ? "Loading dates…"
-                                            : "Select a start date"
+                                        intakesLoading
+                                          ? "Loading dates…"
+                                          : "Select a start date"
                                       }
                                     />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {intakesLoading ? (
-                                      <SelectItem value="_loading" disabled>
-                                        Loading…
-                                      </SelectItem>
-                                    ) : (
-                                      intakes.map((i) => {
-                                        const dl = i.application_deadline
-                                          ? new Date(
-                                              i.application_deadline,
-                                            ).toLocaleDateString("en-KE", {
-                                              month: "short",
-                                              day: "numeric",
-                                            })
-                                          : null;
-                                        return (
-                                          <SelectItem
-                                            key={i.id}
-                                            value={i.start_date}
-                                          >
-                                            {fmtDate(i.start_date)}
-                                            {i.seats_remaining != null
-                                              ? ` · ${i.seats_remaining} spots`
-                                              : ""}
-                                            {dl ? ` · Apply by ${dl}` : ""}
-                                          </SelectItem>
-                                        );
-                                      })
-                                    )}
+                                    {modeFilteredIntakes.map((i) => {
+                                      const dl = i.application_deadline
+                                        ? new Date(
+                                            i.application_deadline,
+                                          ).toLocaleDateString("en-KE", {
+                                            month: "short",
+                                            day: "numeric",
+                                          })
+                                        : null;
+                                      return (
+                                        <SelectItem
+                                          key={i.id}
+                                          value={i.start_date}
+                                        >
+                                          {fmtDate(i.start_date)}
+                                          {i.seats_remaining != null
+                                            ? ` · ${i.seats_remaining} spots`
+                                            : ""}
+                                          {dl ? ` · Apply by ${dl}` : ""}
+                                        </SelectItem>
+                                      );
+                                    })}
                                   </SelectContent>
                                 </Select>
                               </Field>
@@ -1141,6 +1206,10 @@ export function ApplicationPageClient({
                             label: "Program",
                             value: currentProgram?.title ?? form.program,
                           }] : [{ label: "Request", value: "Program guidance — team will reach out" }]),
+                          ...(form.program !== "__help_me__" && selectedMode ? [{
+                            label: "Program Type",
+                            value: MODE_OPTIONS.find((m) => m.value === selectedMode)?.label ?? selectedMode,
+                          }] : []),
                           ...(form.program !== "__help_me__" ? [
                           {
                             label: "Start Date",
