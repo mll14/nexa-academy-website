@@ -17,6 +17,7 @@ import { EmailEditor } from '../../components/admin/EmailEditor'
 import * as api from '../../lib/api'
 import toast from 'react-hot-toast'
 import type { NewsletterCampaign, NewsletterSubscriber } from '../../types'
+import { Pagination } from '../../components/ui/pagination'
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -327,7 +328,7 @@ function CampaignsTab({
   const qc = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
-  const PAGE_SIZE = 15
+  const PAGE_SIZE = 10
   const [deleteTarget, setDeleteTarget] = useState<NewsletterCampaign | null>(null)
 
   const params = {
@@ -489,15 +490,14 @@ function CampaignsTab({
         )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-muted-foreground">Page {page} of {totalPages} · {total} total</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onPrev={() => setPage((p) => p - 1)}
+        onNext={() => setPage((p) => p + 1)}
+      />
 
       <DeleteConfirmDialog
         open={!!deleteTarget}
@@ -518,7 +518,7 @@ function SubscribersTab() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('active')
   const [page, setPage] = useState(1)
-  const PAGE_SIZE = 20
+  const PAGE_SIZE = 10
 
   const params = {
     search: search || undefined,
@@ -637,15 +637,14 @@ function SubscribersTab() {
         )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <span className="text-muted-foreground">Page {page} of {totalPages} · {total} total</span>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onPrev={() => setPage((p) => p - 1)}
+        onNext={() => setPage((p) => p + 1)}
+      />
     </div>
   )
 }

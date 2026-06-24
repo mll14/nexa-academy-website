@@ -13,6 +13,7 @@ import { statusText, statusBadgeClass, formatDate } from '../../lib/utils'
 import type { Application } from '../../types'
 import toast from 'react-hot-toast'
 import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
+import { Pagination } from '../../components/ui/pagination'
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All Applications' },
@@ -32,7 +33,7 @@ const SORT_OPTIONS = [
   { value: '-estimated_fees', label: 'Highest fees' },
 ]
 
-const PAGE_SIZE = 15
+const PAGE_SIZE = 10
 
 const INTAKE_TABS = [
   { value: 'with', label: 'With intake dates' },
@@ -251,32 +252,14 @@ export function Applications() {
           </div>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <p className="text-sm text-muted-foreground">
-              Page {page} of {totalPages} · {total} total
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => p - 1)}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        )}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={PAGE_SIZE}
+          onPrev={() => setPage((p) => p - 1)}
+          onNext={() => setPage((p) => p + 1)}
+        />
       <DeleteConfirmDialog
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}

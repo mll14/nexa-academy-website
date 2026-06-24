@@ -19,6 +19,8 @@ import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { Enrollment, Program, User } from '../../types'
 
+import { Pagination } from '../../components/ui/pagination'
+
 // DetailRow and BalanceBar kept for EnrollDialog only
 
 function fmtKSh(n: number): string {
@@ -27,7 +29,7 @@ function fmtKSh(n: number): string {
   return `KSh ${n.toLocaleString('en-KE')}`
 }
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 const STATUS_OPTIONS = [
   { value: 'all',       label: 'All Statuses' },
@@ -564,16 +566,14 @@ export function EnrolledStudents() {
           </div>
         )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <p className="text-sm text-muted-foreground">Page {page} of {totalPages} · {total} total</p>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
-            </div>
-          </div>
-        )}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={PAGE_SIZE}
+          onPrev={() => setPage((p) => p - 1)}
+          onNext={() => setPage((p) => p + 1)}
+        />
       </div>
 
 

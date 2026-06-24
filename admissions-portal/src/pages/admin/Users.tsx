@@ -48,6 +48,9 @@ import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import { formatPermissionResource, groupPermissionsByResource } from './role-utils'
 import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
+import { Pagination } from '../../components/ui/pagination'
+
+const STAFF_PAGE_SIZE = 10
 
 type StaffAccessTab = 'users' | 'roles' | 'audit'
 
@@ -260,6 +263,7 @@ function StaffUsersSection() {
   const [resending, setResending] = useState<string | null>(null)
   const [removeTarget, setRemoveTarget] = useState<StaffUser | null>(null)
   const [removeLoading, setRemoveLoading] = useState(false)
+  const [staffPage, setStaffPage] = useState(1)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -329,11 +333,12 @@ function StaffUsersSection() {
       {loading ? (
         <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">Loading…</div>
       ) : (
+        <>
         <div className="border rounded-xl divide-y">
           {staffList.length === 0 && (
             <div className="py-12 text-center text-sm text-muted-foreground">No staff users found.</div>
           )}
-          {staffList.map(user => (
+          {staffList.slice((staffPage - 1) * STAFF_PAGE_SIZE, staffPage * STAFF_PAGE_SIZE).map(user => (
             <div key={user.uid} className="flex items-center gap-4 px-4 py-3.5">
               <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                 <User className="w-4 h-4 text-primary" />
@@ -381,6 +386,15 @@ function StaffUsersSection() {
             </div>
           ))}
         </div>
+        <Pagination
+          page={staffPage}
+          totalPages={Math.ceil(staffList.length / STAFF_PAGE_SIZE)}
+          total={staffList.length}
+          pageSize={STAFF_PAGE_SIZE}
+          onPrev={() => setStaffPage((p) => p - 1)}
+          onNext={() => setStaffPage((p) => p + 1)}
+        />
+        </>
       )}
 
       {inviting && (

@@ -17,8 +17,9 @@ import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { ProgramInterest, HelpMeLead, IncompleteApplication } from '../../types'
 import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
+import { Pagination } from '../../components/ui/pagination'
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 type Tab = 'interests' | 'help_me' | 'incomplete'
 type FollowUpFilter = 'pending' | 'done'
@@ -280,17 +281,14 @@ function InterestsTab() {
         </div>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-          <p className="text-sm text-muted-foreground">Page {page} of {totalPages}</p>
-          <div className="flex gap-2">
-            <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
-              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors">Previous</button>
-            <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}
-              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors">Next</button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onPrev={() => setPage((p) => p - 1)}
+        onNext={() => setPage((p) => p + 1)}
+      />
 
       <DeleteConfirmDialog
         open={!!deleteTarget}
@@ -508,17 +506,14 @@ function HelpMeTab() {
         </div>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-          <p className="text-sm text-muted-foreground">Page {page} of {totalPages}</p>
-          <div className="flex gap-2">
-            <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
-              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors">Previous</button>
-            <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}
-              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors">Next</button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onPrev={() => setPage((p) => p - 1)}
+        onNext={() => setPage((p) => p + 1)}
+      />
 
       <DeleteConfirmDialog
         open={!!deleteTarget}
@@ -655,17 +650,14 @@ function IncompleteTab() {
         </div>
       )}
 
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-          <p className="text-sm text-muted-foreground">Page {page} of {totalPages}</p>
-          <div className="flex gap-2">
-            <button disabled={page <= 1} onClick={() => setPage((p) => p - 1)}
-              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors">Previous</button>
-            <button disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}
-              className="px-3 py-1.5 rounded-lg border border-border text-xs font-medium disabled:opacity-40 hover:bg-muted transition-colors">Next</button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onPrev={() => setPage((p) => p - 1)}
+        onNext={() => setPage((p) => p + 1)}
+      />
 
       <DeleteConfirmDialog
         open={!!deleteTarget}
