@@ -1,16 +1,19 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
-from applications.models import DraftApplication
+from applications.models import Application, DraftApplication
 from ubuntu_labs.email_utils import send_html_email
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Send 24-hour reminder emails to users who started but did not complete their application'
+    help = 'Send reminder emails to users who started but did not complete their application (2 days after draft creation)'
 
     def handle(self, *args, **kwargs):
-        cutoff = timezone.now() - timedelta(hours=24)
+        cutoff = timezone.now() - timedelta(days=2)
         drafts = DraftApplication.objects.filter(
             completed=False,
             reminder_sent=False,
@@ -18,8 +21,17 @@ class Command(BaseCommand):
         )
 
         sent = 0
+        skipped = 0
         errors = 0
         for draft in drafts:
+            # Skip (and mark completed) if the email already has a submitted application.
+            if Application.objects.filter(email__iexact=draft.email).exists():
+                draft.completed = True
+                draft.save(update_fields=['completed'])
+                skipped += 1
+                logger.info('Reminder skipped — application already submitted for %s', draft.email)
+                continue
+
             try:
                 send_html_email(
                     subject="Don't miss your spot — Complete your Nexa Academy application",
@@ -38,7 +50,8 @@ class Command(BaseCommand):
             except Exception as e:
                 errors += 1
                 self.stderr.write(f"Failed to send reminder to {draft.email}: {e}")
+                logger.error('Reminder email failed for %s: %s', draft.email, e)
 
         self.stdout.write(self.style.SUCCESS(
-            f'Sent {sent} reminder email(s). {errors} failed.'
+            f'Sent {sent} reminder email(s). Skipped {skipped} (already applied). {errors} failed.'
         ))

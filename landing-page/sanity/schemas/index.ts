@@ -51,6 +51,7 @@ import { siteSettingsSchema } from './singletons/siteSettings'
 import { navigationSchema } from './singletons/navigation'
 import { footerSchema } from './singletons/footer'
 import { homePageSchema } from './singletons/homePage'
+import { appointmentsPageSchema } from './singletons/appointmentsPage'
 
 export const schemas = [
   // Shared objects
@@ -106,6 +107,7 @@ export const schemas = [
   navigationSchema,
   footerSchema,
   homePageSchema,
+  appointmentsPageSchema,
 ]
 
 export const singletonTypes = new Set([
@@ -113,4 +115,5 @@ export const singletonTypes = new Set([
   'navigation',
   'footer',
   'homePage',
+  'appointmentsPage',
 ])

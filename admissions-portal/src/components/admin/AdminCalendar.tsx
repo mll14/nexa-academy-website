@@ -6,7 +6,7 @@ export function AdminCalendar() {
   const navigate = useNavigate()
 
   return (
-    <Card className="border rounded-2xl overflow-hidden" style={{ minHeight: 600 }}>
+    <Card className="border rounded-2xl overflow-hidden h-[640px]">
       <CalendarView
         onInterviewClick={(applicationId) =>
           navigate({ to: '/admin/applications/$id', params: { id: applicationId } })

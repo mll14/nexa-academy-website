@@ -3,7 +3,7 @@ import { EventChip } from './EventChip'
 import type { CalendarEvent } from '../../../lib/calendarService'
 
 const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-const MAX_VISIBLE = 4
+const MAX_VISIBLE = 3
 
 function getMonthGrid(cursor: Date): Date[] {
   const year = cursor.getFullYear()
@@ -44,27 +44,31 @@ export function MonthView({ cursor, events, onEventClick }: Props) {
   const today = new Date().toDateString()
 
   return (
-    <div className="flex flex-col flex-1">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Day-of-week header */}
-      <div className="grid grid-cols-7 border-b border-border bg-muted/30">
-        {DAY_LABELS.map((l) => (
+      <div className="grid grid-cols-7 border-b border-border bg-muted/30 shrink-0">
+        {DAY_LABELS.map((l, i) => (
           <div
             key={l}
-            className="text-center py-3 text-xs font-semibold text-muted-foreground tracking-wide uppercase"
+            className={`text-center py-2.5 text-[11px] font-semibold tracking-wide uppercase
+              ${i >= 5 ? 'text-muted-foreground/50' : 'text-muted-foreground'}`}
           >
             {l}
           </div>
         ))}
       </div>
 
-      {/* Day cells grid */}
-      <div className="grid grid-cols-7 flex-1">
+      {/* Day cells — scrollable */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="grid grid-cols-7">
         {cells.map((d, i) => {
           const isCurrentMonth = d.getMonth() === currentMonth
           const isToday = d.toDateString() === today
           const isWeekend = d.getDay() === 0 || d.getDay() === 6
+          const isPast = !isToday && d < new Date(new Date().setHours(0, 0, 0, 0))
           const dateKey = d.toDateString()
           const dayEvents = eventsOnDay(events, d)
+          const hasBlackout = dayEvents.some((ev) => ev.type === 'blackout')
           const visible = dayEvents.slice(0, MAX_VISIBLE)
           const overflow = dayEvents.length - MAX_VISIBLE
           const isExpanded = expanded === dateKey
@@ -73,26 +77,36 @@ export function MonthView({ cursor, events, onEventClick }: Props) {
             <div
               key={i}
               className={[
-                'min-h-[140px] border-b border-r border-border p-2 transition-colors',
-                !isCurrentMonth ? 'bg-muted/20' : isWeekend ? 'bg-muted/5' : '',
+                'min-h-[110px] border-b border-r border-border/60 p-1.5 transition-colors',
+                !isCurrentMonth
+                  ? 'bg-muted/15'
+                  : hasBlackout
+                  ? 'bg-destructive/[0.03]'
+                  : isWeekend
+                  ? 'bg-muted/5'
+                  : isPast
+                  ? 'bg-muted/5'
+                  : 'bg-background',
               ].join(' ')}
             >
               {/* Date number */}
-              <div className="mb-1.5 flex items-center justify-between">
+              <div className="mb-1 flex items-center justify-between">
                 <span
                   className={[
-                    'text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full',
+                    'text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full transition-all',
                     isToday
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : isCurrentMonth
-                      ? 'text-foreground'
-                      : 'text-muted-foreground/40',
+                      ? isPast
+                        ? 'text-muted-foreground/50'
+                        : 'text-foreground'
+                      : 'text-muted-foreground/25',
                   ].join(' ')}
                 >
                   {d.getDate()}
                 </span>
                 {dayEvents.length > 0 && isCurrentMonth && (
-                  <span className="text-[10px] text-muted-foreground font-medium">
+                  <span className="text-[9px] text-muted-foreground/60 font-medium pr-0.5">
                     {dayEvents.length}
                   </span>
                 )}
@@ -106,7 +120,7 @@ export function MonthView({ cursor, events, onEventClick }: Props) {
                 {!isExpanded && overflow > 0 && (
                   <button
                     onClick={() => setExpanded(dateKey)}
-                    className="text-[10px] text-primary hover:text-primary/80 font-medium hover:underline block pl-1"
+                    className="text-[9px] text-primary hover:text-primary/80 font-semibold hover:underline block pl-1 leading-tight"
                   >
                     +{overflow} more
                   </button>
@@ -114,15 +128,16 @@ export function MonthView({ cursor, events, onEventClick }: Props) {
                 {isExpanded && (
                   <button
                     onClick={() => setExpanded(null)}
-                    className="text-[10px] text-muted-foreground hover:underline block pl-1"
+                    className="text-[9px] text-muted-foreground hover:underline block pl-1 leading-tight"
                   >
-                    show less
+                    less
                   </button>
                 )}
               </div>
             </div>
           )
         })}
+      </div>
       </div>
     </div>
   )

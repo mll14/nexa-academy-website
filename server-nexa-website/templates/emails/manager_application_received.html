@@ -17,6 +17,7 @@
   <p style="margin:0 0 10px;font-size:11px;color:#276749;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Application</p>
   {% if program_name %}<p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Program: <strong>{{ program_name }}</strong></p>{% endif %}
   {% if start_date %}<p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Preferred intake: <strong>{{ start_date }}</strong></p>{% endif %}
+  {% if intake_mode %}<p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Mode: <strong>{{ intake_mode }}</strong></p>{% endif %}
   {% if estimated_fees %}<p style="margin:0 0 6px;font-size:14px;color:#2d3748;">Estimated fees: <strong>{{ estimated_fees }}</strong></p>{% endif %}
   {% if payment_plan %}<p style="margin:0;font-size:14px;color:#2d3748;">Payment plan: <strong>{{ payment_plan }}</strong></p>{% endif %}
 </div>

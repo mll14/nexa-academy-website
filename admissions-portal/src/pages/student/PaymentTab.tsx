@@ -14,13 +14,13 @@ import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
 import { statusText } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import type { FinancialReconciliation, Payment, PaymentPlanChangeRequest } from '../../types'
+import type { FinancialReconciliation, Payment, PaymentPlanChangeRequest, ReconciliationLedgerLine } from '../../types'
 
 const MIN_PAYMENT = 100
 const PLAN_OPTIONS = [
-  { value: 'one-time', label: 'Full payment', note: 'Best value' },
-  { value: '2-installments', label: '2 Instalments', note: '+10%' },
-  { value: '3-installments', label: '3 Instalments', note: '+20%' },
+  { value: 'full', label: 'One-time Payment', note: 'Best discount' },
+  { value: 'installment2', label: '2 Installments', note: '10% surcharge' },
+  { value: 'installment3', label: '3 Installments', note: '20% surcharge' },
 ] as const
 
 type Plan = typeof PLAN_OPTIONS[number]['value']
@@ -33,11 +33,66 @@ const PAYMENT_TABS = [
   { value: 'history', label: 'History', icon: History },
 ] as const
 
+const completedStatuses = ['completed', 'paid', 'success']
+
+function money(value: number | string | null | undefined) {
+  return Number(value ?? 0).toLocaleString()
+}
+
+function paymentStatusClass(status: string) {
+  if (completedStatuses.includes(status)) return 'bg-success/10 text-success'
+  if (status === 'pending' || status === 'processing') return 'bg-warning/10 text-warning'
+  if (status === 'refunded') return 'bg-muted text-muted-foreground'
+  return 'bg-destructive/10 text-destructive'
+}
+
+function buildLedgerFallback(totalFee: number, payments: Payment[]): ReconciliationLedgerLine[] {
+  let runningBalance = totalFee
+  const lines: ReconciliationLedgerLine[] = totalFee > 0
+    ? [{
+        date: null,
+        type: 'fee',
+        description: 'Program fee',
+        status: 'posted',
+        debit: String(totalFee),
+        credit: '0',
+        balance: String(totalFee),
+        applied: true,
+      }]
+    : []
+
+  const sorted = [...payments].sort((a, b) => {
+    const aDate = new Date(a.payment_date ?? a.created_at).getTime()
+    const bDate = new Date(b.payment_date ?? b.created_at).getTime()
+    return aDate - bDate
+  })
+
+  sorted.forEach((payment) => {
+    const applied = completedStatuses.includes(payment.status)
+    const credit = applied ? Number(payment.amount) : 0
+    runningBalance = Math.max(0, runningBalance - credit)
+    lines.push({
+      date: payment.payment_date ?? payment.created_at,
+      type: 'payment',
+      description: payment.description || payment.program_name || 'Payment received',
+      program_name: payment.program_name,
+      reference: payment.payment_reference || payment.transaction_id || payment.payment_id || payment.id,
+      status: payment.status,
+      debit: '0',
+      credit: String(credit),
+      balance: String(runningBalance),
+      applied,
+    })
+  })
+
+  return lines
+}
+
 function resolvePlan(value?: string): Plan {
   const normalized = (value || '').toLowerCase()
-  if (normalized.includes('3')) return '3-installments'
-  if (normalized.includes('2')) return '2-installments'
-  return 'one-time'
+  if (normalized === 'installment3' || normalized.includes('3')) return 'installment3'
+  if (normalized === 'installment2' || normalized.includes('2')) return 'installment2'
+  return 'full'
 }
 
 function calcPlan(basePrice: number, plan: Plan) {
@@ -46,13 +101,13 @@ function calcPlan(basePrice: number, plan: Plan) {
   const inst3Per = Math.round((basePrice * 1.2) / 3 / 500) * 500
   const inst3Total = inst3Per * 3
 
-  if (plan === 'one-time') {
-    return { total: basePrice, per: basePrice, count: 1, label: 'Full payment', savings: inst3Total - basePrice }
+  if (plan === 'full') {
+    return { total: basePrice, per: basePrice, count: 1, label: 'One-time Payment', savings: inst3Total - basePrice }
   }
-  if (plan === '3-installments') {
-    return { total: inst3Total, per: inst3Per, count: 3, label: '3 instalments', savings: 0 }
+  if (plan === 'installment3') {
+    return { total: inst3Total, per: inst3Per, count: 3, label: '3 Installments', savings: 0 }
   }
-  return { total: inst2Total, per: inst2Per, count: 2, label: '2 instalments', savings: inst3Total - inst2Total }
+  return { total: inst2Total, per: inst2Per, count: 2, label: '2 Installments', savings: inst3Total - inst2Total }
 }
 
 interface Enrollment {
@@ -85,7 +140,6 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
   const [requestAmount, setRequestAmount] = useState('')
   const [requestReason, setRequestReason] = useState('')
   const [requestingPlan, setRequestingPlan] = useState(false)
-  const [planModalOpen, setPlanModalOpen] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [reconciliationModalOpen, setReconciliationModalOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState<PaymentCategory>('overview')
@@ -97,6 +151,9 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
   const installmentAmount = Number(primaryRecon?.installment_amount ?? enrollment?.installmentAmount ?? 0)
   const selectedPlan = calcPlan(totalFee, requestPlan)
   const isFullyPaid = balance <= 0 && totalFee > 0
+  const ledgerLines = reconciliation?.ledger?.length
+    ? reconciliation.ledger
+    : buildLedgerFallback(totalFee, payments)
   const entered = Number(amount)
   const amountValid = entered >= MIN_PAYMENT && entered <= balance && entered > 0
   const pendingPlanRequest = planRequests.find((r) => r.status === 'pending')
@@ -228,7 +285,6 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
       })
       setPlanRequests((prev) => [created, ...prev])
       setRequestReason('')
-      setPlanModalOpen(false)
       toast.success('Payment plan request sent')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not send request')
@@ -434,143 +490,161 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
       </Dialog>
 
       {activeCategory === 'plan' && (
-        <Card>
-        <CardContent className="p-6 space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <WalletCards className="w-4 h-4 text-primary" />
-              <h3 className="font-semibold">Payment Plan</h3>
-            </div>
-            {pendingPlanRequest && <Badge className="bg-warning/10 text-warning">Pending review</Badge>}
-          </div>
-          <Separator />
-          <div className="rounded-xl border border-border p-4 space-y-1">
-            <p className="text-xs text-muted-foreground">Current plan</p>
-            <p className="text-sm font-semibold">{enrollment?.paymentPlan || 'Standard plan'}</p>
-            {installmentAmount > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Recommended installment: KSh {installmentAmount.toLocaleString()}
-              </p>
-            )}
-          </div>
-
-          {planRequests.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Request history</p>
-              <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
-                {planRequests.map((r) => (
-                  <div key={r.request_id} className="p-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold">
-                        {r.requested_payment_plan} · KSh {Number(r.requested_installment_amount).toLocaleString()}
-                      </p>
-                      {r.admin_notes && (
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.admin_notes}</p>
-                      )}
-                    </div>
-                    <Badge className={
-                      r.status === 'approved' ? 'bg-success/10 text-success shrink-0' :
-                      r.status === 'rejected' ? 'bg-destructive/10 text-destructive shrink-0' :
-                      'bg-warning/10 text-warning shrink-0'
-                    }>
-                      {r.status}
-                    </Badge>
-                  </div>
-                ))}
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="p-6 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <WalletCards className="w-4 h-4 text-primary" />
+                  <h3 className="font-semibold">Payment Plan</h3>
+                </div>
+                {pendingPlanRequest && <Badge className="bg-warning/10 text-warning">Pending review</Badge>}
               </div>
-            </div>
-          )}
-
-          {!pendingPlanRequest && (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 p-4">
-              <div>
-                <p className="text-sm font-semibold">Need a different payment plan?</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Choose full payment, 2 instalments, or 3 instalments and send it to admissions for review.
-                </p>
+              <Separator />
+              <div className="rounded-xl border border-border p-4 space-y-1">
+                <p className="text-xs text-muted-foreground">Current plan</p>
+                <p className="text-sm font-semibold">{enrollment?.paymentPlan || 'Standard plan'}</p>
+                {installmentAmount > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Recommended installment: KSh {installmentAmount.toLocaleString()}
+                  </p>
+                )}
               </div>
-              <Button onClick={() => setPlanModalOpen(true)} disabled={!enrollment?.enrollmentId || totalFee <= 0} className="gap-2 shrink-0">
-                <WalletCards className="w-4 h-4" />
-                Request change
-              </Button>
-            </div>
-          )}
-        </CardContent>
-        </Card>
-      )}
 
-      <Dialog
-        open={planModalOpen}
-        onClose={() => setPlanModalOpen(false)}
-        title="Request payment plan change"
-        description="Select a plan and confirm the instalment amount you want admissions to review."
-      >
-        <div className="space-y-5">
-          <div className="grid md:grid-cols-3 gap-3">
-            {PLAN_OPTIONS.map((plan) => {
-              const summary = calcPlan(totalFee, plan.value)
-              const selected = requestPlan === plan.value
-              return (
-                <button
-                  key={plan.value}
-                  type="button"
-                  onClick={() => setRequestPlan(plan.value)}
-                  className={`text-left rounded-xl border p-4 transition-colors ${
-                    selected
-                      ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
-                      : 'border-border bg-background hover:bg-muted/40'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">{plan.label}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{plan.note}</p>
-                    </div>
-                    {selected && <Badge className="bg-primary/10 text-primary">Selected</Badge>}
-                  </div>
-                  <div className="mt-4 space-y-1 text-xs">
-                    <div className="flex justify-between gap-3">
-                      <span className="text-muted-foreground">Total</span>
-                      <span className="font-semibold">KSh {summary.total.toLocaleString()}</span>
-                    </div>
-                    <div className="flex justify-between gap-3">
-                      <span className="text-muted-foreground">{summary.count === 1 ? 'Amount due' : 'Per instalment'}</span>
-                      <span className="font-semibold">KSh {summary.per.toLocaleString()}</span>
-                    </div>
-                    {summary.savings > 0 && (
-                      <div className="flex justify-between gap-3 text-success">
-                        <span>Saves vs 3 instalments</span>
-                        <span className="font-semibold">KSh {summary.savings.toLocaleString()}</span>
+              {planRequests.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Request history</p>
+                  <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
+                    {planRequests.map((r) => (
+                      <div key={r.request_id} className="p-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold">
+                            {r.requested_payment_plan} · KSh {Number(r.requested_installment_amount).toLocaleString()}
+                          </p>
+                          {r.admin_notes && (
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.admin_notes}</p>
+                          )}
+                        </div>
+                        <Badge className={
+                          r.status === 'approved' ? 'bg-success/10 text-success shrink-0' :
+                          r.status === 'rejected' ? 'bg-destructive/10 text-destructive shrink-0' :
+                          'bg-warning/10 text-warning shrink-0'
+                        }>
+                          {r.status}
+                        </Badge>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </button>
-              )
-            })}
-          </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
-          <div className="grid sm:grid-cols-[180px_1fr] gap-3">
-            <div className="space-y-1.5">
-              <Label>Installment (KSh)</Label>
-              <Input type="number" min={MIN_PAYMENT} value={requestAmount} onChange={(e) => setRequestAmount(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Reason</Label>
-              <Textarea value={requestReason} onChange={(e) => setRequestReason(e.target.value)} placeholder="Briefly explain why you need this payment plan" />
-            </div>
-          </div>
+          {pendingPlanRequest ? (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-9 h-9 rounded-xl bg-warning/10 flex items-center justify-center shrink-0">
+                    <Send className="w-4 h-4 text-warning" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Plan change request pending</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Your request for <span className="font-medium">{pendingPlanRequest.requested_payment_plan}</span> at KSh {Number(pendingPlanRequest.requested_installment_amount).toLocaleString()} per instalment is being reviewed by admissions. You will be notified once a decision is made.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-6 space-y-5">
+                <div>
+                  <h3 className="font-semibold">Request a plan change</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Select the plan you want and admissions will review your request.
+                  </p>
+                </div>
+                <Separator />
 
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
-            <Button variant="outline" onClick={() => setPlanModalOpen(false)} disabled={requestingPlan}>
-              Cancel
-            </Button>
-            <Button onClick={handlePlanRequest} disabled={requestingPlan || !enrollment?.enrollmentId || totalFee <= 0} className="gap-2">
-              {requestingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              Request {selectedPlan.label}
-            </Button>
-          </div>
+                <div className="grid md:grid-cols-3 gap-3">
+                  {PLAN_OPTIONS.map((plan) => {
+                    const summary = calcPlan(totalFee, plan.value)
+                    const selected = requestPlan === plan.value
+                    return (
+                      <button
+                        key={plan.value}
+                        type="button"
+                        onClick={() => setRequestPlan(plan.value)}
+                        className={`text-left rounded-xl border p-4 transition-colors ${
+                          selected
+                            ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                            : 'border-border bg-background hover:bg-muted/40'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold">{plan.label}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{plan.note}</p>
+                          </div>
+                          {selected && <Badge className="bg-primary/10 text-primary">Selected</Badge>}
+                        </div>
+                        <div className="mt-4 space-y-1 text-xs">
+                          <div className="flex justify-between gap-3">
+                            <span className="text-muted-foreground">Total</span>
+                            <span className="font-semibold">KSh {summary.total.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between gap-3">
+                            <span className="text-muted-foreground">{summary.count === 1 ? 'Amount due' : 'Per instalment'}</span>
+                            <span className="font-semibold">KSh {summary.per.toLocaleString()}</span>
+                          </div>
+                          {summary.savings > 0 && (
+                            <div className="flex justify-between gap-3 text-success">
+                              <span>Saves vs 3 instalments</span>
+                              <span className="font-semibold">KSh {summary.savings.toLocaleString()}</span>
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div className="grid sm:grid-cols-[180px_1fr] gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Installment (KSh)</Label>
+                    <Input
+                      type="number"
+                      min={MIN_PAYMENT}
+                      value={requestAmount}
+                      onChange={(e) => setRequestAmount(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Reason</Label>
+                    <Textarea
+                      value={requestReason}
+                      onChange={(e) => setRequestReason(e.target.value)}
+                      placeholder="Briefly explain why you need this payment plan"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handlePlanRequest}
+                    disabled={requestingPlan}
+                    className="gap-2"
+                  >
+                    {requestingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                    Request {selectedPlan.label}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
-      </Dialog>
+      )}
 
       {activeCategory === 'pay' && (
         <Card>
@@ -657,46 +731,94 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
 
       {activeCategory === 'history' && (
         <Card>
-        <CardContent className="p-6 space-y-3">
-          <h3 className="font-semibold">Payment History</h3>
-          <Separator />
-          {!payments.length ? (
-            <p className="text-sm text-muted-foreground">No payments yet.</p>
-          ) : (
-            payments.map((p) => {
-              const pid = p.payment_id || p.id
-              const isRechecking = recheckingId === pid
-              return (
-                <div key={pid} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
-                  <div>
-                    <p className="text-sm font-medium">KSh {parseFloat(p.amount).toLocaleString()}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(p.payment_date ?? p.created_at).toLocaleDateString('en-KE')}
-                      {p.payment_reference ? ` · Ref: ${p.payment_reference}` : ''}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge className={
-                      p.status === 'completed' ? 'bg-success/10 text-success' :
-                      p.status === 'pending' ? 'bg-warning/10 text-warning' :
-                      p.status === 'processing' ? 'bg-blue-500/10 text-blue-600' :
-                      p.status === 'refunded' ? 'bg-muted text-muted-foreground' :
-                      'bg-destructive/10 text-destructive'
-                    }>
-                      {statusText(p.status)}
-                    </Badge>
-                    {(p.status === 'pending' || p.status === 'processing') && p.payment_reference && (
-                      <button onClick={() => handleRecheck(p)} disabled={isRechecking} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 disabled:opacity-50">
-                        <RefreshCw className={`w-3.5 h-3.5 ${isRechecking ? 'animate-spin' : ''}`} />
-                        {isRechecking ? 'Checking…' : 'Recheck'}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )
-            })
-          )}
-        </CardContent>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+              <div>
+                <h3 className="font-semibold">Payment Reconciliation</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Fees are debits. Completed payments are credits. Pending payments are shown but not applied to the balance.
+                </p>
+              </div>
+              <Badge className={isFullyPaid ? 'bg-success/10 text-success self-start' : 'bg-warning/10 text-warning self-start'}>
+                {isFullyPaid ? 'Settled' : `KSh ${balance.toLocaleString()} remaining`}
+              </Badge>
+            </div>
+            <Separator />
+
+            {!ledgerLines.length ? (
+              <p className="text-sm text-muted-foreground">No payment history yet.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="w-full min-w-[680px] text-sm">
+                  <thead className="bg-muted/50 text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium">Date</th>
+                      <th className="px-4 py-3 text-left font-medium">Details</th>
+                      <th className="px-4 py-3 text-right font-medium">Debit</th>
+                      <th className="px-4 py-3 text-right font-medium">Credit</th>
+                      <th className="px-4 py-3 text-right font-medium">Balance</th>
+                      <th className="px-4 py-3 text-left font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {ledgerLines.map((line, index) => {
+                      const matchingPayment = payments.find((payment) => {
+                        const ref = payment.payment_reference || payment.transaction_id || payment.payment_id || payment.id
+                        return line.reference && ref === line.reference
+                      })
+                      const canRecheck = matchingPayment && (matchingPayment.status === 'pending' || matchingPayment.status === 'processing') && matchingPayment.payment_reference
+                      const isRechecking = matchingPayment && recheckingId === (matchingPayment.payment_id || matchingPayment.id)
+                      return (
+                        <tr key={`${line.type}-${line.reference ?? line.description}-${index}`} className={!line.applied ? 'bg-muted/20' : undefined}>
+                          <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                            {line.date ? new Date(line.date).toLocaleDateString('en-KE') : '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <p className="font-medium">{line.description}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {line.reference ? `Ref: ${line.reference}` : line.type === 'fee' ? 'Fee posted' : 'No reference'}
+                              {!line.applied && ' · Not applied'}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium">
+                            {Number(line.debit) > 0 ? `KSh ${money(line.debit)}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium text-success">
+                            {Number(line.credit) > 0 ? `KSh ${money(line.credit)}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold">KSh {money(line.balance)}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <Badge className={line.type === 'fee' ? 'bg-primary/10 text-primary' : paymentStatusClass(line.status)}>
+                                {line.type === 'fee' ? 'Fee' : statusText(line.status)}
+                              </Badge>
+                              {canRecheck && (
+                                <button onClick={() => handleRecheck(matchingPayment)} disabled={isRechecking} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 disabled:opacity-50">
+                                  <RefreshCw className={`w-3.5 h-3.5 ${isRechecking ? 'animate-spin' : ''}`} />
+                                  {isRechecking ? 'Checking…' : 'Recheck'}
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                  <tfoot className="bg-muted/30">
+                    <tr>
+                      <td className="px-4 py-3 font-semibold" colSpan={2}>Current position</td>
+                      <td className="px-4 py-3 text-right font-semibold">KSh {totalFee.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-success">KSh {amountPaid.toLocaleString()}</td>
+                      <td className={`px-4 py-3 text-right font-bold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
+                        KSh {balance.toLocaleString()}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </CardContent>
         </Card>
       )}
     </div>

@@ -62,7 +62,8 @@ def get_all_slots_with_status(weeks_ahead=2):
         service = _get_calendar_service()
 
         now = datetime.now(tz=EAT)
-        start_dt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        # Start from today so same-day slots (that haven't passed) are included
+        start_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_dt = start_dt + timedelta(weeks=weeks_ahead)
 
         # ── Query freebusy for both calendars ──────────────────────────────
@@ -96,13 +97,17 @@ def get_all_slots_with_status(weeks_ahead=2):
         # ── Authoritative Kenya public holidays from the `holidays` library ──
         kenya_holidays = _kenya_holiday_dates(start_dt.date(), end_dt.date())
 
-        # ── Load admin blackout dates from DB ──────────────────────────────
-        blackout_dates = set()
+        # ── Load admin blackout entries from DB (day-level and time-level) ──
+        blackout_dates = set()   # full-day blocks
+        blackout_times = []      # [(date, start_time, end_time), ...]
         try:
             interview_blackout_model = apps.get_model('applications', 'InterviewBlackout')
-            blackout_dates = {b.date for b in interview_blackout_model.objects.all()}
+            for b in interview_blackout_model.objects.all():
+                if b.start_time is None:
+                    blackout_dates.add(b.date)
+                else:
+                    blackout_times.append((b.date, b.start_time, b.end_time))
         except LookupError:
-            # Model may not exist in older deployments; continue without blackouts.
             blackout_dates = set()
         except Exception as exc:
             logger.warning('Could not load blackout dates: %s', exc)
@@ -141,12 +146,25 @@ def get_all_slots_with_status(weeks_ahead=2):
                 while slot_start + slot_duration <= day_end:
                     slot_end = slot_start + slot_duration
 
+                    # Skip slots already in the past
+                    if slot_start <= now:
+                        slot_start += slot_duration
+                        continue
+
                     # Skip lunch break entirely — don't add to result at all
                     if lunch_start_hour <= slot_start.hour < lunch_end_hour:
                         slot_start += slot_duration
                         continue
 
-                    if is_blackout:
+                    # Check time-level blackout
+                    is_time_blackout = any(
+                        b_date == current_day
+                        and slot_start.time() >= b_start
+                        and slot_start.time() < b_end
+                        for b_date, b_start, b_end in blackout_times
+                    )
+
+                    if is_blackout or is_time_blackout:
                         slot_status = 'blackout'
                     elif is_holiday_day:
                         slot_status = 'holiday'
@@ -292,4 +310,179 @@ def cancel_interview_event(event_id):
         raise
     except Exception as exc:
         logger.error('gcal_service.cancel_interview_event failed: %s', exc)
+        raise CalendarServiceError(str(exc))
+
+
+def create_blackout_event(date, start_time=None, end_time=None, reason=''):
+    """
+    Create a blocking event on the admissions calendar.
+    Pass start_time/end_time (time objects) for a partial-day block, or
+    omit both for a full-day block.
+    Returns the gcal_event_id string.
+    """
+    try:
+        service = _get_calendar_service()
+        summary = f'\U0001f6ab Blocked' + (f' — {reason}' if reason else '')
+
+        if start_time is None:
+            body = {
+                'summary': summary,
+                'start': {'date': date.isoformat()},
+                'end': {'date': (date + timedelta(days=1)).isoformat()},
+            }
+        else:
+            start_dt = datetime.combine(date, start_time).replace(tzinfo=EAT)
+            end_dt = datetime.combine(date, end_time).replace(tzinfo=EAT)
+            body = {
+                'summary': summary,
+                'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Africa/Nairobi'},
+                'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Africa/Nairobi'},
+            }
+
+        created = service.events().insert(
+            calendarId=settings.GCAL_ADMISSIONS_CALENDAR_ID,
+            body=body,
+        ).execute()
+        return created['id']
+
+    except CalendarServiceError:
+        raise
+    except Exception as exc:
+        logger.error('gcal_service.create_blackout_event failed: %s', exc)
+        raise CalendarServiceError(str(exc))
+
+
+def delete_blackout_event(gcal_event_id):
+    """Delete a blocking event from the admissions calendar."""
+    try:
+        service = _get_calendar_service()
+        service.events().delete(
+            calendarId=settings.GCAL_ADMISSIONS_CALENDAR_ID,
+            eventId=gcal_event_id,
+        ).execute()
+    except CalendarServiceError:
+        raise
+    except Exception as exc:
+        logger.warning('gcal_service.delete_blackout_event failed for %s: %s', gcal_event_id, exc)
+        raise CalendarServiceError(str(exc))
+
+
+_CATEGORY_PREFIXES = {
+    'interview_follow_up': '\U0001f393 Follow-up',
+    'lead_follow_up': '\U0001f4cb Lead',
+    'personal': '\U0001f464 Personal',
+    'meeting': '\U0001f4c5 Meeting',
+    'other': '\U0001f4cc',
+}
+
+
+def _build_custom_event_body(title, date, category, description,
+                             all_day, start_time, end_time, attendees=None):
+    """Build a GCal event body dict (without conference data)."""
+    prefix = _CATEGORY_PREFIXES.get(category, '\U0001f4cc')
+    summary = f'{prefix} {title}'
+    attendee_list = [{'email': e} for e in (attendees or []) if e]
+
+    if all_day or start_time is None:
+        body = {
+            'summary': summary,
+            'description': description,
+            'start': {'date': date.isoformat()},
+            'end': {'date': (date + timedelta(days=1)).isoformat()},
+        }
+    else:
+        start_dt = datetime.combine(date, start_time).replace(tzinfo=EAT)
+        end_dt = datetime.combine(date, end_time).replace(tzinfo=EAT)
+        body = {
+            'summary': summary,
+            'description': description,
+            'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Africa/Nairobi'},
+            'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Africa/Nairobi'},
+        }
+
+    if attendee_list:
+        body['attendees'] = attendee_list
+
+    return body
+
+
+def create_custom_event(title, date, category='other', description='',
+                        all_day=False, start_time=None, end_time=None,
+                        with_meet=False, attendees=None):
+    """
+    Create a custom event on the admissions Google Calendar.
+    Returns {'event_id': str, 'meet_url': str}.
+    Google Meet is only attached to timed (non-all-day) events.
+    """
+    try:
+        service = _get_calendar_service()
+        body = _build_custom_event_body(title, date, category, description,
+                                        all_day, start_time, end_time, attendees)
+
+        add_meet = with_meet and not (all_day or start_time is None)
+        if add_meet:
+            import uuid as _uuid
+            body['conferenceData'] = {
+                'createRequest': {
+                    'requestId': f'custom-{_uuid.uuid4().hex[:12]}',
+                    'conferenceSolutionKey': {'type': 'hangoutsMeet'},
+                },
+            }
+
+        created = service.events().insert(
+            calendarId=settings.GCAL_ADMISSIONS_CALENDAR_ID,
+            body=body,
+            conferenceDataVersion=1 if add_meet else 0,
+            sendUpdates='all' if attendees else 'none',
+        ).execute()
+
+        meet_url = ''
+        if add_meet:
+            for ep in created.get('conferenceData', {}).get('entryPoints', []):
+                if ep.get('entryPointType') == 'video':
+                    meet_url = ep.get('uri', '')
+                    break
+
+        return {'event_id': created['id'], 'meet_url': meet_url}
+
+    except CalendarServiceError:
+        raise
+    except Exception as exc:
+        logger.error('gcal_service.create_custom_event failed: %s', exc)
+        raise CalendarServiceError(str(exc))
+
+
+def update_custom_event(gcal_event_id, title, date, category='other', description='',
+                        all_day=False, start_time=None, end_time=None, attendees=None):
+    """Update an existing custom calendar event. Meet link is preserved if already set."""
+    try:
+        service = _get_calendar_service()
+        body = _build_custom_event_body(title, date, category, description,
+                                        all_day, start_time, end_time, attendees)
+
+        service.events().update(
+            calendarId=settings.GCAL_ADMISSIONS_CALENDAR_ID,
+            eventId=gcal_event_id,
+            body=body,
+        ).execute()
+
+    except CalendarServiceError:
+        raise
+    except Exception as exc:
+        logger.error('gcal_service.update_custom_event failed for %s: %s', gcal_event_id, exc)
+        raise CalendarServiceError(str(exc))
+
+
+def delete_custom_event(gcal_event_id):
+    """Delete a custom calendar event."""
+    try:
+        service = _get_calendar_service()
+        service.events().delete(
+            calendarId=settings.GCAL_ADMISSIONS_CALENDAR_ID,
+            eventId=gcal_event_id,
+        ).execute()
+    except CalendarServiceError:
+        raise
+    except Exception as exc:
+        logger.warning('gcal_service.delete_custom_event failed for %s: %s', gcal_event_id, exc)
         raise CalendarServiceError(str(exc))

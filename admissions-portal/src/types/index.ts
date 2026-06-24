@@ -59,6 +59,8 @@ export interface ProgramMapped {
   duration: string
 }
 
+export type IntakeMode = 'full_time_hybrid' | 'full_time_remote' | 'part_time_hybrid' | 'part_time_remote'
+
 export interface Intake {
   id: string
   program: string
@@ -69,6 +71,7 @@ export interface Intake {
   max_seats?: number
   seats_remaining?: number
   status: 'open' | 'closed' | 'draft'
+  mode: IntakeMode
   notes?: string
   created_at: string
 }
@@ -83,6 +86,7 @@ export interface IntakeMapped {
   maxSeats?: number
   seatsRemaining?: number
   status: 'open' | 'closed' | 'draft'
+  mode: IntakeMode
 }
 
 export type ApplicationStatus =
@@ -134,6 +138,20 @@ export interface ApplicationLog {
   notes?: string
   created_at: string
   changed_by?: string
+}
+
+export interface AdminNote {
+  id: string
+  application?: string
+  lead_type?: 'program_interest' | 'help_me' | 'incomplete_application'
+  lead_id?: string
+  stage: string
+  html: string
+  text?: string
+  created_by?: string | null
+  created_by_name?: string
+  created_by_email?: string
+  created_at: string
 }
 
 export interface Payment {
@@ -198,6 +216,19 @@ export interface ReconciliationItem {
   last_payment_date?: string | null
 }
 
+export interface ReconciliationLedgerLine {
+  date?: string | null
+  type: 'fee' | 'payment'
+  description: string
+  program_name?: string | null
+  reference?: string | null
+  status: string
+  debit: string
+  credit: string
+  balance: string
+  applied: boolean
+}
+
 export interface FinancialReconciliation {
   student_id: string
   student_name: string
@@ -207,6 +238,7 @@ export interface FinancialReconciliation {
   amount_remaining: string
   status: 'paid' | 'outstanding'
   items: ReconciliationItem[]
+  ledger?: ReconciliationLedgerLine[]
 }
 
 export interface Enrollment {
@@ -245,6 +277,8 @@ export interface ProgramInterest {
   email: string
   phone?: string
   message?: string
+  follow_up_completed: boolean
+  follow_up_completed_at?: string | null
   created_at: string
 }
 
@@ -254,6 +288,8 @@ export interface HelpMeLead {
   email: string
   phone?: string
   message?: string
+  follow_up_completed: boolean
+  follow_up_completed_at?: string | null
   created_at: string
 }
 
@@ -265,6 +301,8 @@ export interface IncompleteApplication {
   program_slug: string
   program_name: string
   step_reached: number
+  follow_up_completed: boolean
+  follow_up_completed_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -288,6 +326,8 @@ export interface ContactMessage {
   message: string
   is_read: boolean
   status: string
+  follow_up_completed: boolean
+  follow_up_completed_at?: string | null
   created_at: string
 }
 
@@ -350,4 +390,28 @@ export interface ApiFilters {
   program?: string
   program_name?: string
   [key: string]: string | number | undefined
+}
+
+export type AppointmentType = 'physical' | 'virtual'
+export type AppointmentHost = 'admissions_manager' | 'technical_mentor'
+export type AppointmentStatus = 'scheduled' | 'completed' | 'cancelled' | 'no_show'
+
+export interface Appointment {
+  id: string
+  name: string
+  email: string
+  phone: string
+  appointment_type: AppointmentType
+  appointment_type_label: string
+  host: AppointmentHost
+  host_label: string
+  chosen_time: string
+  reason: string
+  status: AppointmentStatus
+  status_label: string
+  gcal_event_id: string
+  meet_url: string
+  admin_notes: string
+  created_at: string
+  updated_at: string
 }

@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status, filters
+from rest_framework.views import APIView
 from ubuntu_labs.pagination import StandardResultsSetPagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,8 +8,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.db.models import Q
 from django.utils import timezone
 from django.core.cache import cache
-from .models import Application, ApplicationLog, DraftApplication
-from .serializers import ApplicationSerializer, ApplicationCreateSerializer, InterviewSlotSerializer
+from html import escape
+from html.parser import HTMLParser
+from .models import Application, ApplicationAdminNote, ApplicationLog, DraftApplication, InterviewBlackout, CustomCalendarEvent
+from .serializers import ApplicationAdminNoteSerializer, ApplicationSerializer, ApplicationCreateSerializer, InterviewSlotSerializer, InterviewBlackoutSerializer, CustomCalendarEventSerializer
 from .models import InterviewSlot
 from accounts.permissions import IsAdminUser
 from django.conf import settings
@@ -17,11 +20,84 @@ from notifications.models import Notification
 import requests as http_req
 import uuid
 import logging
+import re
+from urllib.parse import urlparse
 from accounts.models import User
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 
 
 logger = logging.getLogger(__name__)
+
+
+_NOTE_ALLOWED_TAGS = frozenset({
+    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's',
+    'ul', 'ol', 'li', 'blockquote', 'a',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'pre', 'code',
+})
+_NOTE_ALLOWED_ATTRS = {'a': {'href', 'title'}}
+_SAFE_HREF_SCHEMES = frozenset({'http', 'https', 'mailto', ''})
+
+
+class _AdminNoteHTMLCleaner(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.parts = []
+        self.skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in {'script', 'style'}:
+            self.skip_depth += 1
+            return
+        if self.skip_depth or tag not in _NOTE_ALLOWED_TAGS:
+            return
+
+        cleaned_attrs = []
+        for name, value in attrs:
+            name = name.lower()
+            if name not in _NOTE_ALLOWED_ATTRS.get(tag, set()) or value is None:
+                continue
+            if name == 'href':
+                # Strip control characters before parsing to prevent scheme-bypass via \x00 etc.
+                normalized = re.sub(r'[\x00-\x20]+', '', value)
+                scheme = urlparse(normalized).scheme.lower()
+                if scheme not in _SAFE_HREF_SCHEMES:
+                    continue
+            cleaned_attrs.append(f'{name}="{escape(value, quote=True)}"')
+
+        suffix = f" {' '.join(cleaned_attrs)}" if cleaned_attrs else ''
+        self.parts.append(f'<{tag}{suffix}>')
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in {'script', 'style'} and self.skip_depth:
+            self.skip_depth -= 1
+            return
+        if self.skip_depth or tag not in _NOTE_ALLOWED_TAGS or tag == 'br':
+            return
+        self.parts.append(f'</{tag}>')
+
+    def handle_data(self, data):
+        if not self.skip_depth:
+            self.parts.append(escape(data))
+
+    def handle_entityref(self, name):
+        if not self.skip_depth:
+            self.parts.append(f'&{name};')
+
+    def handle_charref(self, name):
+        if not self.skip_depth:
+            self.parts.append(f'&#{name};')
+
+
+def _clean_admin_note_html(html):
+    if not html:
+        return ''
+    cleaner = _AdminNoteHTMLCleaner()
+    cleaner.feed(html)
+    cleaner.close()
+    return ''.join(cleaner.parts)
 
 
 def _admissions_notification_email():
@@ -45,7 +121,7 @@ def _format_currency(value):
         return str(value)
 
 
-def _send_manager_application_notification(application):
+def _send_manager_application_notification(application, intake_mode=''):
     recipient = _admissions_notification_email()
     send_html_email(
         subject=f"New application submitted — {application.full_name}",
@@ -57,6 +133,7 @@ def _send_manager_application_notification(application):
             'phone': application.phone,
             'program_name': application.program_name or application.program,
             'start_date': application.start_date,
+            'intake_mode': intake_mode,
             'estimated_fees': _format_currency(application.estimated_fees),
             'payment_plan': application.payment_plan,
             'message': application.message,
@@ -164,7 +241,13 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             return Application.objects.none()
         # Admins see everything
         if getattr(user, 'role', None) == 'admin':
-            return Application.objects.all()
+            qs = Application.objects.all()
+            intake_status = self.request.query_params.get('intake_status')
+            if intake_status == 'with':
+                return qs.filter(start_date__isnull=False)
+            if intake_status == 'without':
+                return qs.filter(start_date__isnull=True)
+            return qs
         # Students only see their own applications (matched by FK or email)
         return Application.objects.filter(
             Q(user=user) | Q(email__iexact=user.email)
@@ -183,7 +266,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return ApplicationCreateSerializer
         return ApplicationSerializer
-    
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -300,7 +383,6 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             from programs.models import IncompleteApplication
             IncompleteApplication.objects.filter(
                 email__iexact=application.email,
-                program_slug=application.program,
             ).delete()
         except Exception:
             pass
@@ -322,10 +404,22 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         
         # Send confirmation email
         try:
+            intake_mode = ''
+            try:
+                from programs.models import ProgramIntake
+                _intake = ProgramIntake.objects.filter(
+                    program__name__iexact=application.program_name,
+                    start_date=application.start_date,
+                ).first()
+                if _intake:
+                    intake_mode = _intake.get_mode_display()
+            except Exception:
+                pass
             context = {
                 'full_name': application.full_name,
                 'program_name': application.program_name,
                 'start_date': application.start_date,
+                'intake_mode': intake_mode,
                 'estimated_fees': application.estimated_fees,
                 'frontend_url': settings.FRONTEND_URL,
             }
@@ -341,7 +435,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             logger.error('application_received email failed for %s: %s', application.email, exc)
 
         try:
-            _send_manager_application_notification(application)
+            _send_manager_application_notification(application, intake_mode=intake_mode)
         except Exception as exc:
             logger.error('manager application notification failed for %s: %s', application.email, exc)
         
@@ -1045,6 +1139,66 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         return Response({'sent': True})
 
 
+class ApplicationAdminNoteViewSet(viewsets.ModelViewSet):
+    serializer_class = ApplicationAdminNoteSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    http_method_names = ['get', 'post', 'head', 'options']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = ApplicationAdminNote.objects.select_related('application', 'created_by')
+        application_id = self.request.query_params.get('application')
+        if application_id:
+            qs = qs.filter(application_id=application_id)
+        return qs
+
+    def perform_create(self, serializer):
+        application = serializer.validated_data['application']
+        html = _clean_admin_note_html(serializer.validated_data.get('html', ''))
+        serializer.save(
+            html=html,
+            stage=serializer.validated_data.get('stage') or application.status,
+            created_by=self.request.user,
+            created_by_name=getattr(self.request.user, 'display_name', '') or self.request.user.email,
+            created_by_email=self.request.user.email,
+        )
+
+
+class AdminFollowUpEmailView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request):
+        to = (request.data.get('to') or '').strip()
+        subject = (request.data.get('subject') or '').strip()
+        message = (request.data.get('message') or '').strip()
+        name = (request.data.get('name') or '').strip()
+
+        if not to or not subject or not message:
+            return Response(
+                {'error': 'to, subject, and message are required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            send_html_email(
+                subject=subject,
+                template_name='admin_follow_up.html',
+                context={
+                    'name': name,
+                    'subject': subject,
+                    'message': message,
+                    'frontend_url': settings.FRONTEND_URL,
+                    'header_label': 'Admissions',
+                    'preview_text': subject,
+                },
+                recipient_email=to,
+            )
+            return Response({'sent': True})
+        except Exception as e:
+            logger.error('Failed to send follow-up email to %s: %s', to, e)
+            return Response({'error': 'Failed to send email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class DraftApplicationViewSet(viewsets.ViewSet):
     """Upsert a draft application by email. Called from the frontend when the user enters their email."""
     permission_classes = [AllowAny]
@@ -1068,3 +1222,118 @@ class DraftApplicationViewSet(viewsets.ViewSet):
             },
         )
         return Response({'id': str(draft.id), 'email': draft.email}, status=status.HTTP_201_CREATED)
+
+
+class InterviewBlackoutViewSet(viewsets.ModelViewSet):
+    """Admin-only CRUD for blocked interview times/days."""
+    permission_classes = [IsAdminUser]
+    serializer_class = InterviewBlackoutSerializer
+
+    def get_queryset(self):
+        return InterviewBlackout.objects.all()
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        created_by = getattr(user, 'email', str(user))
+
+        gcal_event_id = ''
+        try:
+            from .gcal_service import create_blackout_event, CalendarServiceError
+            gcal_event_id = create_blackout_event(
+                date=serializer.validated_data['date'],
+                start_time=serializer.validated_data.get('start_time'),
+                end_time=serializer.validated_data.get('end_time'),
+                reason=serializer.validated_data.get('reason', ''),
+            )
+        except Exception as exc:
+            logger.warning('Could not create GCal blackout event: %s', exc)
+
+        # Clear slot caches so the block is reflected immediately
+        from django.core.cache import cache as _cache
+        _cache.clear()
+
+        serializer.save(created_by=created_by, gcal_event_id=gcal_event_id)
+
+    def perform_destroy(self, instance):
+        if instance.gcal_event_id:
+            try:
+                from .gcal_service import delete_blackout_event, CalendarServiceError
+                delete_blackout_event(instance.gcal_event_id)
+            except Exception as exc:
+                logger.warning('Could not delete GCal blackout event %s: %s', instance.gcal_event_id, exc)
+
+        from django.core.cache import cache as _cache
+        _cache.clear()
+
+        instance.delete()
+
+
+class CustomCalendarEventViewSet(viewsets.ModelViewSet):
+    """Admin CRUD for custom calendar events (follow-ups, meetings, personal, etc.)."""
+    permission_classes = [IsAdminUser]
+    serializer_class = CustomCalendarEventSerializer
+
+    def get_queryset(self):
+        qs = CustomCalendarEvent.objects.all()
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if date_from:
+            qs = qs.filter(date__gte=date_from)
+        if date_to:
+            qs = qs.filter(date__lte=date_to)
+        return qs
+
+    def _sync_to_gcal(self, instance, created=False):
+        try:
+            from .gcal_service import create_custom_event, update_custom_event
+            if created or not instance.gcal_event_id:
+                result = create_custom_event(
+                    title=instance.title,
+                    date=instance.date,
+                    category=instance.category,
+                    description=instance.description,
+                    all_day=instance.all_day,
+                    start_time=instance.start_time,
+                    end_time=instance.end_time,
+                    with_meet=instance.with_meet,
+                    attendees=instance.attendees or [],
+                )
+                instance.gcal_event_id = result['event_id']
+                instance.meet_url = result['meet_url']
+                instance.save(update_fields=['gcal_event_id', 'meet_url'])
+            else:
+                update_custom_event(
+                    gcal_event_id=instance.gcal_event_id,
+                    title=instance.title,
+                    date=instance.date,
+                    category=instance.category,
+                    description=instance.description,
+                    all_day=instance.all_day,
+                    start_time=instance.start_time,
+                    end_time=instance.end_time,
+                    attendees=instance.attendees or [],
+                )
+        except Exception as exc:
+            logger.warning('CustomCalendarEvent GCal sync failed: %s', exc)
+
+    def perform_create(self, serializer):
+        instance = serializer.save(
+            created_by=getattr(self.request.user, 'email', str(self.request.user))
+        )
+        self._sync_to_gcal(instance, created=True)
+        cache.delete_pattern('gcal_events:*') if hasattr(cache, 'delete_pattern') else cache.clear()
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        self._sync_to_gcal(instance, created=False)
+        cache.delete_pattern('gcal_events:*') if hasattr(cache, 'delete_pattern') else cache.clear()
+
+    def perform_destroy(self, instance):
+        if instance.gcal_event_id:
+            try:
+                from .gcal_service import delete_custom_event
+                delete_custom_event(instance.gcal_event_id)
+            except Exception as exc:
+                logger.warning('CustomCalendarEvent GCal delete failed: %s', exc)
+        cache.clear()
+        instance.delete()

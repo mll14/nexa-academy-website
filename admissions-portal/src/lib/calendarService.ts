@@ -6,11 +6,18 @@ export interface CalendarEvent {
   start: string;
   end?: string;
   all_day?: boolean;
-  type: "interview" | "intake" | "external";
+  type: "interview" | "intake" | "external" | "blackout" | "custom";
   meta?: {
     application_id?: string;
     intake_id?: string;
+    blackout_id?: number;
+    custom_event_id?: string;
+    category?: string;
+    color?: string;
+    reason?: string;
     description?: string;
+    meet_url?: string;
+    attendees?: string[];
     gcal_link?: string;
   };
 }

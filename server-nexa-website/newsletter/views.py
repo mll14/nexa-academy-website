@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlencode
 from rest_framework import viewsets, status, filters
 from ubuntu_labs.pagination import StandardResultsSetPagination
 from rest_framework.decorators import action
@@ -32,6 +33,15 @@ def _read_unsubscribe_token(token):
 def _build_unsubscribe_url(request, email):
     token = _make_unsubscribe_token(email)
     return request.build_absolute_uri(f'/api/newsletter/unsubscribe-via-token/?token={token}')
+
+
+def _unsubscribe_result_url(status_value, reason=''):
+    base = getattr(settings, 'ADMISSIONS_PORTAL_URL', '') or getattr(settings, 'FRONTEND_URL', '')
+    base = base.rstrip('/')
+    params = {'status': status_value}
+    if reason:
+        params['reason'] = reason
+    return f"{base}/unsubscribe?{urlencode(params)}"
 
 class NewsletterViewSet(viewsets.ModelViewSet):
     queryset = NewsletterSubscription.objects.all()
@@ -129,22 +139,23 @@ class NewsletterViewSet(viewsets.ModelViewSet):
         """One-click unsubscribe via signed token embedded in email links."""
         token = request.query_params.get('token')
         if not token:
-            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=error&reason=missing_token")
+            return HttpResponseRedirect(_unsubscribe_result_url('error', 'missing_token'))
 
         try:
             email = _read_unsubscribe_token(token)
         except signing.SignatureExpired:
-            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=error&reason=expired")
+            return HttpResponseRedirect(_unsubscribe_result_url('error', 'expired'))
         except signing.BadSignature:
-            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=error&reason=invalid")
+            return HttpResponseRedirect(_unsubscribe_result_url('error', 'invalid'))
 
         try:
             subscription = NewsletterSubscription.objects.get(email=email)
             if subscription.status == 'active':
                 subscription.unsubscribe()
-            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=success")
+                return HttpResponseRedirect(_unsubscribe_result_url('success'))
+            return HttpResponseRedirect(_unsubscribe_result_url('success', 'already_unsubscribed'))
         except NewsletterSubscription.DoesNotExist:
-            return HttpResponseRedirect(f"{settings.FRONTEND_URL}/unsubscribe?status=error&reason=not_found")
+            return HttpResponseRedirect(_unsubscribe_result_url('error', 'not_found'))
 
     @action(detail=False, methods=['get'])
     def count(self, request):
@@ -230,6 +241,7 @@ class NewsletterCampaignViewSet(viewsets.ModelViewSet):
                     context={
                         'subject': campaign.subject,
                         'preview_text': campaign.preview_text or '',
+                        'header_label': 'Newsletter',
                         'html_body': campaign.html_body,
                         'subscriber_name': sub.name or 'Subscriber',
                         'unsubscribe_url': unsubscribe_url,

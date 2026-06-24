@@ -9,6 +9,8 @@ class ContactMessage(models.Model):
     message = models.TextField()
     is_read = models.BooleanField(default=False)
     status = models.CharField(max_length=20, default='pending')
+    follow_up_completed = models.BooleanField(default=False)
+    follow_up_completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

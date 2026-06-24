@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   MessageSquare, Search, Mail, Phone,
   CheckCircle2, Circle, RefreshCw,
-  AtSign, Smartphone,
+  AtSign, Smartphone, Clock, RotateCcw,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
+import { FollowUpForm } from '../../components/FollowUpForm'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Dialog } from '../../components/ui/dialog'
@@ -17,10 +18,12 @@ import type { ContactMessage } from '../../types'
 
 const PAGE_SIZE = 20
 
-const STATUS_OPTIONS = [
-  { value: 'all',     label: 'All messages' },
-  { value: 'unread',  label: 'Unread' },
-  { value: 'read',    label: 'Read' },
+type FollowUpFilter = 'pending' | 'done'
+
+const READ_OPTIONS = [
+  { value: 'all',    label: 'All messages' },
+  { value: 'unread', label: 'Unread' },
+  { value: 'read',   label: 'Read' },
 ]
 
 const SORT_OPTIONS = [
@@ -29,23 +32,47 @@ const SORT_OPTIONS = [
   { value: 'name',        label: 'Name A–Z' },
 ]
 
+// ─── Follow-up status tabs ────────────────────────────────────────────────────
 
-function MessageDetailDialog({ msg, onClose, onMarkRead }: {
+function FollowUpTabs({ value, onChange }: {
+  value: FollowUpFilter
+  onChange: (v: FollowUpFilter) => void
+}) {
+  return (
+    <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
+      {([
+        { id: 'pending' as FollowUpFilter, label: 'Needs Follow-up', icon: Clock },
+        { id: 'done'    as FollowUpFilter, label: 'Completed',        icon: CheckCircle2 },
+      ]).map(({ id, label, icon: Icon }) => (
+        <button key={id} onClick={() => onChange(id)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            value === id
+              ? 'bg-background shadow-sm text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}>
+          <Icon className="w-3.5 h-3.5" />{label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+// ─── Detail dialog ────────────────────────────────────────────────────────────
+
+function MessageDetailDialog({ msg, onClose, onMarkRead, onMarkCompleted, onRevertCompleted }: {
   msg: ContactMessage
   onClose: () => void
   onMarkRead: (id: string) => void
+  onMarkCompleted: (id: string) => void
+  onRevertCompleted: (id: string) => void
 }) {
+  const [showFollowUp, setShowFollowUp] = useState(false)
   const preferredIcon = msg.preferred_contact === 'phone'
     ? <Smartphone className="w-3.5 h-3.5" />
     : <Mail className="w-3.5 h-3.5" />
 
   return (
-    <Dialog
-      open
-      onClose={onClose}
-      title={msg.subject || '(No subject)'}
-      className="max-w-lg"
-    >
+    <Dialog open onClose={onClose} title={msg.subject || '(No subject)'} className="max-w-lg">
       <div className="space-y-5">
 
         {/* Sender info */}
@@ -60,20 +87,27 @@ function MessageDetailDialog({ msg, onClose, onMarkRead }: {
                 {new Date(msg.created_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })}
               </p>
             </div>
-            <span className={`ml-auto inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${
-              msg.is_read
-                ? 'bg-muted text-muted-foreground border-border'
-                : 'bg-primary/10 text-primary border-primary/20'
-            }`}>
-              {msg.is_read ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
-              {msg.is_read ? 'Read' : 'Unread'}
-            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${
+                msg.is_read
+                  ? 'bg-muted text-muted-foreground border-border'
+                  : 'bg-primary/10 text-primary border-primary/20'
+              }`}>
+                {msg.is_read ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+                {msg.is_read ? 'Read' : 'Unread'}
+              </span>
+              {msg.follow_up_completed && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border bg-success/10 text-success border-success/20">
+                  <CheckCircle2 className="w-3 h-3" /> Done
+                </span>
+              )}
+            </div>
           </div>
           <Separator />
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <a href={`mailto:${msg.email}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors">
+            <button onClick={() => setShowFollowUp(true)} className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors">
               <AtSign className="w-3.5 h-3.5 shrink-0" /> {msg.email}
-            </a>
+            </button>
             {msg.phone && (
               <a href={`tel:${msg.phone}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors">
                 <Phone className="w-3.5 h-3.5 shrink-0" /> {msg.phone}
@@ -96,35 +130,46 @@ function MessageDetailDialog({ msg, onClose, onMarkRead }: {
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 pt-1">
+        <div className="flex gap-2 pt-1 flex-wrap">
           {!msg.is_read && (
-            <Button
-              className="flex-1 gap-1.5"
-              onClick={() => { onMarkRead(msg.id); onClose() }}
-            >
+            <Button className="flex-1 gap-1.5 min-w-[120px]" onClick={() => { onMarkRead(msg.id); onClose() }}>
               <CheckCircle2 className="w-4 h-4" /> Mark as Read
             </Button>
           )}
-          <a
-            href={`mailto:${msg.email}?subject=Re: ${encodeURIComponent(msg.subject ?? '')}`}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-border hover:border-primary hover:text-primary text-sm font-medium transition-colors"
-          >
+          <button onClick={() => setShowFollowUp((v) => !v)}
+            className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-border hover:border-primary hover:text-primary text-sm font-medium transition-colors">
             <Mail className="w-4 h-4" /> Reply by Email
-          </a>
+          </button>
+          {!msg.follow_up_completed ? (
+            <Button variant="outline" className="flex-1 gap-1.5 min-w-[120px]"
+              onClick={() => { onMarkCompleted(msg.id); onClose() }}>
+              <CheckCircle2 className="w-4 h-4 text-success" /> Mark Follow-up Done
+            </Button>
+          ) : (
+            <Button variant="outline" className="flex-1 gap-1.5 min-w-[120px]"
+              onClick={() => { onRevertCompleted(msg.id); onClose() }}>
+              <RotateCcw className="w-4 h-4 text-warning" /> Undo Completed
+            </Button>
+          )}
         </div>
+
+        {showFollowUp && (
+          <FollowUpForm to={msg.email} name={msg.name}
+            defaultSubject={`Re: ${msg.subject ?? ''}`} onDone={() => setShowFollowUp(false)} />
+        )}
       </div>
     </Dialog>
   )
 }
 
+// ─── Message row ──────────────────────────────────────────────────────────────
+
 function MessageRow({ msg, onClick }: { msg: ContactMessage; onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
+    <button onClick={onClick}
       className={`w-full flex items-start gap-4 px-4 py-3.5 text-left hover:bg-muted/40 transition-colors border-b border-border last:border-0 ${
         !msg.is_read ? 'bg-primary/3' : ''
-      }`}
-    >
+      }`}>
       <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
         !msg.is_read ? 'bg-primary/15' : 'bg-muted'
       }`}>
@@ -134,11 +179,12 @@ function MessageRow({ msg, onClick }: { msg: ContactMessage; onClick: () => void
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <span className={`text-sm truncate ${!msg.is_read ? 'font-semibold' : 'font-medium'}`}>
-            {msg.name}
-          </span>
-          {!msg.is_read && (
-            <span className="shrink-0 w-2 h-2 rounded-full bg-primary" />
+          <span className={`text-sm truncate ${!msg.is_read ? 'font-semibold' : 'font-medium'}`}>{msg.name}</span>
+          {!msg.is_read && <span className="shrink-0 w-2 h-2 rounded-full bg-primary" />}
+          {msg.follow_up_completed && (
+            <span className="shrink-0 inline-flex items-center gap-0.5 text-xs font-medium text-success">
+              <CheckCircle2 className="w-3 h-3" /> Done
+            </span>
           )}
         </div>
         <p className={`text-xs truncate mt-0.5 ${!msg.is_read ? 'text-foreground' : 'text-muted-foreground'}`}>
@@ -159,8 +205,11 @@ function MessageRow({ msg, onClick }: { msg: ContactMessage; onClick: () => void
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export function Messages() {
   const qc = useQueryClient()
+  const [followUp, setFollowUp] = useState<FollowUpFilter>('pending')
   const [search, setSearch] = useState('')
   const [readFilter, setReadFilter] = useState('all')
   const [sort, setSort] = useState('-created_at')
@@ -170,6 +219,7 @@ export function Messages() {
   const params = {
     search: search || undefined,
     is_read: readFilter === 'unread' ? 'false' : readFilter === 'read' ? 'true' : undefined,
+    follow_up_completed: followUp === 'done' ? 'true' : 'false',
     ordering: sort,
     page,
     page_size: PAGE_SIZE,
@@ -196,6 +246,38 @@ export function Messages() {
     onError: () => toast.error('Could not update message'),
   })
 
+  const markCompleted = useMutation({
+    mutationFn: (id: string) => api.markMessageCompleted(id),
+    onSuccess: (_, id) => {
+      qc.setQueryData(['messages', params], (old: typeof data) => {
+        if (!old) return old
+        const results = (Array.isArray(old) ? old : old.results ?? []).map((m: ContactMessage) =>
+          m.id === id ? { ...m, follow_up_completed: true } : m
+        )
+        return Array.isArray(old) ? results : { ...old, results }
+      })
+      qc.invalidateQueries({ queryKey: ['messages'] })
+      toast.success('Follow-up marked as completed')
+    },
+    onError: () => toast.error('Could not update message'),
+  })
+
+  const revertCompleted = useMutation({
+    mutationFn: (id: string) => api.revertMessageCompleted(id),
+    onSuccess: (_, id) => {
+      qc.setQueryData(['messages', params], (old: typeof data) => {
+        if (!old) return old
+        const results = (Array.isArray(old) ? old : old.results ?? []).map((m: ContactMessage) =>
+          m.id === id ? { ...m, follow_up_completed: false } : m
+        )
+        return Array.isArray(old) ? results : { ...old, results }
+      })
+      qc.invalidateQueries({ queryKey: ['messages'] })
+      toast.success('Reverted — marked as needs follow-up')
+    },
+    onError: () => toast.error('Could not update message'),
+  })
+
   const messages: ContactMessage[] = Array.isArray(data) ? data : (data?.results ?? [])
   const total = Array.isArray(data) ? data.length : (data?.count ?? 0)
   const unreadCount = messages.filter((m) => !m.is_read).length
@@ -214,24 +296,19 @@ export function Messages() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="font-heading text-2xl font-bold">Messages</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Contact form submissions from visitors
-            </p>
+            <p className="text-sm text-muted-foreground mt-0.5">Contact form submissions from visitors</p>
           </div>
-          <button
-            onClick={() => refetch()}
-            className="p-2 rounded-xl border border-border hover:bg-muted transition-colors text-muted-foreground"
-            title="Refresh"
-          >
+          <button onClick={() => refetch()}
+            className="p-2 rounded-xl border border-border hover:bg-muted transition-colors text-muted-foreground" title="Refresh">
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Stats row */}
+        {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            { label: 'Total',  value: total,        icon: MessageSquare },
-            { label: 'Unread', value: unreadCount,   icon: Circle,       accent: unreadCount > 0 },
+            { label: 'Total',  value: total,             icon: MessageSquare },
+            { label: 'Unread', value: unreadCount,        icon: Circle, accent: unreadCount > 0 },
             { label: 'Read',   value: total - unreadCount, icon: CheckCircle2 },
           ].map(({ label, value, icon: Icon, accent }) => (
             <div key={label} className={`rounded-2xl border bg-card p-4 flex items-center gap-3 ${accent ? 'border-primary/20 bg-primary/5' : 'border-border'}`}>
@@ -246,19 +323,18 @@ export function Messages() {
           ))}
         </div>
 
+        {/* Follow-up tabs */}
+        <FollowUpTabs value={followUp} onChange={(v) => { setFollowUp(v); setPage(1) }} />
+
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <Input
-              className="pl-9 h-9 rounded-xl"
-              placeholder="Search name, email or subject…"
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-            />
+            <Input className="pl-9 h-9 rounded-xl" placeholder="Search name, email or subject…"
+              value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} />
           </div>
           <div className="w-40">
-            <Select value={readFilter} onChange={(v) => { setReadFilter(v); setPage(1) }} options={STATUS_OPTIONS} />
+            <Select value={readFilter} onChange={(v) => { setReadFilter(v); setPage(1) }} options={READ_OPTIONS} />
           </div>
           <div className="w-40">
             <Select value={sort} onChange={setSort} options={SORT_OPTIONS} />
@@ -275,7 +351,9 @@ export function Messages() {
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
               <MessageSquare className="w-8 h-8 opacity-30" />
-              <p className="text-sm">No messages found</p>
+              <p className="text-sm">
+                {followUp === 'done' ? 'No completed follow-ups yet.' : 'No messages found'}
+              </p>
             </div>
           ) : (
             messages.map((msg) => (
@@ -287,16 +365,10 @@ export function Messages() {
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span className="text-muted-foreground">
-              Page {page} of {totalPages} · {total} total
-            </span>
+            <span className="text-muted-foreground">Page {page} of {totalPages} · {total} total</span>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Previous
-              </Button>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                Next
-              </Button>
+              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</Button>
+              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</Button>
             </div>
           </div>
         )}
@@ -308,6 +380,8 @@ export function Messages() {
           msg={selected}
           onClose={() => setSelected(null)}
           onMarkRead={(id) => markRead.mutate(id)}
+          onMarkCompleted={(id) => markCompleted.mutate(id)}
+          onRevertCompleted={(id) => revertCompleted.mutate(id)}
         />
       )}
     </AdminLayout>

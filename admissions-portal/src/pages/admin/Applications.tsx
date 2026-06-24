@@ -6,6 +6,7 @@ import { AdminLayout } from '../../components/AdminLayout'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Button } from '../../components/ui/button'
+import { UnderlineTabs } from '../../components/ui/tabs'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate } from '../../lib/utils'
 import type { Application } from '../../types'
@@ -30,6 +31,11 @@ const SORT_OPTIONS = [
 
 const PAGE_SIZE = 15
 
+const INTAKE_TABS = [
+  { value: 'with', label: 'With intake dates' },
+  { value: 'without', label: 'No intake dates' },
+] as const
+
 
 const STATUS_DOT: Record<string, string> = {
   pending: 'bg-warning',
@@ -48,9 +54,10 @@ export function Applications() {
   const [searchTerm, setSearchTerm] = useState('')
   const [ordering, setOrdering] = useState('-applied_at')
   const [page, setPage] = useState(1)
+  const [intakeTab, setIntakeTab] = useState<(typeof INTAKE_TABS)[number]['value']>('with')
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'applications', { status, searchTerm, ordering, page }],
+    queryKey: ['admin', 'applications', { status, searchTerm, ordering, page, intakeTab }],
     queryFn: () =>
       api.getApplications({
         status: status === 'all' ? undefined : status,
@@ -58,6 +65,7 @@ export function Applications() {
         ordering,
         page,
         page_size: PAGE_SIZE,
+        intake_status: intakeTab,
       }),
     placeholderData: (prev) => prev,
   })
@@ -77,10 +85,20 @@ export function Applications() {
           <div>
             <h1 className="font-heading text-2xl font-bold">Applications</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {isLoading ? 'Loading…' : `${total} application${total !== 1 ? 's' : ''} total`}
+              {isLoading ? 'Loading…' : `${total} application${total !== 1 ? 's' : ''} ${intakeTab === 'with' ? 'with intake dates' : 'without intake dates'}`}
             </p>
           </div>
         </div>
+
+        <UnderlineTabs
+          tabs={[...INTAKE_TABS]}
+          active={intakeTab}
+          onChange={(value) => {
+            setIntakeTab(value as typeof intakeTab)
+            setPage(1)
+          }}
+          className="overflow-x-auto"
+        />
 
         {/* Filters bar */}
         <div className="flex flex-col sm:flex-row gap-2.5">
@@ -171,6 +189,12 @@ export function Applications() {
                     {app.email}
                     <span className="mx-1.5 opacity-40">·</span>
                     {app.program_name}
+                    {app.start_date && (
+                      <>
+                        <span className="mx-1.5 opacity-40">·</span>
+                        Intake {formatDate(app.start_date)}
+                      </>
+                    )}
                   </p>
                 </div>
 

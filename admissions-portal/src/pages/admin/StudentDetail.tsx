@@ -8,7 +8,63 @@ import { Badge } from '../../components/ui/badge'
 import { Separator } from '../../components/ui/separator'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate } from '../../lib/utils'
-import type { Payment } from '../../types'
+import type { FinancialReconciliation, Payment, ReconciliationLedgerLine } from '../../types'
+
+const completedStatuses = ['completed', 'paid', 'success']
+
+function money(value: number | string | null | undefined) {
+  return Number(value ?? 0).toLocaleString()
+}
+
+function paymentStatusClass(status: string) {
+  if (completedStatuses.includes(status)) return 'bg-success/10 text-success'
+  if (status === 'pending' || status === 'processing') return 'bg-warning/10 text-warning'
+  if (status === 'refunded') return 'bg-muted text-muted-foreground'
+  return 'bg-destructive/10 text-destructive'
+}
+
+function buildLedgerFallback(reconciliation: FinancialReconciliation | undefined, payments: Payment[]): ReconciliationLedgerLine[] {
+  const totalFee = Number(reconciliation?.total_fee ?? 0)
+  let runningBalance = totalFee
+  const lines: ReconciliationLedgerLine[] = totalFee > 0
+    ? [{
+        date: null,
+        type: 'fee',
+        description: 'Program fee',
+        status: 'posted',
+        debit: String(totalFee),
+        credit: '0',
+        balance: String(totalFee),
+        applied: true,
+      }]
+    : []
+
+  const sorted = [...payments].sort((a, b) => {
+    const aDate = new Date(a.payment_date ?? a.created_at).getTime()
+    const bDate = new Date(b.payment_date ?? b.created_at).getTime()
+    return aDate - bDate
+  })
+
+  sorted.forEach((payment) => {
+    const applied = completedStatuses.includes(payment.status)
+    const credit = applied ? Number(payment.amount) : 0
+    runningBalance = Math.max(0, runningBalance - credit)
+    lines.push({
+      date: payment.payment_date ?? payment.created_at,
+      type: 'payment',
+      description: payment.description || payment.program_name || 'Payment received',
+      program_name: payment.program_name,
+      reference: payment.payment_reference || payment.transaction_id || payment.payment_id || payment.id,
+      status: payment.status,
+      debit: '0',
+      credit: String(credit),
+      balance: String(runningBalance),
+      applied,
+    })
+  })
+
+  return lines
+}
 
 export function StudentDetail() {
   const { uid } = useParams({ from: '/admin/students/$uid' })
@@ -47,6 +103,9 @@ export function StudentDetail() {
   const payments = data.payments ?? []
   const enrollment = data.enrollments?.[0]
   const reconciliation = data.reconciliation
+  const ledgerLines = reconciliation?.ledger?.length
+    ? reconciliation.ledger
+    : buildLedgerFallback(reconciliation, payments)
 
   const totalPaid = (payments ?? [])
     .filter((p: Payment) => ['completed', 'paid', 'success'].includes(p.status))
@@ -54,7 +113,7 @@ export function StudentDetail() {
 
   return (
     <AdminLayout>
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => navigate({ to: '/admin/applications' })}>
             <ArrowLeft className="w-4 h-4 mr-1" /> Back
@@ -150,15 +209,20 @@ export function StudentDetail() {
 
         {/* Financial reconciliation */}
         <Card>
-          <CardContent className="p-5 space-y-3">
+          <CardContent className="p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <WalletCards className="w-4 h-4 text-primary" />
-                <h2 className="font-semibold text-sm">Financial Reconciliation</h2>
+                <div>
+                  <h2 className="font-semibold text-sm">Financial Reconciliation</h2>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Debit fees, credit completed payments, and confirm the remaining balance.
+                  </p>
+                </div>
               </div>
               {reconciliation && (
                 <Badge className={reconciliation.status === 'paid' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}>
-                  {reconciliation.status === 'paid' ? 'Settled' : 'Outstanding'}
+                  {reconciliation.status === 'paid' ? 'Settled' : `KSh ${money(reconciliation.amount_remaining)} remaining`}
                 </Badge>
               )}
             </div>
@@ -177,9 +241,62 @@ export function StudentDetail() {
                     </div>
                   ))}
                 </div>
-                <div className="divide-y divide-border">
+                {ledgerLines.length > 0 && (
+                  <div className="overflow-x-auto rounded-xl border border-border">
+                    <table className="w-full min-w-[720px] text-sm">
+                      <thead className="bg-muted/50 text-xs text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-3 text-left font-medium">Date</th>
+                          <th className="px-4 py-3 text-left font-medium">Details</th>
+                          <th className="px-4 py-3 text-right font-medium">Debit</th>
+                          <th className="px-4 py-3 text-right font-medium">Credit</th>
+                          <th className="px-4 py-3 text-right font-medium">Balance</th>
+                          <th className="px-4 py-3 text-left font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {ledgerLines.map((line, index) => (
+                          <tr key={`${line.type}-${line.reference ?? line.description}-${index}`} className={!line.applied ? 'bg-muted/20' : undefined}>
+                            <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">{formatDate(line.date ?? undefined)}</td>
+                            <td className="px-4 py-3">
+                              <p className="font-medium">{line.description}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {line.reference ? `Ref: ${line.reference}` : line.type === 'fee' ? 'Fee posted' : 'No reference'}
+                                {!line.applied && ' · Not applied'}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3 text-right font-medium">
+                              {Number(line.debit) > 0 ? `KSh ${money(line.debit)}` : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right font-medium text-success">
+                              {Number(line.credit) > 0 ? `KSh ${money(line.credit)}` : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold">KSh {money(line.balance)}</td>
+                            <td className="px-4 py-3">
+                              <Badge className={line.type === 'fee' ? 'bg-primary/10 text-primary' : paymentStatusClass(line.status)}>
+                                {line.type === 'fee' ? 'Fee' : statusText(line.status)}
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-muted/30">
+                        <tr>
+                          <td className="px-4 py-3 font-semibold" colSpan={2}>Current position</td>
+                          <td className="px-4 py-3 text-right font-semibold">KSh {money(reconciliation.total_fee)}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-success">KSh {money(reconciliation.amount_paid)}</td>
+                          <td className={`px-4 py-3 text-right font-bold ${Number(reconciliation.amount_remaining) > 0 ? 'text-destructive' : 'text-success'}`}>
+                            KSh {money(reconciliation.amount_remaining)}
+                          </td>
+                          <td />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                )}
+                <div className="divide-y divide-border rounded-xl border border-border">
                   {reconciliation.items.map((item) => (
-                    <div key={item.enrollment_id ?? item.program_id ?? item.program_name} className="py-3 last:pb-0">
+                    <div key={item.enrollment_id ?? item.program_id ?? item.program_name} className="p-3">
                       <div className="flex justify-between gap-3 text-sm">
                         <div>
                           <p className="font-semibold">{item.program_name || 'Program fees'}</p>

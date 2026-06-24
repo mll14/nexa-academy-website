@@ -1,6 +1,10 @@
 import json
 import logging
+import re
+from urllib.parse import urlparse
 from decimal import Decimal
+from html import escape
+from html.parser import HTMLParser
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -9,12 +13,14 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.db import transaction
-from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, PaymentPlanChangeRequest
+from django.shortcuts import get_object_or_404
+from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, LeadAdminNote, PaymentPlanChangeRequest
 from .serializers import (
     ProgramSerializer, EnrollmentSerializer, StudentProgramEnrolledSerializer,
     ProgramProgressSerializer, CertificateSerializer, SimpleProgramProgressSerializer,
     EnrollStudentSerializer, ProgramInterestSerializer, ProgramIntakeSerializer,
-    HelpMeLeadSerializer, IncompleteApplicationSerializer, PaymentPlanChangeRequestSerializer,
+    HelpMeLeadSerializer, IncompleteApplicationSerializer, LeadAdminNoteSerializer, PaymentPlanChangeRequestSerializer,
+    normalize_payment_plan,
 )
 from accounts.permissions import IsAdminUser
 from django.conf import settings
@@ -24,6 +30,99 @@ from applications.models import Application
 from notifications.models import Notification
 
 logger = logging.getLogger(__name__)
+
+
+_NOTE_ALLOWED_TAGS = frozenset({
+    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's',
+    'ul', 'ol', 'li', 'blockquote', 'a',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'pre', 'code',
+})
+_NOTE_ALLOWED_ATTRS = {'a': {'href', 'title'}}
+_SAFE_HREF_SCHEMES = frozenset({'http', 'https', 'mailto', ''})
+
+
+class _AdminNoteHTMLCleaner(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.parts = []
+        self.skip_depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag in {'script', 'style'}:
+            self.skip_depth += 1
+            return
+        if self.skip_depth or tag not in _NOTE_ALLOWED_TAGS:
+            return
+
+        cleaned_attrs = []
+        for name, value in attrs:
+            name = name.lower()
+            if name not in _NOTE_ALLOWED_ATTRS.get(tag, set()) or value is None:
+                continue
+            if name == 'href':
+                # Strip control characters before parsing to prevent scheme-bypass via \x00 etc.
+                normalized = re.sub(r'[\x00-\x20]+', '', value)
+                scheme = urlparse(normalized).scheme.lower()
+                if scheme not in _SAFE_HREF_SCHEMES:
+                    continue
+            cleaned_attrs.append(f'{name}="{escape(value, quote=True)}"')
+
+        suffix = f" {' '.join(cleaned_attrs)}" if cleaned_attrs else ''
+        self.parts.append(f'<{tag}{suffix}>')
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if tag in {'script', 'style'} and self.skip_depth:
+            self.skip_depth -= 1
+            return
+        if self.skip_depth or tag not in _NOTE_ALLOWED_TAGS or tag == 'br':
+            return
+        self.parts.append(f'</{tag}>')
+
+    def handle_data(self, data):
+        if not self.skip_depth:
+            self.parts.append(escape(data))
+
+    def handle_entityref(self, name):
+        if not self.skip_depth:
+            self.parts.append(f'&{name};')
+
+    def handle_charref(self, name):
+        if not self.skip_depth:
+            self.parts.append(f'&#{name};')
+
+
+def _clean_admin_note_html(html):
+    if not html:
+        return ''
+    cleaner = _AdminNoteHTMLCleaner()
+    cleaner.feed(html)
+    cleaner.close()
+    return ''.join(cleaner.parts)
+
+
+def _admissions_notification_email():
+    return getattr(settings, 'ADMISSIONS_NOTIFICATION_EMAIL', 'admissions@nexaacademy.co.ke')
+
+
+def _admissions_portal_url(path=''):
+    base = getattr(settings, 'ADMISSIONS_PORTAL_URL', '') or getattr(settings, 'FRONTEND_URL', '')
+    base = base.rstrip('/')
+    return f"{base}{path}" if base else path
+
+
+def _admin_email_recipients():
+    emails = list(User.objects.filter(role='admin').exclude(email='').values_list('email', flat=True))
+    fallback = _admissions_notification_email()
+    if fallback:
+        emails.append(fallback)
+    return list(dict.fromkeys(email for email in emails if email))
+
+
+def _money(value):
+    return f"KSh {Decimal(str(value or 0)):,.2f}"
 
 
 
@@ -248,7 +347,7 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_permissions(self):
-        if self.action in ['update', 'partial_update', 'destroy']:
+        if self.action in ['update', 'partial_update', 'destroy', 'approve', 'reject']:
             permission_classes = [IsAuthenticated, IsAdminUser]
         else:
             permission_classes = [IsAuthenticated]
@@ -260,6 +359,86 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
         if getattr(user, 'role', None) == 'admin':
             return qs
         return qs.filter(student=user)
+
+    def _email_context(self, change_request, **extra):
+        enrollment = change_request.enrollment
+        student = change_request.student
+        context = {
+            'student_name': student.display_name or student.email,
+            'student_email': student.email,
+            'program_name': enrollment.program_name,
+            'current_payment_plan': change_request.current_payment_plan or 'Standard plan',
+            'current_installment_amount': _money(change_request.current_installment_amount) if change_request.current_installment_amount else '',
+            'requested_payment_plan': change_request.requested_payment_plan,
+            'requested_installment_amount': _money(change_request.requested_installment_amount),
+            'approved_payment_plan': change_request.approved_payment_plan,
+            'approved_installment_amount': _money(change_request.approved_installment_amount) if change_request.approved_installment_amount else '',
+            'admin_notes': change_request.admin_notes,
+            'reason': change_request.reason,
+            'status': change_request.status,
+            'request_url': _admissions_portal_url('/admin/payment-plans'),
+            'student_dashboard_url': _admissions_portal_url('/student/dashboard'),
+            'frontend_url': getattr(settings, 'FRONTEND_URL', ''),
+            'admissions_url': getattr(settings, 'ADMISSIONS_PORTAL_URL', ''),
+        }
+        context.update(extra)
+        return context
+
+    def _send_request_emails(self, change_request):
+        student_context = self._email_context(
+            change_request,
+            header_label='Payment Plan',
+            preview_text=f"Your {change_request.requested_payment_plan} request was sent to admissions.",
+        )
+        send_html_email(
+            subject='Payment plan request received - Nexa Academy',
+            template_name='payment_plan_request_received.html',
+            context=student_context,
+            recipient_email=change_request.student.email,
+        )
+
+        admin_context = self._email_context(
+            change_request,
+            header_label='Payment Plan Request',
+            preview_text=f"{change_request.student.display_name or change_request.student.email} requested {change_request.requested_payment_plan}.",
+        )
+        for email in _admin_email_recipients():
+            send_html_email(
+                subject=f"Payment plan request - {change_request.student.display_name or change_request.student.email}",
+                template_name='manager_payment_plan_request.html',
+                context=admin_context,
+                recipient_email=email,
+            )
+
+    def _send_decision_emails(self, change_request):
+        approved = change_request.status == 'approved'
+        decision = 'approved' if approved else 'rejected'
+        student_context = self._email_context(
+            change_request,
+            decision=decision,
+            header_label='Payment Plan',
+            preview_text=f"Your payment plan request was {decision}.",
+        )
+        send_html_email(
+            subject=f"Payment plan request {decision} - Nexa Academy",
+            template_name='payment_plan_request_decision.html',
+            context=student_context,
+            recipient_email=change_request.student.email,
+        )
+
+        admin_context = self._email_context(
+            change_request,
+            decision=decision,
+            header_label='Payment Plan Decision',
+            preview_text=f"Payment plan request {decision} for {change_request.student.display_name or change_request.student.email}.",
+        )
+        for email in _admin_email_recipients():
+            send_html_email(
+                subject=f"Payment plan request {decision} - {change_request.student.display_name or change_request.student.email}",
+                template_name='manager_payment_plan_decision.html',
+                context=admin_context,
+                recipient_email=email,
+            )
 
     def perform_create(self, serializer):
         change_request = serializer.save()
@@ -275,6 +454,10 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
                 )
         except Exception:
             logger.exception('Failed to notify admins about payment plan change request %s', change_request.request_id)
+        try:
+            self._send_request_emails(change_request)
+        except Exception:
+            logger.exception('Failed to send payment plan request emails %s', change_request.request_id)
 
     def _sync_application_payment_plan(self, enrollment, payment_plan):
         Application.objects.filter(
@@ -288,12 +471,13 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
         if change_request.status != 'pending':
             return Response({'error': 'Only pending requests can be approved'}, status=status.HTTP_400_BAD_REQUEST)
 
-        approved_plan = (request.data.get('payment_plan') or change_request.requested_payment_plan).strip()
+        approved_plan_raw = request.data.get('payment_plan') or change_request.requested_payment_plan
+        approved_plan = normalize_payment_plan(approved_plan_raw)
         approved_amount = request.data.get('installment_amount') or change_request.requested_installment_amount
         admin_notes = request.data.get('admin_notes', '').strip()
 
         if not approved_plan:
-            return Response({'error': 'payment_plan is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Choose One-time Payment, 2 Installments, or 3 Installments'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             approved_amount = Decimal(str(approved_amount))
@@ -326,6 +510,11 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
                 link='/student/dashboard',
             )
 
+        try:
+            self._send_decision_emails(change_request)
+        except Exception:
+            logger.exception('Failed to send approved payment plan request emails %s', change_request.request_id)
+
         return Response(self.get_serializer(change_request).data)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
@@ -352,7 +541,38 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception('Failed to notify student about rejected payment plan request %s', change_request.request_id)
 
+        try:
+            self._send_decision_emails(change_request)
+        except Exception:
+            logger.exception('Failed to send rejected payment plan request emails %s', change_request.request_id)
+
         return Response(self.get_serializer(change_request).data)
+
+
+class LeadAdminNoteViewSet(viewsets.ModelViewSet):
+    serializer_class = LeadAdminNoteSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    http_method_names = ['get', 'post', 'head', 'options']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        qs = LeadAdminNote.objects.select_related('created_by')
+        lead_type = self.request.query_params.get('lead_type')
+        lead_id = self.request.query_params.get('lead_id')
+        if lead_type:
+            qs = qs.filter(lead_type=lead_type)
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
+
+    def perform_create(self, serializer):
+        html = _clean_admin_note_html(serializer.validated_data.get('html', ''))
+        serializer.save(
+            html=html,
+            created_by=self.request.user,
+            created_by_name=getattr(self.request.user, 'display_name', '') or self.request.user.email,
+            created_by_email=self.request.user.email,
+        )
 
 
 class ProgramProgressViewSet(viewsets.ModelViewSet):
@@ -614,6 +834,7 @@ class CMSIntakeSyncView(APIView):
             'max_seats': data.get('max_seats') or None,
             'seats_remaining': data.get('seats_remaining') or None,
             'status': intake_status,
+            'mode': data.get('mode', 'full_time_hybrid'),
             'notes': data.get('notes', ''),
             'source': 'cms',
             'last_synced_at': timezone.now(),
@@ -668,6 +889,10 @@ class ProgramInterestListView(APIView):
         if program_slug:
             qs = qs.filter(program_slug=program_slug)
 
+        follow_up_completed = request.query_params.get('follow_up_completed')
+        if follow_up_completed is not None:
+            qs = qs.filter(follow_up_completed=follow_up_completed.lower() in ('true', '1'))
+
         search = request.query_params.get('search', '').strip()
         if search:
             from django.db.models import Q
@@ -705,6 +930,29 @@ class ProgramInterestListView(APIView):
             'results': serializer.data,
             'program_counts': program_counts,
         })
+
+
+class ProgramInterestDetailView(APIView):
+    """Admin-only endpoint: retrieve or mark follow-up on one program interest submission."""
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get(self, request, pk):
+        interest = get_object_or_404(ProgramInterest, pk=pk)
+        return Response(ProgramInterestSerializer(interest).data)
+
+    def patch(self, request, pk):
+        interest = get_object_or_404(ProgramInterest, pk=pk)
+        action = request.data.get('action')
+        if action == 'complete':
+            interest.follow_up_completed = True
+            interest.follow_up_completed_at = timezone.now()
+        elif action == 'revert':
+            interest.follow_up_completed = False
+            interest.follow_up_completed_at = None
+        else:
+            return Response({'error': 'action must be "complete" or "revert"'}, status=400)
+        interest.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+        return Response(ProgramInterestSerializer(interest).data)
 
 
 class ProgramInterestNotifyView(APIView):
@@ -781,6 +1029,9 @@ class HelpMeLeadView(APIView):
         if not (request.user and request.user.is_authenticated and request.user.role == 'admin'):
             return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
         qs = HelpMeLead.objects.all()
+        follow_up_completed = request.query_params.get('follow_up_completed')
+        if follow_up_completed is not None:
+            qs = qs.filter(follow_up_completed=follow_up_completed.lower() in ('true', '1'))
         search = request.query_params.get('search', '').strip()
         if search:
             from django.db.models import Q
@@ -793,6 +1044,28 @@ class HelpMeLeadView(APIView):
         total = qs.count()
         items = qs[(page - 1) * page_size: page * page_size]
         return Response({'count': total, 'results': HelpMeLeadSerializer(items, many=True).data})
+
+
+class HelpMeLeadDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get(self, request, pk):
+        lead = get_object_or_404(HelpMeLead, pk=pk)
+        return Response(HelpMeLeadSerializer(lead).data)
+
+    def patch(self, request, pk):
+        lead = get_object_or_404(HelpMeLead, pk=pk)
+        action = request.data.get('action')
+        if action == 'complete':
+            lead.follow_up_completed = True
+            lead.follow_up_completed_at = timezone.now()
+        elif action == 'revert':
+            lead.follow_up_completed = False
+            lead.follow_up_completed_at = None
+        else:
+            return Response({'error': 'action must be "complete" or "revert"'}, status=400)
+        lead.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+        return Response(HelpMeLeadSerializer(lead).data)
 
 
 class IncompleteApplicationView(APIView):
@@ -825,11 +1098,14 @@ class IncompleteApplicationView(APIView):
         qs = IncompleteApplication.objects.annotate(
             has_submitted=Exists(
                 Application.objects.filter(
-                    email=OuterRef('email'),
-                    program=OuterRef('program_slug'),
+                    email__iexact=OuterRef('email'),
                 )
             )
         ).filter(has_submitted=False)
+
+        follow_up_completed = request.query_params.get('follow_up_completed')
+        if follow_up_completed is not None:
+            qs = qs.filter(follow_up_completed=follow_up_completed.lower() in ('true', '1'))
 
         search = request.query_params.get('search', '').strip()
         if search:
@@ -847,6 +1123,38 @@ class IncompleteApplicationView(APIView):
         total = qs.count()
         items = qs[(page - 1) * page_size: page * page_size]
         return Response({'count': total, 'results': IncompleteApplicationSerializer(items, many=True).data})
+
+
+class IncompleteApplicationDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get(self, request, pk):
+        from django.db.models import Exists, OuterRef
+        from applications.models import Application
+
+        qs = IncompleteApplication.objects.annotate(
+            has_submitted=Exists(
+                Application.objects.filter(
+                    email__iexact=OuterRef('email'),
+                )
+            )
+        ).filter(has_submitted=False)
+        incomplete = get_object_or_404(qs, pk=pk)
+        return Response(IncompleteApplicationSerializer(incomplete).data)
+
+    def patch(self, request, pk):
+        incomplete = get_object_or_404(IncompleteApplication, pk=pk)
+        action = request.data.get('action')
+        if action == 'complete':
+            incomplete.follow_up_completed = True
+            incomplete.follow_up_completed_at = timezone.now()
+        elif action == 'revert':
+            incomplete.follow_up_completed = False
+            incomplete.follow_up_completed_at = None
+        else:
+            return Response({'error': 'action must be "complete" or "revert"'}, status=400)
+        incomplete.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+        return Response(IncompleteApplicationSerializer(incomplete).data)
 
 
 # A lightweight Django view that accepts anonymous POSTs and is CSRF-exempt.

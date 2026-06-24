@@ -343,12 +343,28 @@ function ProgramsTab() {
 
 // ─── Intakes tab ─────────────────────────────────────────────────────────────
 
+type IntakeMode = 'full_time_hybrid' | 'full_time_remote' | 'part_time_hybrid' | 'part_time_remote'
+
+const INTAKE_MODE_OPTIONS = [
+  { value: 'full_time_hybrid', label: 'Full-time Hybrid' },
+  { value: 'full_time_remote', label: 'Full-time Remote' },
+  { value: 'part_time_hybrid', label: 'Part-time Hybrid' },
+  { value: 'part_time_remote', label: 'Part-time Remote' },
+]
+
+const INTAKE_MODE_LABELS: Record<string, string> = {
+  full_time_hybrid: 'Full-time Hybrid',
+  full_time_remote: 'Full-time Remote',
+  part_time_hybrid: 'Part-time Hybrid',
+  part_time_remote: 'Part-time Remote',
+}
+
 interface IntakeForm {
   program: string; start_date: string; end_date: string
   application_deadline: string; max_seats: string
-  status: 'open' | 'closed' | 'draft'; notes: string
+  status: 'open' | 'closed' | 'draft'; mode: IntakeMode; notes: string
 }
-const INTAKE_EMPTY: IntakeForm = { program: '', start_date: '', end_date: '', application_deadline: '', max_seats: '', status: 'open', notes: '' }
+const INTAKE_EMPTY: IntakeForm = { program: '', start_date: '', end_date: '', application_deadline: '', max_seats: '', status: 'open', mode: 'full_time_hybrid', notes: '' }
 
 function intakeStatusConfig(s: string) {
   if (s === 'open')   return { cls: 'bg-success/10 text-success border-success/20',         icon: CheckCircle2, label: 'Open' }
@@ -399,6 +415,13 @@ function IntakeFormFields({ form, setForm, programs }: {
           ]}
         />
       </FieldGroup>
+      <FieldGroup label="Mode">
+        <Select
+          value={form.mode}
+          onChange={(v) => setForm((p) => ({ ...p, mode: v as IntakeMode }))}
+          options={INTAKE_MODE_OPTIONS}
+        />
+      </FieldGroup>
       <FieldGroup label="Notes">
         <Input value={form.notes} onChange={set('notes')} placeholder="Optional notes" />
       </FieldGroup>
@@ -428,7 +451,7 @@ function IntakesTab() {
     end_date: f.end_date || undefined,
     application_deadline: f.application_deadline || undefined,
     max_seats: f.max_seats ? parseInt(f.max_seats) : undefined,
-    status: f.status, notes: f.notes || undefined,
+    status: f.status, mode: f.mode, notes: f.notes || undefined,
   })
 
   const createMutation = useMutation({
@@ -462,7 +485,7 @@ function IntakesTab() {
   })
 
   const openEdit = (intake: Intake) => {
-    setForm({ program: intake.program, start_date: intake.start_date, end_date: intake.end_date ?? '', application_deadline: intake.application_deadline ?? '', max_seats: intake.max_seats != null ? String(intake.max_seats) : '', status: intake.status, notes: intake.notes ?? '' })
+    setForm({ program: intake.program, start_date: intake.start_date, end_date: intake.end_date ?? '', application_deadline: intake.application_deadline ?? '', max_seats: intake.max_seats != null ? String(intake.max_seats) : '', status: intake.status, mode: intake.mode ?? 'full_time_hybrid', notes: intake.notes ?? '' })
     setShowForm('edit')
   }
 
@@ -509,6 +532,7 @@ function IntakesTab() {
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     Starts {formatDate(intake.start_date)}
+                    {intake.mode ? ` · ${INTAKE_MODE_LABELS[intake.mode] ?? intake.mode}` : ''}
                     {intake.application_deadline && ` · Deadline ${formatDate(intake.application_deadline)}`}
                     {intake.seats_remaining != null
                       ? ` · ${intake.seats_remaining} seats left`
@@ -551,6 +575,7 @@ function IntakesTab() {
               <DetailRow icon={<Clock className="w-4 h-4" />} label="Application deadline" value={selected.application_deadline ? formatDate(selected.application_deadline) : null} />
               <DetailRow icon={<Users className="w-4 h-4" />} label="Max seats" value={selected.max_seats != null ? String(selected.max_seats) : null} />
               <DetailRow icon={<Users className="w-4 h-4" />} label="Seats remaining" value={selected.seats_remaining != null ? String(selected.seats_remaining) : null} />
+              <DetailRow icon={<BookOpen className="w-4 h-4" />} label="Mode" value={selected.mode ? (INTAKE_MODE_LABELS[selected.mode] ?? selected.mode) : null} />
             </div>
 
             {selected.notes && (

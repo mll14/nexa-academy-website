@@ -9,7 +9,8 @@
 <div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:24px;border:1px solid #e2e8f0;">
   <p style="margin:0 0 8px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Your Application</p>
   <p style="margin:0 0 4px;font-size:14px;color:#2d3748;">Program: <strong>{{ program_name }}</strong></p>
-  {% if start_date %}<p style="margin:0;font-size:14px;color:#2d3748;">Intake start: <strong>{{ start_date }}</strong></p>{% endif %}
+  {% if start_date %}<p style="margin:0 0 4px;font-size:14px;color:#2d3748;">Intake start: <strong>{{ start_date }}</strong></p>{% endif %}
+  {% if intake_mode %}<p style="margin:0;font-size:14px;color:#2d3748;">Mode: <strong>{{ intake_mode }}</strong></p>{% endif %}
 </div>
 {% endif %}
 

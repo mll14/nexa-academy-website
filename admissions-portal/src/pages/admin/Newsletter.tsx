@@ -182,51 +182,99 @@ function ComposeView({
   return (
     <div className="flex flex-col h-full">
       {/* Top bar */}
-      <div className="flex items-center gap-3 mb-5">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" /> Back
-        </button>
-        <div className="h-4 w-px bg-border" />
-        <h2 className="font-heading text-lg font-bold">
-          {isEditing ? 'Edit Campaign' : 'New Campaign'}
-        </h2>
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {subscriberCount} active subscriber{subscriberCount !== 1 ? 's' : ''}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-          >
-            {saveMutation.isPending
-              ? <span className="w-3.5 h-3.5 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
-              : <Save className="w-3.5 h-3.5" />}
-            Save Draft
-          </Button>
-          <Button
-            size="sm"
-            className="gap-1.5"
-            onClick={handleSaveAndSend}
-            disabled={saveMutation.isPending || sendMutation.isPending}
-          >
-            <Send className="w-3.5 h-3.5" /> Send
-          </Button>
+      <div className="flex flex-col gap-4 mb-5">
+        <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onBack}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" /> Back
+            </button>
+            <div className="h-4 w-px bg-border" />
+            <div>
+              <h2 className="font-heading text-lg font-bold">
+                {isEditing ? 'Edit Campaign' : 'New Campaign'}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Uses the same Nexa Academy email template as admissions messages.
+              </p>
+            </div>
+          </div>
+          <div className="lg:ml-auto flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending
+                ? <span className="w-3.5 h-3.5 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
+                : <Save className="w-3.5 h-3.5" />}
+              Save Draft
+            </Button>
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={handleSaveAndSend}
+              disabled={saveMutation.isPending || sendMutation.isPending}
+            >
+              <Send className="w-3.5 h-3.5" /> Send
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+              <Mail className="w-4 h-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold font-heading">Nexa Email Template</p>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                Navy header, branded footer, unsubscribe links, and the same spacing used by admissions emails.
+              </p>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border bg-card p-4 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center shrink-0">
+              <Users className="w-4 h-4 text-muted-foreground" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">{subscriberCount} active subscriber{subscriberCount !== 1 ? 's' : ''}</p>
+              <p className="text-xs text-muted-foreground mt-1">The send confirmation will show this audience before delivery.</p>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-border bg-card p-4 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-4 h-4 text-success" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold">Preview before sending</p>
+              <p className="text-xs text-muted-foreground mt-1">Use the editor preview to review the exact email shell and content.</p>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Meta fields */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+      <div className="rounded-2xl border border-border bg-card p-4 mb-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <p className="text-sm font-semibold font-heading">Campaign Details</p>
+            <p className="text-xs text-muted-foreground">These appear in the recipient inbox before they open the email.</p>
+          </div>
+          <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border">
+            <Mail className="w-3.5 h-3.5" /> admissions@nexaacademy.co.ke
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="subject">Subject line *</Label>
           <Input
             id="subject"
-            placeholder="e.g. New cohort opens March 3rd 🎉"
+            placeholder="e.g. New cohort opens March 3rd"
             value={form.subject}
             onChange={(e) => patch('subject', e.target.value)}
           />
@@ -239,6 +287,7 @@ function ComposeView({
             value={form.preview_text}
             onChange={(e) => patch('preview_text', e.target.value)}
           />
+        </div>
         </div>
       </div>
 

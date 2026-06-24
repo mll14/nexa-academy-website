@@ -100,6 +100,35 @@ class ApplicationLog(models.Model):
         return f"{self.applicant_name}: {self.previous_status} → {self.new_status}"
 
 
+class ApplicationAdminNote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name='admin_note_logs')
+    stage = models.CharField(max_length=50)
+    html = models.TextField()
+    text = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name='application_admin_notes',
+    )
+    created_by_name = models.CharField(max_length=255, blank=True)
+    created_by_email = models.EmailField(blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'application_admin_notes'
+        indexes = [
+            models.Index(fields=['application', '-created_at']),
+            models.Index(fields=['created_by']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.application.full_name} note by {self.created_by_email or self.created_by_name}"
+
+
 class InterviewSlot(models.Model):
     application = models.OneToOneField(Application, on_delete=models.CASCADE, related_name='interview_slot')
     proposed_times = models.JSONField(default=list)   # list of ISO datetime strings
@@ -118,6 +147,49 @@ class InterviewSlot(models.Model):
 
     class Meta:
         db_table = 'interview_slots'
+
+
+class InterviewBlackout(models.Model):
+    date = models.DateField()
+    start_time = models.TimeField(null=True, blank=True)  # null = full-day block
+    end_time = models.TimeField(null=True, blank=True)
+    reason = models.CharField(max_length=255, blank=True)
+    gcal_event_id = models.CharField(max_length=255, blank=True)
+    created_by = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'interview_blackouts'
+        ordering = ['date', 'start_time']
+
+
+class CustomCalendarEvent(models.Model):
+    CATEGORY_CHOICES = (
+        ('interview_follow_up', 'Interview Follow-up'),
+        ('lead_follow_up', 'Lead Follow-up'),
+        ('personal', 'Personal'),
+        ('meeting', 'Meeting'),
+        ('other', 'Other'),
+    )
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title = models.CharField(max_length=255)
+    date = models.DateField()
+    start_time = models.TimeField(null=True, blank=True)
+    end_time = models.TimeField(null=True, blank=True)
+    all_day = models.BooleanField(default=False)
+    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES, default='other')
+    description = models.TextField(blank=True)
+    with_meet = models.BooleanField(default=False)
+    meet_url = models.URLField(blank=True)
+    attendees = models.JSONField(default=list, blank=True)  # list of email strings
+    gcal_event_id = models.CharField(max_length=255, blank=True)
+    created_by = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'custom_calendar_events'
+        ordering = ['date', 'start_time']
 
 
 class DraftApplication(models.Model):
