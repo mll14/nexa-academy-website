@@ -19,10 +19,11 @@ import * as api from '../../lib/api'
 import { formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { Payment, PaymentPlanChangeRequest } from '../../types'
+import { Pagination } from '../../components/ui/pagination'
 
 // ─── Transactions tab ────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 
 const TX_STATUS_OPTIONS = [
   { value: 'all', label: 'All Statuses' },
@@ -284,22 +285,14 @@ function TransactionsTab() {
         </div>
       )}
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-          <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} · {total} total
-          </p>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        pageSize={PAGE_SIZE}
+        onPrev={() => setPage((p) => p - 1)}
+        onNext={() => setPage((p) => p + 1)}
+      />
 
       {/* Transaction detail dialog */}
       {selected && (() => {

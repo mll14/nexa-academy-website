@@ -20,6 +20,7 @@ import { Textarea } from '../../components/ui/textarea'
 import * as api from '../../lib/api'
 import { formatDate, formatFullDateTime } from '../../lib/utils'
 import type { Appointment, AppointmentType, AppointmentHost, AvailableSlot } from '../../types'
+import { Pagination } from '../../components/ui/pagination'
 
 // ── List page constants ───────────────────────────────────────────────────────
 
@@ -57,7 +58,7 @@ const STATUS_STYLES: Record<string, string> = {
   no_show: 'bg-yellow-100 text-yellow-700',
 }
 
-const PAGE_SIZE = 15
+const PAGE_SIZE = 10
 
 function formatAppointmentTime(iso: string): string {
   const d = new Date(iso)
@@ -991,30 +992,14 @@ export function Appointments() {
           </table>
         </div>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">
-              Page {page} of {totalPages}
-            </span>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="px-3 py-1.5 rounded border text-sm disabled:opacity-40 hover:bg-muted transition-colors"
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="px-3 py-1.5 rounded border text-sm disabled:opacity-40 hover:bg-muted transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          pageSize={PAGE_SIZE}
+          onPrev={() => setPage(p => Math.max(1, p - 1))}
+          onNext={() => setPage(p => Math.min(totalPages, p + 1))}
+        />
       </div>
     </AdminLayout>
   )
