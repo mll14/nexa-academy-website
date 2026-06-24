@@ -24,6 +24,7 @@ interface Props {
   title?: string
   emptyText?: string
   allowFullscreen?: boolean
+  expanded?: boolean
 }
 
 function noteQueryKey(source: Source) {
@@ -32,7 +33,41 @@ function noteQueryKey(source: Source) {
     : ['admin-notes', 'lead', source.leadType, source.leadId]
 }
 
-function ToolbarButton({ active, disabled, onClick, children, label }: {
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  const weeks = Math.floor(days / 7)
+  if (weeks < 5) return `${weeks}w ago`
+  return formatFullDateTime(dateStr)
+}
+
+function AuthorAvatar({ name }: { name: string }) {
+  const initials = name
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2)
+  return (
+    <div className="h-7 w-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0 select-none">
+      {initials}
+    </div>
+  )
+}
+
+function ToolbarButton({
+  active,
+  disabled,
+  onClick,
+  children,
+  label,
+}: {
   active?: boolean
   disabled?: boolean
   onClick: () => void
@@ -46,8 +81,10 @@ function ToolbarButton({ active, disabled, onClick, children, label }: {
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className={`h-8 w-8 rounded-lg border border-border flex items-center justify-center transition-colors disabled:opacity-40 ${
-        active ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-muted'
+      className={`h-7 w-7 rounded flex items-center justify-center transition-colors disabled:opacity-30 ${
+        active
+          ? 'bg-primary/15 text-primary'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted/80'
       }`}
     >
       {children}
@@ -61,6 +98,7 @@ export function AdminNotesPanel({
   title = 'Admin Notes',
   emptyText = 'No internal notes yet.',
   allowFullscreen = true,
+  expanded = false,
 }: Props) {
   const qc = useQueryClient()
   const queryKey = noteQueryKey(source)
@@ -69,9 +107,10 @@ export function AdminNotesPanel({
 
   const { data: notes = [], isLoading } = useQuery({
     queryKey,
-    queryFn: () => source.kind === 'application'
-      ? api.getApplicationNotes(source.applicationId)
-      : api.getLeadNotes({ lead_type: source.leadType, lead_id: source.leadId }),
+    queryFn: () =>
+      source.kind === 'application'
+        ? api.getApplicationNotes(source.applicationId)
+        : api.getLeadNotes({ lead_type: source.leadType, lead_id: source.leadId }),
   })
 
   const editor = useEditor({
@@ -79,7 +118,7 @@ export function AdminNotesPanel({
     content: '',
     editorProps: {
       attributes: {
-        class: 'min-h-[120px] px-3 py-2 text-sm leading-relaxed outline-none',
+        class: `${expanded ? 'min-h-[320px]' : 'min-h-[110px]'} px-3 py-2.5 text-sm leading-relaxed outline-none`,
       },
     },
     onUpdate: ({ editor }) => setNoteText(editor.getText()),
@@ -107,101 +146,181 @@ export function AdminNotesPanel({
 
   const panel = (
     <div className="rounded-2xl border border-border bg-card overflow-hidden">
-      <div className="px-5 py-4 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-heading font-semibold text-sm">{title}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Internal rich-text notes visible only to admins. Current stage: {statusText(stage)}.
-          </p>
+      {/* Panel header */}
+      <div className="px-5 py-3.5 flex items-center justify-between gap-3 bg-muted/20">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <MessageSquarePlus className="w-4 h-4 text-primary shrink-0" />
+          <div className="min-w-0">
+            <h2 className="font-heading font-semibold text-sm leading-none">{title}</h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              Stage:{' '}
+              <span className="font-medium text-foreground">{statusText(stage)}</span>
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {allowFullscreen && (
-            <button
-              type="button"
-              aria-label="Open notes fullscreen"
-              title="Open notes fullscreen"
-              onClick={() => setFullscreenOpen(true)}
-              className="h-8 w-8 rounded-lg border border-border flex items-center justify-center bg-background hover:bg-muted transition-colors"
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
-          )}
-          <MessageSquarePlus className="w-4 h-4 text-primary" />
-        </div>
+        {allowFullscreen && (
+          <button
+            type="button"
+            aria-label="Open notes fullscreen"
+            title="Open notes fullscreen"
+            onClick={() => setFullscreenOpen(true)}
+            className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
+        )}
       </div>
       <Separator />
 
-      <div className="p-5 space-y-4">
-        <div className="rounded-xl border border-border bg-background overflow-hidden">
-          <div className="flex flex-wrap items-center gap-1.5 border-b border-border bg-muted/30 px-2 py-2">
-            <ToolbarButton label="Bold" active={editor?.isActive('bold')} onClick={() => editor?.chain().focus().toggleBold().run()}>
-              <Bold className="w-4 h-4" />
+      <div className="p-4 space-y-5">
+        {/* Editor card */}
+        <div className="rounded-xl border border-border bg-background overflow-hidden transition-shadow focus-within:ring-2 focus-within:ring-ring">
+          {/* Toolbar */}
+          <div className="flex items-center gap-0.5 border-b border-border bg-muted/30 px-2.5 py-1.5">
+            <ToolbarButton
+              label="Bold"
+              active={editor?.isActive('bold')}
+              onClick={() => editor?.chain().focus().toggleBold().run()}
+            >
+              <Bold className="w-3.5 h-3.5" />
             </ToolbarButton>
-            <ToolbarButton label="Italic" active={editor?.isActive('italic')} onClick={() => editor?.chain().focus().toggleItalic().run()}>
-              <Italic className="w-4 h-4" />
+            <ToolbarButton
+              label="Italic"
+              active={editor?.isActive('italic')}
+              onClick={() => editor?.chain().focus().toggleItalic().run()}
+            >
+              <Italic className="w-3.5 h-3.5" />
             </ToolbarButton>
-            <ToolbarButton label="Bullet list" active={editor?.isActive('bulletList')} onClick={() => editor?.chain().focus().toggleBulletList().run()}>
-              <List className="w-4 h-4" />
+            <span className="mx-1.5 h-4 w-px bg-border/70 shrink-0" />
+            <ToolbarButton
+              label="Bullet list"
+              active={editor?.isActive('bulletList')}
+              onClick={() => editor?.chain().focus().toggleBulletList().run()}
+            >
+              <List className="w-3.5 h-3.5" />
             </ToolbarButton>
-            <ToolbarButton label="Numbered list" active={editor?.isActive('orderedList')} onClick={() => editor?.chain().focus().toggleOrderedList().run()}>
-              <ListOrdered className="w-4 h-4" />
+            <ToolbarButton
+              label="Numbered list"
+              active={editor?.isActive('orderedList')}
+              onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+            >
+              <ListOrdered className="w-3.5 h-3.5" />
             </ToolbarButton>
-            <ToolbarButton label="Quote" active={editor?.isActive('blockquote')} onClick={() => editor?.chain().focus().toggleBlockquote().run()}>
-              <Quote className="w-4 h-4" />
+            <ToolbarButton
+              label="Quote"
+              active={editor?.isActive('blockquote')}
+              onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+            >
+              <Quote className="w-3.5 h-3.5" />
             </ToolbarButton>
-            <span className="mx-1 h-5 w-px bg-border" />
-            <ToolbarButton label="Undo" disabled={!editor?.can().undo()} onClick={() => editor?.chain().focus().undo().run()}>
-              <Undo2 className="w-4 h-4" />
+            <span className="mx-1.5 h-4 w-px bg-border/70 shrink-0" />
+            <ToolbarButton
+              label="Undo"
+              disabled={!editor?.can().undo()}
+              onClick={() => editor?.chain().focus().undo().run()}
+            >
+              <Undo2 className="w-3.5 h-3.5" />
             </ToolbarButton>
-            <ToolbarButton label="Redo" disabled={!editor?.can().redo()} onClick={() => editor?.chain().focus().redo().run()}>
-              <Redo2 className="w-4 h-4" />
+            <ToolbarButton
+              label="Redo"
+              disabled={!editor?.can().redo()}
+              onClick={() => editor?.chain().focus().redo().run()}
+            >
+              <Redo2 className="w-3.5 h-3.5" />
             </ToolbarButton>
           </div>
-          <EditorContent
-            editor={editor}
-            className="admin-note-editor [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground"
-          />
-        </div>
 
-        <div className="flex justify-end">
-          <Button size="sm" disabled={!canSave} onClick={() => createMutation.mutate()}>
-            {createMutation.isPending ? 'Saving...' : 'Save note'}
-          </Button>
-        </div>
-
-        <Separator />
-
-        {isLoading ? (
-          <div className="space-y-2">
-            {[...Array(2)].map((_, index) => (
-              <div key={index} className="h-20 rounded-xl bg-muted animate-pulse" />
-            ))}
+          {/* Content area with placeholder overlay */}
+          <div className="relative">
+            {!noteText.trim() && (
+              <p className="absolute top-2.5 left-3 text-sm text-muted-foreground/50 pointer-events-none select-none">
+                Add an internal note…
+              </p>
+            )}
+            <EditorContent
+              editor={editor}
+              className="admin-note-editor [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-[3px] [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted-foreground"
+            />
           </div>
-        ) : notes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{emptyText}</p>
-        ) : (
-          <div className="space-y-3">
-            {notes.map((note: AdminNote) => (
-              <div key={note.id} className="rounded-xl border border-border bg-muted/20 px-4 py-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold">{note.created_by_name || note.created_by_email || 'Admin'}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatFullDateTime(note.created_at)} · Stage: {statusText(note.stage)}
-                    </p>
-                  </div>
-                  {note.created_by_email && (
-                    <span className="text-xs text-muted-foreground">{note.created_by_email}</span>
-                  )}
-                </div>
-                <div
-                  className="mt-3 text-sm leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground"
-                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(note.html) }}
-                />
+
+          {/* Editor footer */}
+          <div className="flex items-center justify-between gap-3 border-t border-border bg-muted/20 px-3 py-2">
+            <span className="text-[11px] text-muted-foreground/50 tabular-nums">
+              {noteText.trim() ? `${noteText.trim().length} chars` : ''}
+            </span>
+            <Button size="sm" disabled={!canSave} onClick={() => createMutation.mutate()}>
+              {createMutation.isPending ? 'Saving…' : 'Add Note'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Notes history */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              History
+            </h3>
+            {!isLoading && notes.length > 0 && (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground">
+                {notes.length}
+              </span>
+            )}
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2 pt-0.5">
+              {[...Array(2)].map((_, i) => (
+                <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />
+              ))}
+            </div>
+          ) : notes.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-2.5 text-center">
+              <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center">
+                <MessageSquarePlus className="w-4 h-4 text-muted-foreground" />
               </div>
-            ))}
-          </div>
-        )}
+              <p className="text-sm text-muted-foreground">{emptyText}</p>
+            </div>
+          ) : (
+            <div className="space-y-2 pt-0.5">
+              {notes.map((note: AdminNote) => {
+                const authorName =
+                  note.created_by_name || note.created_by_email || 'Admin'
+                return (
+                  <div
+                    key={note.id}
+                    className="rounded-xl border border-border bg-muted/10 overflow-hidden flex"
+                  >
+                    <div className="w-[3px] bg-primary/30 shrink-0" />
+                    <div className="flex gap-3 px-3.5 py-3 flex-1 min-w-0">
+                      <AuthorAvatar name={authorName} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                          <span className="text-sm font-semibold leading-snug">
+                            {authorName}
+                          </span>
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground leading-none">
+                            {statusText(note.stage)}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mb-2.5">
+                          <span className="font-medium">{relativeTime(note.created_at)}</span>
+                          {' · '}
+                          {formatFullDateTime(note.created_at)}
+                        </p>
+                        <div
+                          className="text-sm leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-[3px] [&_blockquote]:border-primary/30 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-muted-foreground"
+                          dangerouslySetInnerHTML={{
+                            __html: DOMPurify.sanitize(note.html),
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -224,6 +343,7 @@ export function AdminNotesPanel({
               title={title}
               emptyText={emptyText}
               allowFullscreen={false}
+              expanded
             />
           </div>
         </Dialog>

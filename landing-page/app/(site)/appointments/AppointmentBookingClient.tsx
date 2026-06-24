@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
+import { useGoogleReCaptcha } from 'react-google-recaptcha-v3'
 import {
   Video, MapPin, User, Briefcase, ChevronRight, ChevronLeft,
   Calendar, Clock, Mail, Phone, CheckCircle2, AlertCircle, Loader2,
@@ -152,6 +153,7 @@ export function AppointmentBookingClient({ data }: { data: AppointmentsPageData 
     officeMapUrl,
   } = data
 
+  const { executeRecaptcha } = useGoogleReCaptcha()
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<FormState>({
     appointmentType: '', host: '', chosenTime: '', name: '', email: '', phone: '', reason: '', attendees: [],
@@ -226,6 +228,14 @@ export function AppointmentBookingClient({ data }: { data: AppointmentsPageData 
     if (!validateStep2()) return
     setSubmitting(true)
     setSubmitError('')
+    let recaptchaToken: string | undefined
+    if (executeRecaptcha) {
+      try {
+        recaptchaToken = await executeRecaptcha('appointment_book')
+      } catch {
+        // non-fatal
+      }
+    }
     const result = await bookAppointment({
       name: form.name.trim(),
       email: form.email.trim(),
@@ -235,6 +245,7 @@ export function AppointmentBookingClient({ data }: { data: AppointmentsPageData 
       chosen_time: form.chosenTime,
       reason: form.reason.trim(),
       attendees: form.attendees.length > 0 ? form.attendees : undefined,
+      recaptchaToken,
     })
     setSubmitting(false)
     if (result.success) setDone(true)

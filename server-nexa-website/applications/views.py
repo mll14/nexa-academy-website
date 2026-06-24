@@ -1071,6 +1071,58 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         return Response({'status': 'cancelled'})
 
+    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
+    def update_interview_details(self, request, pk=None):
+        application = self.get_object()
+        user = request.user
+        is_admin = getattr(user, 'role', None) == 'admin'
+        is_owner = (
+            (application.user and hasattr(user, 'uid') and user.uid == application.user.uid)
+            or (hasattr(user, 'email') and application.email and user.email.lower() == application.email.lower())
+        )
+        if not is_admin and not is_owner:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        slot = getattr(application, 'interview_slot', None)
+        if not slot or not slot.gcal_event_id:
+            return Response({'error': 'No scheduled interview found'}, status=status.HTTP_400_BAD_REQUEST)
+
+        extra_guests = request.data.get('extra_guests')
+        if extra_guests is not None:
+            if not isinstance(extra_guests, list):
+                return Response({'error': 'extra_guests must be a list of email strings'}, status=status.HTTP_400_BAD_REQUEST)
+
+            from .gcal_service import update_interview_event_attendees, CalendarServiceError
+            try:
+                update_interview_event_attendees(slot.gcal_event_id, extra_guests, application)
+            except CalendarServiceError:
+                return Response({'error': 'Calendar unavailable, please try again'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+            slot.extra_guests = extra_guests
+            slot.save(update_fields=['extra_guests'])
+
+            try:
+                from zoneinfo import ZoneInfo
+                eat = ZoneInfo('Africa/Nairobi')
+                formatted_time = slot.chosen_time.astimezone(eat).strftime('%A, %d %B %Y at %I:%M %p EAT') if slot.chosen_time else ''
+                send_html_email(
+                    subject=f"Interview Update — {application.program_name}",
+                    template_name='interview_attendees_updated.html',
+                    context={
+                        'full_name': application.full_name,
+                        'program_name': application.program_name,
+                        'extra_guests': extra_guests,
+                        'meet_url': slot.meet_url or slot.zoom_link,
+                        'chosen_time': formatted_time,
+                        'frontend_url': settings.FRONTEND_URL,
+                    },
+                    recipient_email=application.email,
+                )
+            except Exception as exc:
+                logger.error('interview_attendees_updated email failed for %s: %s', application.email, exc)
+
+        return Response(InterviewSlotSerializer(slot).data)
+
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsAdminUser])
     def stats(self, request):
         total = Application.objects.count()

@@ -293,6 +293,40 @@ def update_interview_event(event_id, new_time):
         raise CalendarServiceError(str(exc))
 
 
+def update_interview_event_attendees(event_id, extra_guests, application):
+    """
+    Patch attendees on an existing Calendar event.
+    Always keeps delegate email + applicant email; extra_guests are added on top.
+    Raises CalendarServiceError on failure.
+    """
+    try:
+        service = _get_calendar_service()
+
+        seen = {settings.GCAL_DELEGATE_EMAIL, application.email}
+        attendees = [
+            {'email': settings.GCAL_DELEGATE_EMAIL},
+            {'email': application.email, 'displayName': application.full_name},
+        ]
+        for email in (extra_guests or []):
+            email = email.strip()
+            if email and email not in seen:
+                attendees.append({'email': email})
+                seen.add(email)
+
+        return service.events().patch(
+            calendarId=settings.GCAL_ADMISSIONS_CALENDAR_ID,
+            eventId=event_id,
+            body={'attendees': attendees},
+            sendUpdates='all',
+        ).execute()
+
+    except CalendarServiceError:
+        raise
+    except Exception as exc:
+        logger.error('gcal_service.update_interview_event_attendees failed: %s', exc)
+        raise CalendarServiceError(str(exc))
+
+
 def cancel_interview_event(event_id):
     """
     Delete an event from Google Calendar.

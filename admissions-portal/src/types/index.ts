@@ -107,6 +107,8 @@ export interface InterviewSlot {
   admin_approved: boolean
   completed: boolean
   gcal_event_id?: string
+  extra_guests?: string[]
+  student_gmail?: string
 }
 
 export interface Application {

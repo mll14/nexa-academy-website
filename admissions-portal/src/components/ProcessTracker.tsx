@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CheckCircle2, Clock, Calendar, CreditCard, RefreshCw, Video } from 'lucide-react'
+import { CheckCircle2, Clock, Calendar, CreditCard, RefreshCw, Video, UserPlus, X } from 'lucide-react'
 import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
@@ -55,10 +55,20 @@ export function ProcessTracker({
   const [submitting, setSubmitting] = useState(false)
   const [, setRescheduling] = useState(false)
   const [slotDialogOpen, setSlotDialogOpen] = useState(false)
+  const [extraGuests, setExtraGuests] = useState<string[]>([])
+  const [newGuestEmail, setNewGuestEmail] = useState('')
+  const [savingGuests, setSavingGuests] = useState(false)
 
   useEffect(() => {
     setSlot(initialSlot ?? null)
   }, [initialSlot])
+
+  // Sync extra guests from slot when slot identity changes
+  useEffect(() => {
+    setExtraGuests(slot?.extra_guests ?? [])
+    setNewGuestEmail('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot?.id])
 
   const fetchSlots = async () => {
     if (!applicationId) return
@@ -110,6 +120,29 @@ export function ProcessTracker({
       setSubmitting(false)
     }
   }
+
+  const handleSaveGuests = async () => {
+    if (!applicationId) return
+    setSavingGuests(true)
+    try {
+      const updated = await api.updateInterviewDetails(applicationId, { extra_guests: extraGuests })
+      setSlot(updated)
+      toast.success('Attendees updated — an email has been sent to the applicant.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to update attendees.')
+    } finally {
+      setSavingGuests(false)
+    }
+  }
+
+  const addGuest = () => {
+    const email = newGuestEmail.trim()
+    if (!email || extraGuests.includes(email)) return
+    setExtraGuests((prev) => [...prev, email])
+    setNewGuestEmail('')
+  }
+
+  const guestsChanged = JSON.stringify(extraGuests) !== JSON.stringify(slot?.extra_guests ?? [])
 
   if (!currentStatus) {
     return (
@@ -229,6 +262,48 @@ export function ProcessTracker({
                   Your meeting link will be sent to your email before the interview.
                 </p>
               )}
+              {/* Extra attendees */}
+              <div className="space-y-2 pt-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add people to the call</p>
+                {extraGuests.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {extraGuests.map((g) => (
+                      <span key={g} className="flex items-center gap-1 text-xs bg-muted rounded-full px-2.5 py-1">
+                        {g}
+                        <button
+                          onClick={() => setExtraGuests((prev) => prev.filter((e) => e !== g))}
+                          className="hover:text-destructive transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-1.5">
+                  <input
+                    type="email"
+                    placeholder="Enter email address…"
+                    value={newGuestEmail}
+                    onChange={(e) => setNewGuestEmail(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addGuest() } }}
+                    className="flex-1 text-xs h-8 rounded-md border border-input bg-background px-3 focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <button
+                    onClick={addGuest}
+                    disabled={!newGuestEmail.trim() || extraGuests.includes(newGuestEmail.trim())}
+                    className="h-8 px-2.5 rounded-md border border-input bg-background hover:bg-muted disabled:opacity-40 transition-colors shrink-0"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                {guestsChanged && (
+                  <Button size="sm" className="w-full" disabled={savingGuests} onClick={handleSaveGuests}>
+                    {savingGuests ? 'Saving…' : 'Save Attendees'}
+                  </Button>
+                )}
+              </div>
+
               {(() => {
                 const hoursUntil = slot.chosen_time
                   ? (new Date(slot.chosen_time).getTime() - Date.now()) / 3_600_000

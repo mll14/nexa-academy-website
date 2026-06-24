@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, RefreshCw, Ban, Trash2, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RefreshCw, Ban, Trash2, Plus, Maximize2, Minimize2 } from 'lucide-react'
 import { Button } from '../../ui/button'
 import { Dialog } from '../../ui/dialog'
 import { Select } from '../../ui/select'
@@ -369,6 +369,19 @@ function BottomBar({
   )
 }
 
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+
+function Tooltip({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="relative group">
+      {children}
+      <span className="pointer-events-none absolute top-full left-1/2 -translate-x-1/2 mt-1.5 whitespace-nowrap rounded-lg bg-popover border border-border px-2 py-1 text-[11px] font-medium text-popover-foreground shadow-md opacity-0 group-hover:opacity-100 transition-opacity z-50">
+        {label}
+      </span>
+    </div>
+  )
+}
+
 // ── CalendarView ──────────────────────────────────────────────────────────────
 
 interface Props {
@@ -385,6 +398,14 @@ export function CalendarView({ onInterviewClick, onIntakeClick }: Props) {
   const [externalPopup, setExternalPopup] = useState<{event:CalendarEvent;anchorRect?:DOMRect}|null>(null)
   const [showBlockModal, setShowBlockModal] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+
+  useEffect(() => {
+    if (!isFullscreen) return
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setIsFullscreen(false) }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [isFullscreen])
 
   const load = useCallback(async () => {
     const { start, end } = getViewRange(view, cursor)
@@ -410,7 +431,7 @@ export function CalendarView({ onInterviewClick, onIntakeClick }: Props) {
   const refresh = useCallback(() => { calendarService.clearCache(); load() }, [load])
 
   return (
-    <div className="flex flex-col h-full">
+    <div className={`flex flex-col h-full${isFullscreen ? ' fixed inset-0 z-50 bg-background' : ''}`}>
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border shrink-0">
         <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -435,9 +456,16 @@ export function CalendarView({ onInterviewClick, onIntakeClick }: Props) {
               </button>
             ))}
           </div>
-          <Button size="sm" variant="ghost" className="h-8 w-8 p-0 shrink-0" onClick={refresh} disabled={loading}>
-            <RefreshCw className={`w-3.5 h-3.5 ${loading?'animate-spin':''}`}/>
-          </Button>
+          <Tooltip label="Refresh calendar">
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 shrink-0" onClick={refresh} disabled={loading}>
+              <RefreshCw className={`w-3.5 h-3.5 ${loading?'animate-spin':''}`}/>
+            </Button>
+          </Tooltip>
+          <Tooltip label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 shrink-0" onClick={() => setIsFullscreen(f => !f)}>
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5"/> : <Maximize2 className="w-3.5 h-3.5"/>}
+            </Button>
+          </Tooltip>
         </div>
       </div>
 

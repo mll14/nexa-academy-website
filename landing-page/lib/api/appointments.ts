@@ -14,6 +14,7 @@ export interface AppointmentPayload {
   chosen_time: string
   reason: string
   attendees?: string[]
+  recaptchaToken?: string
 }
 
 export async function getAppointmentSlots(): Promise<AppointmentSlot[]> {

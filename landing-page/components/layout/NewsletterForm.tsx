@@ -2,13 +2,16 @@
 
 import { useState } from 'react'
 import { Send } from 'lucide-react'
+import { useGoogleReCaptcha } from 'react-google-recaptcha-v3'
+import { RecaptchaProvider } from '@/components/application/RecaptchaProvider'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'https://api.nexaacademy.co.ke'
 
-export function NewsletterForm() {
+function NewsletterFormContent() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  const { executeRecaptcha } = useGoogleReCaptcha()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -19,10 +22,18 @@ export function NewsletterForm() {
     setLoading(true)
     setStatus(null)
     try {
+      let recaptchaToken: string | undefined
+      if (executeRecaptcha) {
+        try {
+          recaptchaToken = await executeRecaptcha('newsletter_subscribe')
+        } catch {
+          // non-fatal
+        }
+      }
       const res = await fetch(`${API_BASE}/api/newsletter/subscribe/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, recaptchaToken }),
       })
       const data = await res.json()
       if (res.ok && data.success !== false) {
@@ -69,5 +80,13 @@ export function NewsletterForm() {
         <p className="text-xs text-white/40">Get updates on new programs and tech news</p>
       )}
     </div>
+  )
+}
+
+export function NewsletterForm() {
+  return (
+    <RecaptchaProvider>
+      <NewsletterFormContent />
+    </RecaptchaProvider>
   )
 }
