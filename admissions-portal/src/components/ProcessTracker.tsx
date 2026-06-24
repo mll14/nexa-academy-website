@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CheckCircle2, Clock, Calendar, CreditCard, RefreshCw, Video, UserPlus, X } from 'lucide-react'
+import { CheckCircle2, Clock, Calendar, CreditCard, RefreshCw, Video, UserPlus, X, Mail } from 'lucide-react'
 import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
@@ -15,7 +15,7 @@ import type { InterviewSlot } from '../types'
 export const STAGES = [
   { key: 'pending', label: 'Application Submitted', icon: CheckCircle2 },
   { key: 'reviewed', label: 'Under Review', icon: Clock },
-  { key: 'approved', label: 'Confirmed', icon: CheckCircle2 },
+  { key: 'approved', label: 'Approved', icon: CheckCircle2 },
   { key: 'interview_scheduled', label: 'Interview Scheduled', icon: Calendar },
   { key: 'interview_completed', label: 'Interview Passed', icon: CheckCircle2 },
   { key: 'enrolled', label: 'Enrolled', icon: CreditCard },
@@ -63,7 +63,6 @@ export function ProcessTracker({
     setSlot(initialSlot ?? null)
   }, [initialSlot])
 
-  // Sync extra guests from slot when slot identity changes
   useEffect(() => {
     setExtraGuests(slot?.extra_guests ?? [])
     setNewGuestEmail('')
@@ -97,7 +96,7 @@ export function ProcessTracker({
     try {
       const s = await api.confirmInterview(applicationId, chosenTime)
       setSlot(s)
-      toast.success('Interview confirmed! Check your email for the Meet link.')
+      toast.success('Interview confirmed! Check your email for the meeting link.')
       onScheduled?.(s)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to confirm interview.')
@@ -160,6 +159,15 @@ export function ProcessTracker({
     )
   }
 
+  // Countdown for scheduled interview
+  const hoursUntilInterview = slot?.chosen_time
+    ? (new Date(slot.chosen_time).getTime() - Date.now()) / 3_600_000
+    : 0
+  const daysUntil = Math.floor(hoursUntilInterview / 24)
+  const countdownText = hoursUntilInterview <= 0 ? null
+    : daysUntil >= 1 ? `That's in ${daysUntil} day${daysUntil === 1 ? '' : 's'}`
+    : `That's in ${Math.ceil(hoursUntilInterview)} hour${Math.ceil(hoursUntilInterview) === 1 ? '' : 's'}`
+
   return (
     <div className="space-y-0">
       {STAGES.map((stage, idx) => {
@@ -201,17 +209,41 @@ export function ProcessTracker({
 
       {/* Action cards */}
       <div className="mt-2 space-y-3">
+
+        {/* Pending / Reviewed — reassure and explain */}
+        {['pending', 'reviewed'].includes(currentStatus) && (
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <h3 className="font-semibold">Hang tight — we're reviewing your application</h3>
+              <Separator />
+              <p className="text-sm text-muted-foreground">
+                Our admissions team is looking over your application. We usually get back to applicants within <strong>2–3 business days</strong>.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Once you're approved, you'll be able to book your interview right here on this page.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Approved — schedule interview */}
         {currentStatus === 'approved' && (
           <Card>
             <CardContent className="p-4 space-y-3">
-              <h3 className="font-semibold">Schedule Your Interview</h3>
+              <h3 className="font-semibold">Book your admissions interview</h3>
               <Separator />
               <p className="text-sm text-muted-foreground">
-                Pick a 30-minute slot with the admissions team. All times are in East Africa Time (EAT).
+                Pick a <strong>30-minute slot</strong> with the admissions team. It's a relaxed conversation about your background and goals — no technical test involved.
               </p>
+              <div className="rounded-lg bg-muted/50 border border-border p-3 space-y-1.5">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">What to expect</p>
+                <p className="text-xs text-muted-foreground">
+                  We'll chat about why you want to learn coding, your availability, and how you plan to manage the program. All times are shown in East Africa Time (EAT).
+                </p>
+              </div>
               {slotsError && (
                 <div className="flex items-center gap-2">
-                  <p className="text-sm text-destructive">Could not load slots.</p>
+                  <p className="text-sm text-destructive">Could not load available times.</p>
                   <Button variant="outline" size="sm" onClick={fetchSlots}>Retry</Button>
                 </div>
               )}
@@ -223,48 +255,73 @@ export function ProcessTracker({
                 {slotsLoading ? (
                   <span className="flex items-center gap-2">
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Loading slots…
+                    Loading available times…
                   </span>
                 ) : (
-                  <><Calendar className="w-4 h-4 mr-2" />Pick a Slot</>
+                  <><Calendar className="w-4 h-4 mr-2" />Book My Interview Slot</>
                 )}
               </Button>
             </CardContent>
           </Card>
         )}
 
+        {/* Interview Scheduled — details + tips */}
         {currentStatus === 'interview_scheduled' && slot && (
           <Card className="border-primary/20 bg-primary/5">
-            <CardContent className="p-4 space-y-3">
+            <CardContent className="p-4 space-y-4">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-primary" />
                 <h3 className="font-semibold text-foreground">Interview Booked</h3>
               </div>
               <Separator />
+
+              {/* Date & time */}
               <div className="rounded-lg bg-card border border-primary/10 p-3 space-y-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">
-                  Interview time
-                </p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Your interview time</p>
                 <p className="text-sm font-bold">{formatFullDateTime(slot.chosen_time)} EAT</p>
+                {countdownText && <p className="text-xs text-primary font-medium">{countdownText}</p>}
               </div>
+
+              {/* Join meeting button — most prominent action */}
               {(slot.meet_url || slot.zoom_link) ? (
                 <a
                   href={slot.meet_url || slot.zoom_link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 w-full justify-center px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+                  className="flex items-center gap-2 w-full justify-center px-4 py-3 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
                 >
-                  <Video className="w-4 h-4" />
-                  {slot.meet_url ? 'Join Google Meet' : 'Join Meeting'}
+                  <Video className="w-5 h-5" />
+                  Join Google Meet
                 </a>
               ) : (
-                <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
-                  Your meeting link will be sent to your email before the interview.
-                </p>
+                <div className="flex items-start gap-2 bg-card border rounded-lg px-3 py-2.5">
+                  <Mail className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted-foreground">
+                    Your Google Meet link will be sent to your email before the interview. Check your inbox (and spam folder) closer to the time.
+                  </p>
+                </div>
               )}
+
+              {/* How to prepare */}
+              <div className="rounded-lg bg-card border border-border p-3 space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">How to prepare</p>
+                <ul className="space-y-1.5">
+                  {[
+                    'Test your Google Meet link a few minutes before the interview',
+                    'Find a quiet place with a stable internet connection',
+                    'Have a pen and paper ready for any notes',
+                  ].map((tip) => (
+                    <li key={tip} className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
+                      {tip}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
               {/* Extra attendees */}
               <div className="space-y-2 pt-1">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add people to the call</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add people to the call (optional)</p>
                 {extraGuests.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {extraGuests.map((g) => (
@@ -304,11 +361,9 @@ export function ProcessTracker({
                 )}
               </div>
 
+              {/* Reschedule */}
               {(() => {
-                const hoursUntil = slot.chosen_time
-                  ? (new Date(slot.chosen_time).getTime() - Date.now()) / 3_600_000
-                  : 0
-                return hoursUntil > 24 ? (
+                return hoursUntilInterview > 24 ? (
                   <Button
                     variant="outline"
                     size="sm"
@@ -320,9 +375,9 @@ export function ProcessTracker({
                   >
                     Reschedule Interview
                   </Button>
-                ) : hoursUntil > 0 ? (
+                ) : hoursUntilInterview > 0 ? (
                   <p className="text-xs text-center text-warning font-medium">
-                    Interview in less than 24 hours — rescheduling is no longer available.
+                    Your interview is less than 24 hours away — rescheduling is no longer available.
                   </p>
                 ) : null
               })()}
@@ -330,18 +385,22 @@ export function ProcessTracker({
           </Card>
         )}
 
+        {/* Interview Completed — deposit prompt */}
         {currentStatus === 'interview_completed' && (
           <Card>
             <CardContent className="p-4 space-y-3">
-              <h3 className="font-semibold">Interview Completed ✓</h3>
+              <h3 className="font-semibold">Interview Passed — Congratulations! 🎉</h3>
               <Separator />
               <p className="text-sm text-muted-foreground">
-                Congratulations! Make an initial deposit of <strong>KSh 10,000</strong> to secure
-                your enrollment.
+                You're one step away from securing your place. Make a deposit of <strong>KSh 10,000</strong> to confirm your enrollment.
+              </p>
+              <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
+                This deposit goes directly toward your total program fee — it's not an extra charge.
               </p>
               <DepositProgress depositedAmount={depositedAmount} applicationStatus="interview_completed" />
               {depositedAmount < 10_000 && (
                 <Button className="w-full" onClick={() => onRequestPayment?.()}>
+                  <CreditCard className="w-4 h-4 mr-2" />
                   Go to Payments
                 </Button>
               )}
@@ -349,49 +408,50 @@ export function ProcessTracker({
           </Card>
         )}
 
+        {/* Enrolled — what happens next */}
         {currentStatus === 'enrolled' && (
-          <Card className="border-primary/30 bg-primary/5">
-            <CardContent className="p-4 space-y-2">
-              <h3 className="font-semibold text-primary">Enrolled ✓</h3>
+          <Card className="border-success/20 bg-success/5">
+            <CardContent className="p-4 space-y-3">
+              <h3 className="font-semibold text-success">You're Enrolled ✓</h3>
               <Separator />
               <p className="text-sm text-muted-foreground">
-                Your initial deposit has been received. Please contact the admin to be added to the
-                cohort and LMS.
+                Welcome to Nexa Academy! Here's what to do next:
               </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {['pending', 'reviewed'].includes(currentStatus) && (
-          <Card>
-            <CardContent className="p-4 space-y-2">
-              <h3 className="font-semibold">What happens next</h3>
-              <Separator />
-              <p className="text-sm text-muted-foreground">
-                Our admissions team will review your application. Once approved, you'll be able to
-                schedule your interview directly from this dashboard.
-              </p>
+              <ol className="space-y-2">
+                {[
+                  'Check your email for your LMS (Moodle) login link and class schedule',
+                  'Email admissions@nexaacademy.co.ke to be added to your cohort group',
+                  'Continue paying your balance according to your payment plan',
+                ].map((step, i) => (
+                  <li key={i} className="flex items-start gap-3 text-sm text-muted-foreground">
+                    <span className="w-5 h-5 rounded-full bg-success/15 text-success text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
+                      {i + 1}
+                    </span>
+                    {step}
+                  </li>
+                ))}
+              </ol>
             </CardContent>
           </Card>
         )}
       </div>
 
-      {/* Slot picker dialog — shared by both approved scheduling and reschedule */}
+      {/* Slot picker dialog */}
       <Dialog
         open={slotDialogOpen}
         onClose={() => setSlotDialogOpen(false)}
         title="Pick an Interview Slot"
-        description="All times are in East Africa Time (EAT). Select a date then a time."
+        description="All times are in East Africa Time (EAT). Select a date then choose a time."
         className="max-w-2xl"
       >
         {slotsLoading ? (
           <div className="flex items-center justify-center py-10 gap-2 text-sm text-muted-foreground">
             <span className="w-5 h-5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-            Loading available slots…
+            Loading available times…
           </div>
         ) : slotsError ? (
           <div className="py-6 text-center space-y-3">
-            <p className="text-sm text-destructive">Could not load available slots.</p>
+            <p className="text-sm text-destructive">Could not load available times.</p>
             <Button variant="outline" size="sm" onClick={fetchSlots}>Retry</Button>
           </div>
         ) : (
@@ -402,7 +462,7 @@ export function ProcessTracker({
                 className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                Refresh slots
+                Refresh available times
               </button>
             </div>
             <SlotPicker

@@ -2,20 +2,26 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import {
   AlertCircle,
+  ArrowRight,
   Bell,
   BookOpen,
+  Calendar,
   CheckCircle2,
   ChevronRight,
   Clock,
   CreditCard,
+  Loader2,
   RefreshCw,
-  TrendingUp,
+  Video,
   Wallet,
 } from 'lucide-react'
+import PaystackPop from '@paystack/inline-js'
 import { StudentLayout } from '../../components/StudentLayout'
 import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
 import { Separator } from '../../components/ui/separator'
 import { ProcessTracker, getProcessProgress } from '../../components/ProcessTracker'
+import { DepositProgress } from '../../components/DepositProgress'
 import { PaymentTab } from './PaymentTab'
 import { useAuth } from '../../context/AuthContext'
 import { useInterval } from '../../hooks/useInterval'
@@ -110,6 +116,357 @@ function NotificationItem({ n, onMarkRead }: { n: Notification; onMarkRead: (id:
     </div>
   )
 }
+
+// ─── Next Step Hero Card ─────────────────────────────────────────────────────
+
+interface NextStepProps {
+  appStatus: string
+  interviewSlot: InterviewSlot | null
+  enrollment: DashEnrollment | null
+  depositedAmount: number
+  navigate: ReturnType<typeof useNavigate>
+}
+
+function NextStepCard({ appStatus, interviewSlot, enrollment, depositedAmount, navigate }: NextStepProps) {
+  const interviewDate = interviewSlot?.chosen_time
+    ? new Date(interviewSlot.chosen_time).toLocaleString('en-KE', { dateStyle: 'long', timeStyle: 'short' })
+    : null
+
+  const hoursUntilInterview = interviewSlot?.chosen_time
+    ? (new Date(interviewSlot.chosen_time).getTime() - Date.now()) / 3_600_000
+    : 0
+  const daysUntil = Math.floor(hoursUntilInterview / 24)
+  const countdownText = hoursUntilInterview <= 0 ? null
+    : daysUntil >= 1 ? `That's in ${daysUntil} day${daysUntil === 1 ? '' : 's'} — you've got this!`
+    : hoursUntilInterview >= 1 ? `That's in ${Math.ceil(hoursUntilInterview)} hour${Math.ceil(hoursUntilInterview) === 1 ? '' : 's'} — get ready!`
+    : 'Your interview is starting very soon!'
+
+  const balance = enrollment?.balance ?? 0
+  const isFullyPaid = balance <= 0 && (enrollment?.amount ?? 0) > 0
+  const installmentAmount = enrollment?.installmentAmount ?? null
+  const meetUrl = interviewSlot?.meet_url || interviewSlot?.zoom_link
+  const depositLeft = Math.max(0, 10_000 - depositedAmount)
+
+  if (!appStatus) {
+    return (
+      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-primary uppercase tracking-wide">Welcome to Nexa Academy</p>
+          <h2 className="font-heading text-xl font-bold mt-1">Start your coding journey</h2>
+          <p className="text-sm text-muted-foreground mt-1.5">Submit your application and take the first step toward a career in tech.</p>
+        </div>
+        <Button onClick={() => navigate({ to: '/apply' } as never)} size="lg" className="gap-2 shrink-0">
+          Apply Now <ArrowRight className="w-4 h-4" />
+        </Button>
+      </div>
+    )
+  }
+
+  if (appStatus === 'pending' || appStatus === 'reviewed') {
+    return (
+      <div className="bg-warning/5 border border-warning/20 rounded-2xl p-6 flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center shrink-0 mt-0.5">
+          <Clock className="w-5 h-5 text-warning" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-warning uppercase tracking-wide">Application Under Review</p>
+          <h2 className="font-heading text-xl font-bold mt-0.5">We're reviewing your application</h2>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            Our admissions team will get back to you within <strong>2–3 business days</strong>. No action needed from you right now — sit tight!
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (appStatus === 'approved') {
+    return (
+      <div className="bg-success/5 border border-success/20 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-success uppercase tracking-wide">Approved — Action Required</p>
+          <h2 className="font-heading text-xl font-bold mt-0.5">Book your admissions interview</h2>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            Congratulations! The next step is a <strong>30-minute chat</strong> with our team — no technical test, just a conversation about your goals.
+          </p>
+        </div>
+        <Button onClick={() => navigate({ to: '/student/application' } as never)} size="lg" className="gap-2 shrink-0">
+          Schedule Interview <ArrowRight className="w-4 h-4" />
+        </Button>
+      </div>
+    )
+  }
+
+  if (appStatus === 'interview_scheduled' && interviewSlot) {
+    return (
+      <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 space-y-4">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+            <Calendar className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-primary uppercase tracking-wide">Interview Booked</p>
+            <h2 className="font-heading text-xl font-bold mt-0.5">{interviewDate} EAT</h2>
+            {countdownText && <p className="text-sm text-muted-foreground mt-0.5">{countdownText}</p>}
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          {meetUrl ? (
+            <a
+              href={meetUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+            >
+              <Video className="w-4 h-4" />
+              Join Google Meet
+            </a>
+          ) : null}
+          <Button
+            variant={meetUrl ? 'outline' : 'default'}
+            onClick={() => navigate({ to: '/student/application' } as never)}
+            className="gap-2"
+          >
+            <Calendar className="w-4 h-4" />
+            View Details & Reschedule
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (appStatus === 'interview_completed') {
+    return (
+      <div className="bg-card border-2 border-primary/20 rounded-2xl p-6 space-y-4">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center shrink-0 mt-0.5">
+            <CheckCircle2 className="w-5 h-5 text-success" />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-semibold text-success uppercase tracking-wide">Interview Passed</p>
+            <h2 className="font-heading text-xl font-bold mt-0.5">Secure your place with a deposit</h2>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              Make a deposit of <strong>KSh 10,000</strong> to confirm your enrollment.
+              {depositLeft < 10_000 && depositLeft > 0 && ` You've already paid KSh ${depositedAmount.toLocaleString()} — just KSh ${depositLeft.toLocaleString()} more to go!`}
+              {' '}This counts toward your total program fee — it's not an extra charge.
+            </p>
+          </div>
+        </div>
+        <DepositProgress depositedAmount={depositedAmount} applicationStatus="interview_completed" />
+        {depositedAmount < 10_000 && (
+          <Button onClick={() => navigate({ to: '/student/payments' } as never)} size="lg" className="w-full gap-2">
+            <CreditCard className="w-4 h-4" />
+            Pay KSh {depositLeft.toLocaleString()} Deposit <ArrowRight className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  if (appStatus === 'enrolled') {
+    if (isFullyPaid) {
+      return (
+        <div className="bg-success/5 border border-success/20 rounded-2xl p-6 flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center shrink-0 mt-0.5">
+            <CheckCircle2 className="w-5 h-5 text-success" />
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-success uppercase tracking-wide">All Fees Settled</p>
+            <h2 className="font-heading text-xl font-bold mt-0.5">See you in class!</h2>
+            <p className="text-sm text-muted-foreground mt-1.5">
+              Your fees are fully paid. Check your email for your LMS login link and class schedule.
+            </p>
+          </div>
+        </div>
+      )
+    }
+    return (
+      <div className="bg-card border-2 border-primary/20 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-primary uppercase tracking-wide">Enrolled</p>
+          <h2 className="font-heading text-xl font-bold mt-0.5">Keep up with your payments</h2>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            Outstanding: <strong>KSh {balance.toLocaleString()}</strong>
+            {installmentAmount && installmentAmount > 0 ? ` · Next instalment: KSh ${installmentAmount.toLocaleString()}` : ''}
+          </p>
+        </div>
+        <Button onClick={() => navigate({ to: '/student/payments' } as never)} size="lg" className="gap-2 shrink-0">
+          <CreditCard className="w-4 h-4" />
+          Make Payment
+        </Button>
+      </div>
+    )
+  }
+
+  return null
+}
+
+// ─── Quick Pay Widget ─────────────────────────────────────────────────────────
+
+interface QuickPayProps {
+  balance: number
+  installmentAmount: number | null | undefined
+  applicationStatus: string
+  depositedAmount: number
+  userEmail: string | undefined
+  programId: string | null | undefined
+  onPaymentDone: () => void
+  onViewFullDetails: () => void
+}
+
+function QuickPayCard({
+  balance,
+  installmentAmount,
+  applicationStatus,
+  depositedAmount,
+  userEmail,
+  programId,
+  onPaymentDone,
+  onViewFullDetails,
+}: QuickPayProps) {
+  const [amount, setAmount] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  const isInterviewCompleted = applicationStatus === 'interview_completed'
+  const depositLeft = Math.max(0, 10_000 - depositedAmount)
+
+  const rawPresets: number[] = []
+  if (isInterviewCompleted && depositLeft > 0) rawPresets.push(depositLeft)
+  if (installmentAmount && installmentAmount > 0 && !rawPresets.includes(installmentAmount)) rawPresets.push(installmentAmount)
+  if (!rawPresets.includes(5_000) && balance >= 5_000) rawPresets.push(5_000)
+  if (!rawPresets.includes(10_000) && balance >= 10_000) rawPresets.push(10_000)
+  const validPresets = rawPresets.filter(p => p <= balance && p > 0).slice(0, 4)
+
+  const entered = Number(amount)
+  const valid = entered >= 100 && entered <= balance && entered > 0
+
+  const pay = async () => {
+    if (!valid) {
+      toast.error(entered < 100 ? 'Minimum payment is KSh 100' : 'Amount exceeds your outstanding balance')
+      return
+    }
+    setLoading(true)
+    try {
+      const data = await api.initializePayment({
+        amount: entered,
+        programId,
+        paymentType: 'installment',
+        email: userEmail,
+      })
+      setLoading(false)
+
+      if (data.simulated) {
+        toast.success('Payment recorded (simulated)')
+        onPaymentDone()
+        return
+      }
+
+      const publicKey = data.public_key ?? await api.getPaystackPublicKey()
+      const reference = data.reference ?? data.data?.reference ?? data.access_code
+
+      if (!publicKey || !reference) {
+        toast.error('Payment setup failed. Please try again or use the full Payments page.')
+        return
+      }
+
+      const paystack = new PaystackPop()
+      try {
+        paystack.newTransaction({
+          key: publicKey,
+          email: userEmail ?? '',
+          amount: entered * 100,
+          currency: 'KES',
+          ref: reference,
+          access_code: data.access_code,
+          onSuccess: async (transaction: { reference: string }) => {
+            toast.loading('Verifying your payment…')
+            const verify = await api.verifyPayment(transaction.reference)
+            toast.dismiss()
+            if (verify.status === 'success' || verify.payment?.status === 'completed') {
+              toast.success('Payment successful!')
+              setAmount('')
+              onPaymentDone()
+            } else {
+              toast.error('Verification is still pending — check Payment History')
+            }
+          },
+          onCancel: () => toast('Payment cancelled'),
+        })
+      } catch {
+        const authUrl = data.authorization_url ?? data.data?.authorization_url
+        if (authUrl) {
+          window.open(authUrl, '_blank')
+          toast('Opened payment checkout in a new tab')
+        } else {
+          toast.error('Could not open payment checkout — try the Payments page')
+        }
+      }
+    } catch (e) {
+      setLoading(false)
+      toast.error(e instanceof Error ? e.message : 'Could not start payment')
+    }
+  }
+
+  return (
+    <div className="bg-card border rounded-2xl p-5 space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold flex items-center gap-2">
+            <CreditCard className="w-4 h-4 text-primary" />
+            Quick Pay
+          </h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {isInterviewCompleted && depositLeft > 0
+              ? `KSh ${depositLeft.toLocaleString()} needed to confirm your enrollment`
+              : `Outstanding balance: KSh ${balance.toLocaleString()}`}
+          </p>
+        </div>
+        <button onClick={onViewFullDetails} className="text-xs text-primary hover:underline shrink-0 font-medium">
+          Full details →
+        </button>
+      </div>
+
+      {validPresets.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {validPresets.map(p => (
+            <button
+              key={p}
+              onClick={() => setAmount(String(p))}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                amount === String(p)
+                  ? 'bg-primary text-primary-foreground border-primary'
+                  : 'bg-muted border-transparent hover:border-border hover:bg-muted/70'
+              }`}
+            >
+              KSh {p.toLocaleString()}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Input
+          type="number"
+          placeholder={`Enter amount (KSh) — max KSh ${balance.toLocaleString()}`}
+          value={amount}
+          min={100}
+          max={balance}
+          onChange={e => setAmount(e.target.value)}
+        />
+        <p className="text-xs text-muted-foreground">Minimum KSh 100 · M-Pesa, Card & Bank supported</p>
+      </div>
+
+      <Button onClick={pay} disabled={loading || !valid} className="w-full gap-2">
+        {loading
+          ? <><Loader2 className="w-4 h-4 animate-spin" /> Preparing…</>
+          : <><CreditCard className="w-4 h-4" /> Pay KSh {entered > 0 ? entered.toLocaleString() : '—'} via Paystack</>
+        }
+      </Button>
+      <p className="text-xs text-center text-muted-foreground">Secured by Paystack</p>
+    </div>
+  )
+}
+
+// ─── Data hook ───────────────────────────────────────────────────────────────
 
 function useStudentData() {
   const { user } = useAuth()
@@ -257,7 +614,6 @@ function StudentPage({ section }: { section: StudentSection }) {
   } = data
 
   const appStatus = application?.status ?? enrollment?.status ?? ''
-  const progress = appStatus ? getProcessProgress(appStatus) : 0
   const paymentUnlocked = ['interview_completed', 'enrolled'].includes(application?.status ?? '')
   const unread = notifications.filter((n) => !n.read).length
   const depositedAmount = Number(enrollment?.amountPaid ?? 0)
@@ -265,6 +621,10 @@ function StudentPage({ section }: { section: StudentSection }) {
   const interviewDate = interviewSlot?.chosen_time
     ? new Date(interviewSlot.chosen_time).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })
     : null
+
+  const balance = enrollment?.balance ?? 0
+  const isFullyPaid = balance <= 0 && (enrollment?.amount ?? 0) > 0
+  const showQuickPay = paymentUnlocked && !isFullyPaid && balance > 0
 
   const markOneRead = (id: string) => {
     setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n))
@@ -319,12 +679,18 @@ function StudentPage({ section }: { section: StudentSection }) {
               reconciliation={reconciliation}
             />
           ) : (
-            <div className="bg-card border rounded-2xl p-6 flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">Payments are not available yet</p>
-                <p className="text-sm text-muted-foreground mt-1">Complete your interview process before making a payment.</p>
+            <div className="bg-card border rounded-2xl p-6 space-y-3">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold">Payments aren't available yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">You'll be able to make payments after your admissions interview is completed. Check your Application page to see your current progress.</p>
+                </div>
               </div>
+              <Button variant="outline" size="sm" onClick={() => navigate({ to: '/student/application' } as never)} className="gap-2">
+                <Clock className="w-4 h-4" />
+                View Application Progress
+              </Button>
             </div>
           )}
         </div>
@@ -336,14 +702,16 @@ function StudentPage({ section }: { section: StudentSection }) {
     return (
       <StudentLayout unreadCount={unread}>
         <div className="space-y-6">
-          <PageHeader title="Application" subtitle="View your admissions progress and interview details." onRefresh={() => load(true)} refreshing={refreshing} />
+          <PageHeader title="Application" subtitle="Track your admissions progress and interview details." onRefresh={() => load(true)} refreshing={refreshing} />
           {!application && !enrollment && (
-            <div className="bg-card border rounded-2xl p-6 flex items-center justify-between gap-4">
-              <div>
+            <div className="bg-card border rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex-1">
                 <p className="font-semibold">No application yet</p>
-                <p className="text-sm text-muted-foreground mt-1">Start your journey by applying to a program.</p>
+                <p className="text-sm text-muted-foreground mt-1">Start your journey by applying to a program — it only takes a few minutes!</p>
               </div>
-              <Button onClick={() => navigate({ to: '/apply' } as never)}>Apply now</Button>
+              <Button onClick={() => navigate({ to: '/apply' } as never)} className="gap-2 shrink-0">
+                Apply Now <ArrowRight className="w-4 h-4" />
+              </Button>
             </div>
           )}
           {interviewDate && (
@@ -351,7 +719,7 @@ function StudentPage({ section }: { section: StudentSection }) {
               <Clock className="w-5 h-5 text-primary shrink-0" />
               <div>
                 <p className="text-sm font-semibold">Interview scheduled</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{interviewDate}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{interviewDate} EAT</p>
               </div>
             </div>
           )}
@@ -394,9 +762,12 @@ function StudentPage({ section }: { section: StudentSection }) {
               {unread > 0 && <Button variant="ghost" size="sm" onClick={markAllRead}>Mark all read</Button>}
             </div>
             {notifications.length === 0 ? (
-              <div className="text-center py-14 space-y-2">
+              <div className="text-center py-14 space-y-2 px-6">
                 <Bell className="w-8 h-8 text-muted-foreground/30 mx-auto" />
-                <p className="text-sm text-muted-foreground">No notifications yet.</p>
+                <p className="text-sm font-medium text-muted-foreground">No messages yet</p>
+                <p className="text-xs text-muted-foreground max-w-xs mx-auto">
+                  We'll notify you here when your application status changes, your interview is confirmed, or a payment is received.
+                </p>
               </div>
             ) : (
               <div className="divide-y divide-border">
@@ -409,9 +780,11 @@ function StudentPage({ section }: { section: StudentSection }) {
     )
   }
 
+  // ─── Dashboard ───────────────────────────────────────────────────────────────
+
   return (
     <StudentLayout unreadCount={unread}>
-      <div className="space-y-8">
+      <div className="space-y-6">
         <PageHeader
           title="Dashboard"
           subtitle={`${greeting(displayName)} · ${new Date().toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}`}
@@ -419,59 +792,116 @@ function StudentPage({ section }: { section: StudentSection }) {
           refreshing={refreshing}
         />
 
-        {!application && !enrollment && (
-          <div className="flex items-center gap-3 rounded-2xl border border-warning/30 bg-warning/5 p-4">
-            <AlertCircle className="w-5 h-5 text-warning shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold">No application yet</p>
-              <p className="text-xs text-muted-foreground mt-0.5">Start your journey by applying to a program.</p>
-            </div>
-            <Button size="sm" onClick={() => navigate({ to: '/apply' } as never)}>Apply now</Button>
-          </div>
-        )}
+        {/* Hero: Next Step */}
+        <NextStepCard
+          appStatus={appStatus}
+          interviewSlot={interviewSlot}
+          enrollment={enrollment}
+          depositedAmount={depositedAmount}
+          navigate={navigate}
+        />
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard icon={BookOpen} label="Program" value={enrollment?.programName?.split(' ').slice(0, 3).join(' ') ?? application?.program_name ?? '—'} tone="primary" />
-          <StatCard icon={CheckCircle2} label="Status" value={appStatus ? statusText(appStatus) : '—'} sub={appStatus ? undefined : 'No application'} tone={appStatus ? 'success' : 'default'} />
-          <StatCard icon={TrendingUp} label="Progress" value={progress > 0 ? `${progress}%` : '—'} sub={progress > 0 ? 'Through admissions' : undefined} tone="primary" />
+        {/* Stat cards — 3 columns (Program, Status, Balance) */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <StatCard
+            icon={BookOpen}
+            label="Your Program"
+            value={enrollment?.programName?.split(' ').slice(0, 3).join(' ') ?? application?.program_name ?? '—'}
+            tone="primary"
+          />
+          <StatCard
+            icon={CheckCircle2}
+            label="Current Status"
+            value={appStatus ? statusText(appStatus) : '—'}
+            sub={appStatus ? undefined : 'No application yet'}
+            tone={appStatus ? 'success' : 'default'}
+          />
           <StatCard
             icon={Wallet}
-            label="Balance"
-            value={enrollment?.balance != null && enrollment.balance <= 0 && enrollment.amount > 0 ? 'Fully Paid' : enrollment?.balance != null ? `KSh ${enrollment.balance.toLocaleString()}` : '—'}
+            label="Balance Due"
+            value={
+              enrollment?.balance != null && enrollment.balance <= 0 && enrollment.amount > 0
+                ? 'Fully Paid'
+                : enrollment?.balance != null
+                ? `KSh ${enrollment.balance.toLocaleString()}`
+                : '—'
+            }
             sub={enrollment?.amount ? `of KSh ${enrollment.amount.toLocaleString()}` : undefined}
-            tone={enrollment?.balance != null && enrollment.balance <= 0 && enrollment.amount > 0 ? 'success' : 'warning'}
+            tone={
+              enrollment?.balance != null && enrollment.balance <= 0 && enrollment.amount > 0
+                ? 'success'
+                : enrollment?.balance != null
+                ? 'warning'
+                : 'default'
+            }
           />
         </div>
 
+        {/* Quick Pay — only visible when payment is available and not fully paid */}
+        {showQuickPay && (
+          <QuickPayCard
+            balance={balance}
+            installmentAmount={enrollment?.installmentAmount}
+            applicationStatus={appStatus}
+            depositedAmount={depositedAmount}
+            userEmail={user?.email}
+            programId={enrollment?.programId}
+            onPaymentDone={() => load()}
+            onViewFullDetails={() => navigate({ to: '/student/payments' } as never)}
+          />
+        )}
+
+        {/* Quick Navigation */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button onClick={() => navigate({ to: '/student/application' } as never)} className="flex items-center gap-3 px-4 py-3.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:opacity-90 transition-opacity">
+          <button
+            onClick={() => navigate({ to: '/student/application' } as never)}
+            className="flex items-center gap-3 px-4 py-3.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:opacity-90 transition-opacity"
+          >
             <Clock className="w-4 h-4" />
             <span className="flex-1 text-left">View Application</span>
             <ChevronRight className="w-4 h-4 opacity-70" />
           </button>
-          <button onClick={() => navigate({ to: '/student/payments' } as never)} className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors">
+          <button
+            onClick={() => navigate({ to: '/student/payments' } as never)}
+            className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors"
+          >
             <CreditCard className="w-4 h-4 text-muted-foreground" />
             <span className="flex-1 text-left">Payments</span>
             <ChevronRight className="w-4 h-4 text-muted-foreground" />
           </button>
-          <button onClick={() => navigate({ to: '/student/notifications' } as never)} className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors">
+          <button
+            onClick={() => navigate({ to: '/student/notifications' } as never)}
+            className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors"
+          >
             <Bell className="w-4 h-4 text-muted-foreground" />
             <span className="flex-1 text-left">Notifications{unread > 0 ? ` (${unread})` : ''}</span>
             <ChevronRight className="w-4 h-4 text-muted-foreground" />
           </button>
         </div>
 
+        {/* Bottom grid: Application Snapshot + Recent Notifications */}
         <div className="grid lg:grid-cols-[1.4fr_1fr] gap-6">
           <div className="bg-card border rounded-2xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold">Application Snapshot</h2>
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-xs font-medium ${statusConfig(appStatus)}`}>{appStatus ? statusText(appStatus) : 'Not started'}</span>
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-xs font-medium ${statusConfig(appStatus)}`}>
+                {appStatus ? statusText(appStatus) : 'Not started'}
+              </span>
             </div>
             <Separator />
             <div className="space-y-3 text-sm">
-              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Program</span><span className="font-medium text-right">{enrollment?.programName ?? application?.program_name ?? '—'}</span></div>
-              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Payment plan</span><span className="font-medium text-right">{enrollment?.paymentPlan ?? application?.payment_plan ?? 'Standard plan'}</span></div>
-              <div className="flex justify-between gap-4"><span className="text-muted-foreground">Interview</span><span className="font-medium text-right">{interviewDate ?? '—'}</span></div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Program</span>
+                <span className="font-medium text-right">{enrollment?.programName ?? application?.program_name ?? '—'}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Payment plan</span>
+                <span className="font-medium text-right">{enrollment?.paymentPlan ?? application?.payment_plan ?? 'Standard plan'}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-muted-foreground">Interview</span>
+                <span className="font-medium text-right">{interviewDate ?? '—'}</span>
+              </div>
             </div>
           </div>
 
@@ -482,7 +912,10 @@ function StudentPage({ section }: { section: StudentSection }) {
             </div>
             <Separator />
             {notifications.slice(0, 3).length === 0 ? (
-              <p className="text-sm text-muted-foreground">No notifications yet.</p>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">No messages yet.</p>
+                <p className="text-xs text-muted-foreground">We'll send updates here as your application progresses.</p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {notifications.slice(0, 3).map((n) => (
