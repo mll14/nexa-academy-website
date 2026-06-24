@@ -5,16 +5,19 @@ import {
   ArrowLeft, Calendar, Video, Check, X, Clock,
   Mail, Phone, BookOpen, CreditCard, CalendarDays,
   MessageSquare, Activity, User, AlertTriangle, Send,
-  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw,
+  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight,
 } from 'lucide-react'
 import type { Payment } from '../../types/index'
+import PaystackPop from '@paystack/inline-js'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Card, CardContent } from '../../components/ui/card'
 import { Select } from '../../components/ui/select'
 import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
 import { Separator } from '../../components/ui/separator'
 import { Dialog } from '../../components/ui/dialog'
 import { SlotPicker } from '../../components/SlotPicker'
+import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -97,12 +100,14 @@ function PaymentsTab({
   appStatus,
   onMarkEnrolled,
   enrolling,
+  onRequestPaymentLink,
 }: {
   payments: Payment[]
   estimatedFees: number | null
   appStatus: string
   onMarkEnrolled: () => void
   enrolling: boolean
+  onRequestPaymentLink: () => void
 }) {
   const paid  = payments.filter((p) => p.status === 'completed').reduce((sum, p) => sum + Number(p.amount), 0)
   const total = payments.reduce((sum, p) => sum + Number(p.amount), 0)
@@ -128,21 +133,26 @@ function PaymentsTab({
 
       {/* Progress card */}
       <div className="rounded-2xl border border-border bg-card px-5 py-4 space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm font-semibold font-heading">Payment Progress</p>
-          {alreadyEnrolled ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
-              <BadgeCheck className="w-3.5 h-3.5" /> Enrolled
-            </span>
-          ) : depositMet ? (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
-              <BadgeCheck className="w-3.5 h-3.5" /> Deposit met
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-warning/10 text-warning border border-warning/20">
-              <CircleDashed className="w-3.5 h-3.5" /> Deposit pending
-            </span>
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="outline" className="text-xs h-7 px-3" onClick={onRequestPaymentLink}>
+              <CreditCard className="w-3 h-3 mr-1.5" /> Take Payment
+            </Button>
+            {alreadyEnrolled ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
+                <BadgeCheck className="w-3.5 h-3.5" /> Enrolled
+              </span>
+            ) : depositMet ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+                <BadgeCheck className="w-3.5 h-3.5" /> Deposit met
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-warning/10 text-warning border border-warning/20">
+                <CircleDashed className="w-3.5 h-3.5" /> Deposit pending
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Deposit bar */}
@@ -264,7 +274,10 @@ export function ApplicationDetail() {
   const [slotsLoading, setSlotsLoading] = useState(false)
   const [showNotifyDialog, setShowNotifyDialog] = useState(false)
   const [selectedIntakeId, setSelectedIntakeId] = useState('')
-  const [leftTab, setLeftTab] = useState<'details' | 'payments'>('details')
+  const [leftTab, setLeftTab] = useState<'details' | 'payments' | 'notes'>('details')
+  const [showPayLinkDialog, setShowPayLinkDialog] = useState(false)
+  const [payLinkAmount, setPayLinkAmount] = useState('')
+  const [payLinkDescription, setPayLinkDescription] = useState('')
 
   const { data: app, isLoading, error } = useQuery({
     queryKey: ['admin', 'application', id],
@@ -329,6 +342,62 @@ export function ApplicationDetail() {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  const [payLinkLoading, setPayLinkLoading] = useState(false)
+
+  const handleAdminPayment = async () => {
+    if (!app || !payLinkAmount) return
+    setPayLinkLoading(true)
+    try {
+      const res = await api.adminSendPaymentLink({
+        studentUid: app.user_id ?? (app.user as string) ?? '',
+        amount: Number(payLinkAmount),
+        description: payLinkDescription,
+        programId: app.program,
+      })
+
+      const popup = new PaystackPop()
+      try {
+        popup.newTransaction({
+          key: res.public_key,
+          email: res.student_email,
+          amount: Number(payLinkAmount) * 100,
+          currency: 'KES',
+          ref: res.reference,
+          access_code: res.access_code,
+          onSuccess: async (tx: { reference: string }) => {
+            toast.loading('Verifying payment…')
+            try {
+              await api.verifyPayment(tx.reference)
+              toast.dismiss()
+              toast.success('Payment successful — recorded to student account')
+              qc.invalidateQueries({ queryKey: ['payments', 'application', app.email] })
+              setShowPayLinkDialog(false)
+              setPayLinkAmount('')
+              setPayLinkDescription('')
+              setLeftTab('payments')
+            } catch {
+              toast.dismiss()
+              toast.error('Payment was made but verification failed — refresh or check Transactions')
+            }
+          },
+          onCancel: () => toast('Payment cancelled'),
+        })
+      } catch {
+        // Paystack popup blocked (e.g. mobile) — open hosted page in new tab
+        if (res.authorization_url) {
+          window.open(res.authorization_url, '_blank')
+          toast('Opened Paystack checkout in a new tab')
+        } else {
+          toast.error('Could not open Paystack checkout')
+        }
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not initialise payment')
+    } finally {
+      setPayLinkLoading(false)
+    }
+  }
 
   const loadSlots = async () => {
     setSlotsLoading(true)
@@ -478,7 +547,8 @@ export function ApplicationDetail() {
               {([
                 { id: 'details', label: 'Details', icon: User },
                 { id: 'payments', label: `Payments${payments.length ? ` (${payments.length})` : ''}`, icon: CreditCard },
-              ] as { id: 'details' | 'payments'; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
+                { id: 'notes', label: 'Notes', icon: MessageSquare },
+              ] as { id: 'details' | 'payments' | 'notes'; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setLeftTab(id)}
@@ -498,6 +568,16 @@ export function ApplicationDetail() {
                 appStatus={app.status}
                 onMarkEnrolled={() => updateMutation.mutate('enrolled')}
                 enrolling={updateMutation.isPending}
+                onRequestPaymentLink={() => setShowPayLinkDialog(true)}
+              />
+            )}
+
+            {leftTab === 'notes' && (
+              <AdminNotesPanel
+                source={{ kind: 'application', applicationId: app.id }}
+                stage={app.status}
+                title="Internal Notes"
+                emptyText="No internal notes for this application yet."
               />
             )}
 
@@ -684,21 +764,19 @@ export function ApplicationDetail() {
                 )}
 
                 {/* Quick approve / reject */}
-                {!['enrolled', 'rejected'].includes(app.status) && (
+                {['pending', 'reviewed'].includes(app.status) && (
                   <div className="pt-1 space-y-2">
                     <Separator />
                     <p className="text-xs text-muted-foreground pt-1">Quick actions</p>
                     <div className="flex gap-2">
-                      {!['approved', 'enrolled'].includes(app.status) && (
-                        <Button
-                          size="sm"
-                          className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
-                          onClick={() => updateMutation.mutate('approved')}
-                          disabled={updateMutation.isPending}
-                        >
-                          <Check className="w-3.5 h-3.5 mr-1" /> Approve
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
+                        onClick={() => updateMutation.mutate('approved')}
+                        disabled={updateMutation.isPending}
+                      >
+                        <Check className="w-3.5 h-3.5 mr-1" /> Approve
+                      </Button>
                       <Button
                         size="sm"
                         variant="destructive"
@@ -785,9 +863,77 @@ export function ApplicationDetail() {
                 </CardContent>
               </Card>
             )}
+
+            <button
+              type="button"
+              onClick={() => setLeftTab('notes')}
+              className="w-full rounded-2xl border border-border bg-card p-5 text-left transition-colors hover:bg-muted/30"
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <MessageSquare className="w-4 h-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-heading text-sm font-semibold">Internal Notes</span>
+                  <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+                    Open the Notes tab to add rich-text admin notes. Current stage: {statusText(app.status)}.
+                  </span>
+                </span>
+                <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+              </div>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Send payment link dialog */}
+      <Dialog
+        open={showPayLinkDialog}
+        onClose={() => { setShowPayLinkDialog(false); setPayLinkAmount(''); setPayLinkDescription('') }}
+        title="Process Payment"
+        description={`Opens Paystack checkout for ${app.full_name}. Payment will be recorded to their account.`}
+        className="max-w-sm"
+      >
+        <div className="space-y-4 pt-1">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Amount (KSh) *</label>
+            <Input
+              type="number"
+              value={payLinkAmount}
+              onChange={(e) => setPayLinkAmount(e.target.value)}
+              placeholder="e.g. 10000"
+              min="100"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Description</label>
+            <Input
+              value={payLinkDescription}
+              onChange={(e) => setPayLinkDescription(e.target.value)}
+              placeholder="e.g. Program deposit"
+            />
+          </div>
+          {payLinkAmount && (
+            <div className="rounded-xl bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
+              Paystack will charge <span className="font-medium text-foreground">KSh {Number(payLinkAmount).toLocaleString('en-KE')}</span> using <span className="font-medium text-foreground">{app.email}</span>. Payment records to {app.full_name}'s account.
+            </div>
+          )}
+          <div className="flex gap-3 pt-1">
+            <Button
+              className="flex-1"
+              disabled={payLinkLoading || !payLinkAmount || Number(payLinkAmount) < 100}
+              onClick={handleAdminPayment}
+            >
+              {payLinkLoading
+                ? 'Opening Paystack…'
+                : <><CreditCard className="w-4 h-4 mr-1.5" /> Process Payment</>}
+            </Button>
+            <Button variant="outline" onClick={() => { setShowPayLinkDialog(false); setPayLinkAmount(''); setPayLinkDescription('') }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       {/* Notify next intake dialog */}
       <Dialog
