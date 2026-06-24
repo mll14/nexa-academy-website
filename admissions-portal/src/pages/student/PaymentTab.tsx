@@ -540,7 +540,23 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
             </CardContent>
           </Card>
 
-          {pendingPlanRequest ? (
+          {!enrollment?.enrollmentId ? (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                    <Send className="w-4 h-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Plan changes available after enrollment</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Once your KSh 10,000 deposit is processed and your enrollment is confirmed, you'll be able to request a payment plan change here.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : pendingPlanRequest ? (
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-start gap-4">
@@ -698,6 +714,40 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
                   </div>
                 )}
 
+                {/* Quick-amount preset buttons */}
+                {(() => {
+                  const depositLeft = Math.max(0, 10_000 - (depositedAmount ?? 0))
+                  const isInterviewCompleted = applicationStatus === 'interview_completed'
+                  const rawPresets: number[] = []
+                  if (isInterviewCompleted && depositLeft > 0) rawPresets.push(depositLeft)
+                  if (installmentAmount > 0 && !rawPresets.includes(installmentAmount)) rawPresets.push(installmentAmount)
+                  if (!rawPresets.includes(5_000) && balance >= 5_000) rawPresets.push(5_000)
+                  if (!rawPresets.includes(10_000) && balance >= 10_000) rawPresets.push(10_000)
+                  const validPresets = rawPresets.filter(p => p <= balance && p > 0).slice(0, 4)
+                  if (validPresets.length === 0) return null
+                  return (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-medium text-muted-foreground">Quick amounts</p>
+                      <div className="flex flex-wrap gap-2">
+                        {validPresets.map(p => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setAmount(String(p))}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                              amount === String(p)
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-muted border-transparent hover:border-border hover:bg-muted/70'
+                            }`}
+                          >
+                            KSh {p.toLocaleString()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 <div className="space-y-1.5">
                   <Label htmlFor="pay-amount">Amount (KSh)</Label>
                   <Input
@@ -711,7 +761,7 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
                   />
                   <p className="text-xs text-muted-foreground">
                     {applicationStatus === 'interview_completed'
-                      ? 'Pay any amount — enrollment unlocks once KSh 10,000 total is deposited'
+                      ? 'Pay any amount — enrollment confirms once KSh 10,000 total is deposited'
                       : `Outstanding balance: KSh ${balance.toLocaleString()}`}
                   </p>
                 </div>
@@ -754,8 +804,8 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
                     <tr>
                       <th className="px-4 py-3 text-left font-medium">Date</th>
                       <th className="px-4 py-3 text-left font-medium">Details</th>
-                      <th className="px-4 py-3 text-right font-medium">Debit</th>
-                      <th className="px-4 py-3 text-right font-medium">Credit</th>
+                      <th className="px-4 py-3 text-right font-medium">Fee Charged</th>
+                      <th className="px-4 py-3 text-right font-medium">Payment Made</th>
                       <th className="px-4 py-3 text-right font-medium">Balance</th>
                       <th className="px-4 py-3 text-left font-medium">Status</th>
                     </tr>
@@ -806,7 +856,7 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
                   </tbody>
                   <tfoot className="bg-muted/30">
                     <tr>
-                      <td className="px-4 py-3 font-semibold" colSpan={2}>Current position</td>
+                      <td className="px-4 py-3 font-semibold" colSpan={2}>Total</td>
                       <td className="px-4 py-3 text-right font-semibold">KSh {totalFee.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right font-semibold text-success">KSh {amountPaid.toLocaleString()}</td>
                       <td className={`px-4 py-3 text-right font-bold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>

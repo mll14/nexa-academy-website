@@ -9,6 +9,7 @@ import {
   LogOut,
   Menu,
   PanelLeftClose,
+  User,
   X,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -24,6 +25,7 @@ const STUDENT_NAV = [
   { to: '/student/application', label: 'Application', icon: FileText },
   { to: '/student/payments', label: 'Payments', icon: CreditCard },
   { to: '/student/notifications', label: 'Notifications', icon: Bell },
+  { to: '/student/profile', label: 'Profile', icon: User },
 ]
 
 export function StudentLayout({ children, unreadCount }: Props) {
@@ -115,15 +117,24 @@ export function StudentLayout({ children, unreadCount }: Props) {
 
         <div className={cn('border-t border-border', sidebarCollapsed ? 'lg:p-2 p-4' : 'p-4')}>
           <div className={cn('flex items-center gap-3 px-2 py-2', sidebarCollapsed && 'lg:flex-col lg:px-0 lg:gap-2')}>
-            <div className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+            <Link
+              to="/student/profile"
+              onClick={() => setSidebarOpen(false)}
+              title={sidebarCollapsed ? 'Profile' : undefined}
+              className="w-7 h-7 rounded-full bg-primary/15 flex items-center justify-center shrink-0 hover:bg-primary/25 transition-colors"
+            >
               <span className="text-xs font-bold text-primary">
                 {(user?.display_name || user?.email || 'S').charAt(0).toUpperCase()}
               </span>
-            </div>
-            <div className={cn('flex-1 min-w-0', sidebarCollapsed && 'lg:hidden')}>
+            </Link>
+            <Link
+              to="/student/profile"
+              onClick={() => setSidebarOpen(false)}
+              className={cn('flex-1 min-w-0 hover:opacity-80 transition-opacity', sidebarCollapsed && 'lg:hidden')}
+            >
               <p className="text-xs font-medium truncate">{user?.display_name || 'Student'}</p>
               <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-            </div>
+            </Link>
             <button
               onClick={() => logout('/login')}
               className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"

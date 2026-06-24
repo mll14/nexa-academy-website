@@ -12,6 +12,7 @@ import { ResetPassword } from "./pages/ResetPassword";
 import { Apply } from "./pages/Apply";
 import { Unsubscribe } from "./pages/Unsubscribe";
 import { StudentApplication, StudentDashboard, StudentNotifications, StudentPayments } from "./pages/student/Dashboard";
+import { StudentProfile } from "./pages/student/StudentProfile";
 import { AdminDashboard } from "./pages/admin/Dashboard";
 import { Applications } from "./pages/admin/Applications";
 import { ApplicationDetail } from "./pages/admin/ApplicationDetail";
@@ -142,6 +143,12 @@ const studentNotificationsRoute = createRoute({
   getParentRoute: () => studentLayoutRoute,
   path: "notifications",
   component: StudentNotifications,
+});
+
+const studentProfileRoute = createRoute({
+  getParentRoute: () => studentLayoutRoute,
+  path: "profile",
+  component: StudentProfile,
 });
 
 // ─── Admin layout — /admin/* ─────────────────────────────────────────────────
@@ -371,6 +378,7 @@ const routeTree = rootRoute.addChildren([
     studentApplicationRoute,
     studentPaymentsRoute,
     studentNotificationsRoute,
+    studentProfileRoute,
   ]),
   adminLayoutRoute.addChildren([
     adminDashboardRoute,
