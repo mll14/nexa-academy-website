@@ -13,6 +13,10 @@ interface AuthContextValue {
   isAdmin: () => boolean
   isStudent: () => boolean
   isAuthenticated: boolean
+  /** True when the user is an admin with no staff_role (unrestricted super admin). */
+  isFullAdmin: () => boolean
+  /** Check if the current user has a specific permission codename. */
+  hasPermission: (codename: string) => boolean
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -33,6 +37,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const profile = await api.getProfile()
       setUser(profile)
       setStoredUser(profile)
+      // Correct stale routing: if session pre-dates a role promotion, re-navigate
+      const pathname = window.location.pathname
+      if (
+        profile.role === 'admin' &&
+        (pathname === '/' || pathname.startsWith('/student') || pathname === '/login')
+      ) {
+        window.location.replace('/admin')
+      } else if (
+        profile.role === 'student' &&
+        pathname.startsWith('/admin')
+      ) {
+        window.location.replace('/login')
+      }
     } catch {
       // keep cached user if network fails
     }
@@ -75,6 +92,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const isFullAdmin = () => user?.role === 'admin' && !user?.staffRole
+
+  const hasPermission = (codename: string): boolean => {
+    if (!user || user.role !== 'admin') return false
+    // If no effectivePermissions list (legacy session or super admin), allow all
+    if (!user.effectivePermissions) return true
+    return user.effectivePermissions.includes(codename)
+  }
+
   const value: AuthContextValue = {
     user,
     loading,
@@ -85,6 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAdmin: () => user?.role === 'admin',
     isStudent: () => user?.role === 'student',
     isAuthenticated: Boolean(tokens.access),
+    isFullAdmin,
+    hasPermission,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -143,7 +143,7 @@ export function StudentLayout({ children, unreadCount }: Props) {
       )}
 
       <div className={cn('flex-1 flex flex-col min-w-0 transition-all duration-200', sidebarCollapsed ? 'lg:ml-16' : 'lg:ml-64')}>
-        <header className="lg:hidden flex items-center gap-3 px-4 h-14 border-b border-border bg-card">
+        <header className="lg:hidden fixed top-0 left-0 right-0 z-30 flex items-center gap-3 px-4 h-14 border-b border-border bg-card">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-1.5 rounded-lg hover:bg-muted"
@@ -161,7 +161,7 @@ export function StudentLayout({ children, unreadCount }: Props) {
           </div>
         </header>
 
-        <main className="flex-1 p-6 lg:p-8 overflow-auto">
+        <main className="flex-1 overflow-auto p-6 pt-20 lg:p-8">
           <div className="max-w-5xl mx-auto w-full">
             {children}
           </div>

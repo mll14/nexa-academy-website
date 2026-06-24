@@ -13,6 +13,7 @@ import { Label } from '../../components/ui/label'
 import { Textarea } from '../../components/ui/textarea'
 import { Select } from '../../components/ui/select'
 import { Dialog } from '../../components/ui/dialog'
+import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 import { Separator } from '../../components/ui/separator'
 import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
@@ -315,28 +316,15 @@ function ProgramsTab() {
         </Dialog>
       )}
 
-      {/* Delete confirm dialog */}
-      {confirmDelete && (
-        <Dialog
-          open={!!confirmDelete}
-          onClose={() => setConfirmDelete(null)}
-          title="Delete Program"
-          description={`Are you sure you want to delete "${confirmDelete.name}"? This cannot be undone.`}
-          className="max-w-sm"
-        >
-          <div className="flex gap-3 pt-2">
-            <Button
-              variant="destructive"
-              className="flex-1"
-              disabled={deleteMutation.isPending}
-              onClick={() => deleteMutation.mutate(confirmDelete.program_id)}
-            >
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </Button>
-            <Button variant="outline" className="flex-1" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          </div>
-        </Dialog>
-      )}
+      <DeleteConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.program_id)}
+        title="Delete Program"
+        itemName={confirmDelete?.name ?? ''}
+        consequences="Deleting this program will permanently remove all associated intakes, enrollment records, and certificates. This action cannot be undone."
+        isPending={deleteMutation.isPending}
+      />
     </>
   )
 }
@@ -638,23 +626,15 @@ function IntakesTab() {
         </Dialog>
       )}
 
-      {/* Delete confirm */}
-      {confirmDelete && (
-        <Dialog
-          open={!!confirmDelete}
-          onClose={() => setConfirmDelete(null)}
-          title="Delete Intake"
-          description={`Delete the ${confirmDelete.program_name} intake starting ${formatDate(confirmDelete.start_date)}? This cannot be undone.`}
-          className="max-w-sm"
-        >
-          <div className="flex gap-3 pt-2">
-            <Button variant="destructive" className="flex-1" disabled={deleteMutation.isPending} onClick={() => deleteMutation.mutate(confirmDelete.id)}>
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </Button>
-            <Button variant="outline" className="flex-1" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-          </div>
-        </Dialog>
-      )}
+      <DeleteConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={() => confirmDelete && deleteMutation.mutate(confirmDelete.id)}
+        title="Delete Intake"
+        itemName={confirmDelete ? `${confirmDelete.program_name} – ${confirmDelete.start_date}` : ''}
+        consequences="Deleting this intake will permanently remove the cohort and its calendar sync. Students who applied to this cohort will no longer have an active intake. This cannot be undone."
+        isPending={deleteMutation.isPending}
+      />
     </>
   )
 }

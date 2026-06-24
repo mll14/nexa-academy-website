@@ -1,16 +1,14 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Users, MessageSquare, CreditCard, BookOpen, ArrowRight, Clock, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { Users, MessageSquare, CreditCard, BookOpen, ArrowRight, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Button } from '../../components/ui/button'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate } from '../../lib/utils'
-import toast from 'react-hot-toast'
 import type { Application, ApplicationStats } from '../../types'
 
 export function AdminDashboard() {
   const navigate = useNavigate()
-  const qc = useQueryClient()
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['admin', 'stats'],
@@ -38,23 +36,13 @@ export function AdminDashboard() {
     .filter((p) => ['completed', 'paid', 'success'].includes(p.status))
     .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
 
-  const backfillMutation = useMutation({
-    mutationFn: api.backfillEnrollments,
-    onSuccess: (res) => {
-      const count = res.enrolled_count ?? 0
-      toast.success(count > 0 ? `Enrolled ${count} student${count !== 1 ? 's' : ''}` : 'No pending enrollments found')
-      qc.invalidateQueries({ queryKey: ['admin'] })
-    },
-    onError: (e: Error) => toast.error(e.message ?? 'Backfill failed'),
-  })
-
   const loading = statsLoading || appsLoading
 
   const statCards = [
-    { label: 'Total Applications', value: (stats as ApplicationStats)?.total ?? (stats as ApplicationStats)?.count ?? 0, icon: Users, accent: 'text-primary', iconBg: 'bg-primary/10', ring: 'ring-primary/10', href: '/admin/applications' },
-    { label: 'Unread Messages', value: messagesRes?.count ?? 0, icon: MessageSquare, accent: 'text-warning', iconBg: 'bg-warning/10', ring: 'ring-warning/10', href: '/admin/messages' },
-    { label: 'Revenue (KSh)', value: revenue.toLocaleString('en-KE'), icon: CreditCard, accent: 'text-success', iconBg: 'bg-success/10', ring: 'ring-success/10', href: '/admin/transactions' },
-    { label: 'Enrolled Students', value: (stats as ApplicationStats)?.enrolled ?? (stats as ApplicationStats)?.enrolled_count ?? 0, icon: BookOpen, accent: 'text-primary', iconBg: 'bg-primary/10', ring: 'ring-border', href: '/admin/enrolled' },
+    { label: 'Total Applications', value: (stats as ApplicationStats)?.total ?? (stats as ApplicationStats)?.count ?? 0, icon: Users, accent: 'text-primary', iconBg: 'bg-primary/10', href: '/admin/applications' },
+    { label: 'Unread Messages', value: messagesRes?.count ?? 0, icon: MessageSquare, accent: 'text-warning', iconBg: 'bg-warning/10', href: '/admin/messages' },
+    { label: 'Revenue (KSh)', value: revenue.toLocaleString('en-KE'), icon: CreditCard, accent: 'text-success', iconBg: 'bg-success/10', href: '/admin/payments' },
+    { label: 'Enrolled Students', value: (stats as ApplicationStats)?.enrolled ?? (stats as ApplicationStats)?.enrolled_count ?? 0, icon: BookOpen, accent: 'text-primary', iconBg: 'bg-primary/10', href: '/admin/enrolled' },
   ]
 
   const pendingCount = recentApps.filter((a: Application) => a.status === 'pending').length
@@ -83,20 +71,20 @@ export function AdminDashboard() {
 
         {/* Stat cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {statCards.map(({ label, value, icon: Icon, accent, iconBg, ring, href }) => (
+          {statCards.map(({ label, value, icon: Icon, accent, iconBg, href }) => (
             <button
               key={label}
               onClick={() => navigate({ to: href as never })}
-              className={`text-left bg-card border rounded-2xl p-5 space-y-4 ring-1 ${ring} hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer`}
+              className="text-left bg-card border border-border rounded-2xl p-5 flex flex-col gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
             >
-              <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${iconBg}`}>
-                <Icon className={`w-4 h-4 ${accent}`} />
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${iconBg}`}>
+                <Icon className={`w-5 h-5 ${accent}`} />
               </div>
-              <div>
-                <p className="text-xs text-muted-foreground leading-snug">{label}</p>
-                <p className="font-heading text-2xl font-bold mt-1">
-                  {loading ? <span className="inline-block w-12 h-7 bg-muted rounded animate-pulse" /> : value}
+              <div className="space-y-0.5">
+                <p className="font-heading text-2xl font-bold tracking-tight leading-none">
+                  {loading ? <span className="inline-block w-16 h-7 bg-muted rounded animate-pulse" /> : value}
                 </p>
+                <p className="text-sm font-medium text-foreground">{label}</p>
               </div>
             </button>
           ))}
@@ -161,16 +149,6 @@ export function AdminDashboard() {
           )}
         </div>
 
-        {/* Backfill */}
-        <div className="flex items-center gap-4 p-4 bg-muted/40 border rounded-2xl">
-          <div className="flex-1">
-            <p className="text-sm font-medium">Backfill Enrollments</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Marks students who paid KSh 10,000 as enrolled if they were missed.</p>
-          </div>
-          <Button size="sm" variant="outline" disabled={backfillMutation.isPending} onClick={() => backfillMutation.mutate()}>
-            {backfillMutation.isPending ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Running…</> : 'Run Backfill'}
-          </Button>
-        </div>
       </div>
     </AdminLayout>
   )

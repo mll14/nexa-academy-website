@@ -1,15 +1,54 @@
 export type UserRole = 'admin' | 'student'
 
+export interface AppPermission {
+  id: number
+  codename: string
+  name: string
+  resource: string
+  action: string
+}
+
+export interface Role {
+  id: number
+  name: string
+  slug: string
+  description: string
+  is_system: boolean
+  permissions: AppPermission[]
+  user_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface StaffUser {
+  uid: string
+  email: string
+  display_name: string
+  phone?: string
+  photo_url?: string
+  role: UserRole
+  status: string
+  created_at: string
+  staff_role: Role | null
+  individual_permissions: AppPermission[]
+  effective_permissions: string[]
+  invitation_accepted: boolean
+}
+
 export interface User {
   uid: string
   email: string
   display_name: string
   role: UserRole
   phone?: string
+  photo_url?: string
   fee_balance?: number
   total_fee_paid?: number
   program_fee?: number
   courses_enrolled?: Enrollment[]
+  /** null = super admin (unrestricted). Non-null = role-scoped. */
+  staffRole?: Role | null
+  effectivePermissions?: string[]
 }
 
 export interface Program {
@@ -292,6 +331,10 @@ export interface HelpMeLead {
   message?: string
   follow_up_completed: boolean
   follow_up_completed_at?: string | null
+  assigned_program_slug: string
+  assigned_program_name: string
+  converted_to_pipeline: boolean
+  converted_at?: string | null
   created_at: string
 }
 

@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useQuery } from '@tanstack/react-query'
-import { Search, ArrowUpDown, ChevronRight } from 'lucide-react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Search, ArrowUpDown, ChevronRight, Trash2 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Button } from '../../components/ui/button'
 import { UnderlineTabs } from '../../components/ui/tabs'
+import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate } from '../../lib/utils'
 import type { Application } from '../../types'
+import toast from 'react-hot-toast'
+import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All Applications' },
@@ -49,6 +52,11 @@ const STATUS_DOT: Record<string, string> = {
 
 export function Applications() {
   const navigate = useNavigate()
+  const { hasPermission } = useAuth()
+  const queryClient = useQueryClient()
+  const canDelete = hasPermission('applications.manage')
+  const [deleteTarget, setDeleteTarget] = useState<Application | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const [status, setStatus] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
@@ -76,6 +84,26 @@ export function Applications() {
 
   const openDetail = (app: Application) =>
     navigate({ to: '/admin/applications/$id', params: { id: app.id } })
+
+  const handleDelete = (e: React.MouseEvent, app: Application) => {
+    e.stopPropagation()
+    setDeleteTarget(app)
+  }
+
+  const doDelete = async () => {
+    if (!deleteTarget) return
+    setDeleteLoading(true)
+    try {
+      await api.deleteApplication(deleteTarget.id)
+      queryClient.invalidateQueries({ queryKey: ['applications'] })
+      toast.success('Application deleted.')
+      setDeleteTarget(null)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed.')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
 
   return (
     <AdminLayout>
@@ -208,6 +236,15 @@ export function Applications() {
                   <p className="text-xs text-muted-foreground">{formatDate(app.applied_at)}</p>
                 </div>
 
+                {canDelete && (
+                  <button
+                    onClick={(e) => handleDelete(e, app)}
+                    className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 shrink-0"
+                    title="Delete application"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
               </div>
             ))}
@@ -240,6 +277,15 @@ export function Applications() {
             </div>
           </div>
         )}
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={doDelete}
+        title="Delete Application"
+        itemName={deleteTarget?.full_name ?? ''}
+        consequences="This application and all its associated logs, interview slots, and status history will be permanently deleted. This cannot be undone."
+        isPending={deleteLoading}
+      />
       </div>
     </AdminLayout>
   )

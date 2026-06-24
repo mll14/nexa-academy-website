@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, ChevronRight, RefreshCw, Ban, Trash2, Plus, Maximize2, Minimize2 } from 'lucide-react'
 import { Button } from '../../ui/button'
 import { Dialog } from '../../ui/dialog'
+import { DeleteConfirmDialog } from '../../ui/delete-confirm-dialog'
+import { Input } from '../../ui/input'
 import { Select } from '../../ui/select'
 import { calendarService } from '../../../lib/calendarService'
 import { DayView } from './DayView'
@@ -74,6 +76,7 @@ function BlockModalContent({ onCreated, onClose }: { onCreated: () => void; onCl
   const [blackouts, setBlackouts] = useState<Blackout[]>([])
   const [loadingList, setLoadingList] = useState(true)
   const [deleting, setDeleting] = useState<number|null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Blackout | null>(null)
 
   useEffect(() => { getBlackouts().then(setBlackouts).finally(()=>setLoadingList(false)) }, [])
 
@@ -96,15 +99,14 @@ function BlockModalContent({ onCreated, onClose }: { onCreated: () => void; onCl
     finally { setDeleting(null) }
   }
 
-  const inputCls = 'w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30'
-
   return (
+    <>
     <div className="space-y-5">
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2 space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date</label>
-            <input type="date" required value={date} onChange={e=>setDate(e.target.value)} className={inputCls} />
+            <Input type="date" required value={date} onChange={e=>setDate(e.target.value)} />
           </div>
           <div className="col-span-2 space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Block type</label>
@@ -120,16 +122,16 @@ function BlockModalContent({ onCreated, onClose }: { onCreated: () => void; onCl
           {blockType==='time' && <>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">From</label>
-              <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={inputCls} />
+              <Input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">To</label>
-              <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={inputCls} />
+              <Input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} />
             </div>
           </>}
           <div className="col-span-2 space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Reason (optional)</label>
-            <input type="text" value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Public holiday, team offsite…" className={inputCls} />
+            <Input type="text" value={reason} onChange={e=>setReason(e.target.value)} placeholder="e.g. Public holiday, team offsite…" />
           </div>
         </div>
         <Button type="submit" disabled={submitting} className="w-full h-10">{submitting?'Creating…':'Create Block'}</Button>
@@ -148,7 +150,7 @@ function BlockModalContent({ onCreated, onClose }: { onCreated: () => void; onCl
                      {b.start_time?`${b.start_time.slice(0,5)} – ${b.end_time?.slice(0,5)}`:'Full day'}{b.reason?` · ${b.reason}`:''}
                    </p>
                  </div>
-                 <button onClick={()=>handleDelete(b.id)} disabled={deleting===b.id}
+                 <button onClick={()=>setDeleteTarget(b)} disabled={deleting===b.id}
                    className="shrink-0 p-1.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-40">
                    {deleting===b.id
                      ? <span className="w-3.5 h-3.5 block border border-destructive/40 border-t-destructive rounded-full animate-spin"/>
@@ -159,6 +161,21 @@ function BlockModalContent({ onCreated, onClose }: { onCreated: () => void; onCl
            </ul>}
       </div>
     </div>
+
+    <DeleteConfirmDialog
+      open={!!deleteTarget}
+      onClose={() => setDeleteTarget(null)}
+      onConfirm={async () => {
+        if (!deleteTarget) return
+        await handleDelete(deleteTarget.id)
+        setDeleteTarget(null)
+      }}
+      title="Remove Interview Block"
+      itemName={deleteTarget?.date ?? ''}
+      consequences="This date will be unblocked and become available for interview scheduling. This cannot be undone."
+      isPending={deleting === deleteTarget?.id}
+    />
+  </>
   )
 }
 
@@ -176,8 +193,6 @@ function CreateEventModalContent({ onCreated, onClose }: { onCreated: () => void
   const [attendeeInput, setAttendeeInput] = useState('')
   const [attendees, setAttendees] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
-
-  const inputCls = 'w-full h-9 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30'
 
   const addAttendee = () => {
     const email = attendeeInput.trim().toLowerCase()
@@ -211,8 +226,8 @@ function CreateEventModalContent({ onCreated, onClose }: { onCreated: () => void
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-1.5">
         <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Title *</label>
-        <input type="text" required value={title} onChange={e=>setTitle(e.target.value)}
-          placeholder="Event title…" className={inputCls} autoFocus />
+        <Input type="text" required value={title} onChange={e=>setTitle(e.target.value)}
+          placeholder="Event title…" autoFocus />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -223,7 +238,7 @@ function CreateEventModalContent({ onCreated, onClose }: { onCreated: () => void
 
         <div className="col-span-2 space-y-1.5">
           <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date</label>
-          <input type="date" required value={date} onChange={e=>setDate(e.target.value)} className={inputCls} />
+          <Input type="date" required value={date} onChange={e=>setDate(e.target.value)} />
         </div>
 
         <div className="col-span-2">
@@ -237,11 +252,11 @@ function CreateEventModalContent({ onCreated, onClose }: { onCreated: () => void
         {!allDay && <>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Start</label>
-            <input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} className={inputCls} />
+            <Input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">End</label>
-            <input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} className={inputCls} />
+            <Input type="time" value={endTime} onChange={e=>setEndTime(e.target.value)} />
           </div>
         </>}
       </div>
@@ -264,13 +279,13 @@ function CreateEventModalContent({ onCreated, onClose }: { onCreated: () => void
                 Invite attendees
               </label>
               <div className="flex gap-2">
-                <input
+                <Input
                   type="email"
                   value={attendeeInput}
                   onChange={e=>setAttendeeInput(e.target.value)}
                   onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); addAttendee() } }}
                   placeholder="email@example.com"
-                  className={inputCls + ' flex-1'}
+                  className="flex-1"
                 />
                 <Button type="button" size="sm" variant="outline" className="h-9 px-3 shrink-0"
                   onClick={addAttendee}>

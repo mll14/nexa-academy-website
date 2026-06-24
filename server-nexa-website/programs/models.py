@@ -313,6 +313,10 @@ class HelpMeLead(models.Model):
     message = models.TextField(blank=True)
     follow_up_completed = models.BooleanField(default=False)
     follow_up_completed_at = models.DateTimeField(null=True, blank=True)
+    assigned_program_slug = models.CharField(max_length=255, blank=True)
+    assigned_program_name = models.CharField(max_length=255, blank=True)
+    converted_to_pipeline = models.BooleanField(default=False)
+    converted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

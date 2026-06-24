@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, Link } from '@tanstack/react-router'
-import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google'
+import { GoogleLogin } from '@react-oauth/google'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
@@ -170,12 +170,5 @@ function LoginForm() {
 }
 
 export function Login() {
-  if (GOOGLE_CLIENT_ID) {
-    return (
-      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-        <LoginForm />
-      </GoogleOAuthProvider>
-    )
-  }
   return <LoginForm />
 }

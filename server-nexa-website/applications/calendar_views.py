@@ -209,8 +209,19 @@ class CalendarEventsView(APIView):
         return result
 
     def _external_events(self, start_dt, end_dt):
+        from .models import InterviewBlackout, CustomCalendarEvent
         known_gcal_ids = set(
             InterviewSlot.objects
+            .filter(gcal_event_id__gt='')
+            .values_list('gcal_event_id', flat=True)
+        )
+        known_gcal_ids |= set(
+            InterviewBlackout.objects
+            .filter(gcal_event_id__gt='')
+            .values_list('gcal_event_id', flat=True)
+        )
+        known_gcal_ids |= set(
+            CustomCalendarEvent.objects
             .filter(gcal_event_id__gt='')
             .values_list('gcal_event_id', flat=True)
         )

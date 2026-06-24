@@ -13,6 +13,7 @@ import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { Intake, Program } from '../../types'
+import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 
 // ─── Notify interested panel (inline, per intake) ────────────────────────────
 
@@ -78,6 +79,7 @@ export function Intakes() {
   const [editing, setEditing] = useState<Intake | null>(null)
   const [form, setForm] = useState<IntakeForm>(EMPTY)
   const [notifyingId, setNotifyingId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Intake | null>(null)
 
   const { data: intakes = [], isLoading } = useQuery({
     queryKey: ['admin', 'intakes'],
@@ -103,7 +105,7 @@ export function Intakes() {
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.deleteIntake(id),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'intakes'] }); toast.success('Intake deleted') },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin', 'intakes'] }); setDeleteTarget(null); toast.success('Intake deleted') },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -251,7 +253,7 @@ export function Intakes() {
                           </Button>
                         )}
                         <Button size="sm" variant="ghost" onClick={() => openEdit(intake)}><Pencil className="w-4 h-4" /></Button>
-                        <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => { if (confirm('Delete this intake?')) deleteMutation.mutate(intake.id) }} disabled={deleteMutation.isPending}><Trash2 className="w-4 h-4" /></Button>
+                        <Button size="sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => setDeleteTarget(intake)} disabled={deleteMutation.isPending}><Trash2 className="w-4 h-4" /></Button>
                       </div>
                     </div>
                     {notifyingId === intake.id && (() => {
@@ -270,6 +272,15 @@ export function Intakes() {
             ))}
           </div>
         )}
+      <DeleteConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+        title="Delete Intake"
+        itemName={deleteTarget ? `${deleteTarget.program_name} – ${deleteTarget.start_date}` : ''}
+        consequences="Deleting this intake will permanently remove the cohort and its calendar sync. Students who applied to this cohort will no longer have an active intake. This cannot be undone."
+        isPending={deleteMutation.isPending}
+      />
       </div>
     </AdminLayout>
   )

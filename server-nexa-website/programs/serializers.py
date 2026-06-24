@@ -149,8 +149,11 @@ class HelpMeLeadSerializer(serializers.ModelSerializer):
     class Meta:
         model = HelpMeLead
         fields = ['id', 'name', 'email', 'phone', 'message',
-                  'follow_up_completed', 'follow_up_completed_at', 'created_at']
-        read_only_fields = ['id', 'created_at', 'follow_up_completed_at']
+                  'follow_up_completed', 'follow_up_completed_at',
+                  'assigned_program_slug', 'assigned_program_name',
+                  'converted_to_pipeline', 'converted_at',
+                  'created_at']
+        read_only_fields = ['id', 'created_at', 'follow_up_completed_at', 'converted_at']
 
 
 class IncompleteApplicationSerializer(serializers.ModelSerializer):

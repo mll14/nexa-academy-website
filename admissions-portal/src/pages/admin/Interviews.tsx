@@ -356,11 +356,10 @@ export function Interviews() {
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                 Custom date & time (EAT)
               </label>
-              <input
+              <Input
                 type="datetime-local"
                 value={customTime}
                 onChange={(e) => setCustomTime(e.target.value)}
-                className="w-full h-10 rounded-xl border border-border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
               />
               <p className="text-xs text-muted-foreground">Allows scheduling outside normal working hours (6 am, 8 pm, etc.)</p>
             </div>
