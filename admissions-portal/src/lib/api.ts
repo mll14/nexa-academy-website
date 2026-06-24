@@ -659,6 +659,17 @@ export async function getHelpMeLead(id: string) {
   return req<import('../types').HelpMeLead>(`/programs/help-me/${id}/`)
 }
 
+export async function convertHelpMeToPipeline(
+  id: string,
+  programSlug: string,
+  programName: string,
+): Promise<import('../types').HelpMeLead> {
+  return req(`/programs/help-me/${id}/`, {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'convert_to_pipeline', program_slug: programSlug, program_name: programName }),
+  })
+}
+
 export async function getIncompleteApplications(filters: ApiFilters = {}) {
   return req<{ count: number; results: import('../types').IncompleteApplication[] }>(
     `/programs/incomplete/${buildQuery(filters)}`
@@ -707,6 +718,20 @@ export async function getEnrollments(
   if (Array.isArray(res))
     return { count: res.length, next: null, previous: null, results: res };
   return res;
+}
+
+export async function getEnrollmentById(id: string): Promise<Enrollment> {
+  return req<Enrollment>(`/enrollments/${id}/`);
+}
+
+export async function updateEnrollment(
+  id: string,
+  data: { status?: string; amount?: number; amount_paid?: number; payment_plan?: string },
+): Promise<Enrollment> {
+  return req<Enrollment>(`/enrollments/${id}/`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
 }
 
 // ── Newsletter ────────────────────────────────────────────────────────────────
@@ -927,4 +952,119 @@ export async function updateCustomCalEvent(id: string, data: Partial<CustomCalEv
 
 export async function deleteCustomCalEvent(id: string): Promise<void> {
   await req(`/calendar-events-custom/${id}/`, { method: 'DELETE' })
+}
+
+// ── Roles & Permissions ───────────────────────────────────────────────────────
+
+import type { AppPermission, Role, StaffUser } from '../types'
+
+export async function getPermissions(): Promise<AppPermission[]> {
+  return req<AppPermission[]>('/auth/permissions/')
+}
+
+export async function createPermission(data: { codename: string; name: string; resource: string; action: string }): Promise<AppPermission> {
+  return req<AppPermission>('/auth/permissions/', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function getRoles(): Promise<Role[]> {
+  return req<Role[]>('/auth/roles/')
+}
+
+export async function getRole(id: number): Promise<Role> {
+  return req<Role>(`/auth/roles/${id}/`)
+}
+
+export async function createRole(data: { name: string; slug: string; description?: string; permission_ids?: number[] }): Promise<Role> {
+  return req<Role>('/auth/roles/', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateRole(id: number, data: { name?: string; description?: string; permission_ids?: number[] }): Promise<Role> {
+  return req<Role>(`/auth/roles/${id}/`, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteRole(id: number): Promise<void> {
+  await req(`/auth/roles/${id}/`, { method: 'DELETE' })
+}
+
+export async function getStaffUsers(): Promise<StaffUser[]> {
+  return req<StaffUser[]>('/auth/staff/')
+}
+
+export async function getStaffUser(uid: string): Promise<StaffUser> {
+  return req<StaffUser>(`/auth/staff/${uid}/`)
+}
+
+export async function createStaffUser(data: { email: string; display_name: string; staff_role_id?: number }): Promise<StaffUser> {
+  return req<StaffUser>('/auth/staff/', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function resendInvite(uid: string): Promise<void> {
+  await req(`/auth/staff/${uid}/resend_invite/`, { method: 'POST' })
+}
+
+export async function acceptInvite(data: { uid: string; token: string; display_name: string; password: string }): Promise<{ user: User; access: string; refresh: string }> {
+  return req('/auth/accept-invite/', { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await req('/auth/change-password/', { method: 'POST', body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) })
+}
+
+export async function updateMyProfile(data: { display_name?: string; email?: string; phone?: string; photo_url?: string }): Promise<User> {
+  return req<User>('/auth/my-profile/', { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function updateStaffUser(uid: string, data: { staff_role_id?: number | null; individual_permission_ids?: number[]; status?: string }): Promise<StaffUser> {
+  return req<StaffUser>(`/auth/staff/${uid}/`, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function removeStaffUser(uid: string): Promise<void> {
+  await req(`/auth/staff/${uid}/`, { method: 'DELETE' })
+}
+
+// ── Delete operations ─────────────────────────────────────────────────────────
+
+export async function deleteApplication(id: string): Promise<void> {
+  await req(`/applications/${id}/`, { method: 'DELETE' })
+}
+
+export async function deleteProgramInterestLead(id: string): Promise<void> {
+  await req(`/programs/program-interests/${id}/`, { method: 'DELETE' })
+}
+
+export async function deleteHelpMeLead(id: string): Promise<void> {
+  await req(`/programs/help-me/${id}/`, { method: 'DELETE' })
+}
+
+export async function deleteIncompleteLead(id: string): Promise<void> {
+  await req(`/programs/incomplete/${id}/`, { method: 'DELETE' })
+}
+
+// ── Audit Logs ────────────────────────────────────────────────────────────────
+
+export interface AuditLogEntry {
+  id: number
+  action: string
+  action_display: string
+  resource_type: string
+  resource_id: string
+  resource_summary: Record<string, string | null>
+  ip_address: string | null
+  created_at: string
+  performed_by: { uid: string; display_name: string; email: string } | null
+}
+
+export interface AuditLogFilters {
+  action?: string
+  user?: string
+  resource_type?: string
+  date_from?: string
+  date_to?: string
+}
+
+export async function getAuditLogs(filters: AuditLogFilters = {}): Promise<AuditLogEntry[]> {
+  const params = new URLSearchParams(
+    Object.fromEntries(Object.entries(filters).filter(([, v]) => v != null && v !== ''))
+  ).toString()
+  return req<AuditLogEntry[]>(`/auth/audit-logs/${params ? `?${params}` : ''}`)
 }
