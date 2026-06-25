@@ -8,7 +8,6 @@ import {
   Banknote, ChevronRight, GraduationCap, CheckCircle2, XCircle, AlertCircle,
   TrendingDown, TrendingUp, ReceiptText,
 } from 'lucide-react'
-import PaystackPop from '@paystack/inline-js'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Card, CardContent } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
@@ -433,6 +432,7 @@ export function EnrolledStudentDetail() {
         description: payDescription,
         programId: enrollment.program ?? enrollment.program_id,
       })
+      const { default: PaystackPop } = await import('@paystack/inline-js')
       const popup = new PaystackPop()
       try {
         popup.newTransaction({

@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.db import transaction
-from django.db.models import Sum, Q
+from django.db.models import Count, Sum, Q
 from django.db.models.functions import Coalesce
 from django.conf import settings
 from decimal import Decimal
@@ -212,6 +212,21 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if user.role == 'admin':
             return Payment.objects.all()
         return Payment.objects.filter(student=user)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        queryset = self.get_queryset()
+        successful_statuses = ['completed', 'paid', 'success']
+        totals = queryset.aggregate(
+            total_count=Count('payment_id'),
+            completed_count=Count('payment_id', filter=Q(status__in=successful_statuses)),
+            pending_count=Count('payment_id', filter=Q(status='pending')),
+            total_revenue=Coalesce(
+                Sum('amount', filter=Q(status__in=successful_statuses)),
+                Decimal('0.00'),
+            ),
+        )
+        return Response(totals)
 
     @action(detail=False, methods=['get'])
     def reconciliation(self, request):

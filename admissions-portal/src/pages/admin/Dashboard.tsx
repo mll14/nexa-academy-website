@@ -22,9 +22,9 @@ export function AdminDashboard() {
       api.getApplications({ limit: 8, ordering: '-applied_at' }).then((r) => r.results),
   })
 
-  const { data: payments = [] } = useQuery({
-    queryKey: ['admin', 'payments-all'],
-    queryFn: () => api.getPayments({ limit: 1000 } as never),
+  const { data: paymentStats, isLoading: paymentStatsLoading } = useQuery({
+    queryKey: ['admin', 'payment-stats'],
+    queryFn: api.getPaymentStats,
   })
 
   const { data: messagesRes } = useQuery({
@@ -32,11 +32,9 @@ export function AdminDashboard() {
     queryFn: () => api.getMessages({ limit: 1, is_read: 'false' }),
   })
 
-  const revenue = payments
-    .filter((p) => ['completed', 'paid', 'success'].includes(p.status))
-    .reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
+  const revenue = Number(paymentStats?.total_revenue ?? 0)
 
-  const loading = statsLoading || appsLoading
+  const loading = statsLoading || appsLoading || paymentStatsLoading
 
   const statCards = [
     { label: 'Total Applications', value: (stats as ApplicationStats)?.total ?? (stats as ApplicationStats)?.count ?? 0, icon: Users, accent: 'text-primary', iconBg: 'bg-primary/10', href: '/admin/applications' },
