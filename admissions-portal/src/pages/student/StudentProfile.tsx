@@ -40,66 +40,76 @@ function ProfileTab({ profile }: { profile: ProfileData }) {
     .toUpperCase()
 
   return (
-    <div className="space-y-6 pt-6 max-w-md">
-      {/* Avatar + name */}
-      <div className="flex items-center gap-4">
-        {user?.photo_url ? (
-          <img
-            src={user.photo_url}
-            alt={profile.display_name}
-            className="w-14 h-14 rounded-full object-cover border-2 border-border"
-          />
-        ) : (
-          <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary/20 shrink-0">
-            <span className="text-lg font-bold text-primary">{initials}</span>
-          </div>
-        )}
-        <div className="min-w-0">
-          <p className="font-semibold truncate">{profile.display_name || 'Student'}</p>
-          <p className="text-sm text-muted-foreground truncate">{profile.email}</p>
-        </div>
-      </div>
+    <div className="pt-6">
+      <div className="grid lg:grid-cols-[240px_1fr] gap-6 items-start">
 
-      <Separator />
-
-      {/* Info rows */}
-      <div className="space-y-4">
-        <InfoRow icon={User} label="Full Name" value={profile.display_name} />
-        <InfoRow icon={Mail} label="Email Address" value={profile.email} />
-        {profile.phone && (
-          <InfoRow icon={Phone} label="Phone Number" value={profile.phone} />
-        )}
-        {profile.program_name && (
-          <div className="flex items-start gap-3">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
-              <CheckCircle2 className="w-4 h-4 text-primary" />
+        {/* Left: identity card */}
+        <div className="rounded-2xl border border-border bg-card p-6 flex flex-col items-center text-center gap-4">
+          {user?.photo_url ? (
+            <img
+              src={user.photo_url}
+              alt={profile.display_name}
+              className="w-20 h-20 rounded-full object-cover border-2 border-border"
+            />
+          ) : (
+            <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center border-2 border-primary/20 shrink-0">
+              <span className="text-2xl font-bold text-primary">{initials}</span>
             </div>
-            <div className="flex-1">
-              <p className="text-xs text-muted-foreground font-medium">Program Applied</p>
-              <p className="text-sm font-semibold mt-0.5">{profile.program_name}</p>
-              {profile.status && (
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {STATUS_LABELS[profile.status] ?? profile.status}
-                </p>
+          )}
+          <div className="w-full min-w-0">
+            <p className="font-semibold truncate">{profile.display_name || 'Student'}</p>
+            <p className="text-sm text-muted-foreground truncate">{profile.email}</p>
+          </div>
+          {profile.status && (
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-primary/10 text-primary">
+              {STATUS_LABELS[profile.status] ?? profile.status}
+            </span>
+          )}
+        </div>
+
+        {/* Right: details + update note */}
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
+            <h2 className="text-sm font-semibold">Account Information</h2>
+            <Separator />
+            <div className="space-y-4">
+              <InfoRow icon={User} label="Full Name" value={profile.display_name} />
+              <InfoRow icon={Mail} label="Email Address" value={profile.email} />
+              {profile.phone && (
+                <InfoRow icon={Phone} label="Phone Number" value={profile.phone} />
+              )}
+              {profile.program_name && (
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 className="w-4 h-4 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs text-muted-foreground font-medium">Program Applied</p>
+                    <p className="text-sm font-semibold mt-0.5">{profile.program_name}</p>
+                    {profile.status && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {STATUS_LABELS[profile.status] ?? profile.status}
+                      </p>
+                    )}
+                  </div>
+                </div>
               )}
             </div>
           </div>
-        )}
-      </div>
 
-      <Separator />
-
-      <div className="rounded-xl bg-muted/50 border border-border p-4">
-        <p className="text-xs text-muted-foreground">
-          Need to update your name, email, or phone?{' '}
-          <a
-            href="mailto:admissions@nexaacademy.co.ke"
-            className="text-primary underline font-medium"
-          >
-            Email us at admissions@nexaacademy.co.ke
-          </a>{' '}
-          and we'll update your details.
-        </p>
+          <div className="rounded-xl bg-muted/50 border border-border p-4">
+            <p className="text-xs text-muted-foreground">
+              Need to update your name, email, or phone?{' '}
+              <a
+                href="mailto:admissions@nexaacademy.co.ke"
+                className="text-primary underline font-medium"
+              >
+                Email us at admissions@nexaacademy.co.ke
+              </a>{' '}
+              and we'll update your details.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -185,7 +195,7 @@ export function StudentProfile() {
 
   return (
     <StudentLayout>
-      <div className="space-y-6 max-w-2xl">
+      <div className="space-y-6">
         <div>
           <h1 className="font-heading text-2xl font-bold">My Profile</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Your account information and settings.</p>
