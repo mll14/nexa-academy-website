@@ -9,6 +9,7 @@ import {
 import { Card, CardContent } from '@/components/ui/Card'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
+import { SectionWrapper } from '@/components/sections/SectionWrapper'
 import { getAppointmentSlots, bookAppointment } from '@/lib/api/appointments'
 import type { AppointmentSlot } from '@/lib/api/appointments'
 import type { AppointmentFormSection } from '@/types'
@@ -217,8 +218,8 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
 
   if (done) {
     return (
-      <section id={sectionId ?? 'book-form'} className="py-16 md:py-20">
-        <div className="max-w-lg mx-auto px-4 text-center">
+      <SectionWrapper section={section} containerSize="sm" className="py-16 md:py-24">
+        <div className="text-center">
           <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-8 h-8 text-green-600" />
           </div>
@@ -230,21 +231,21 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
             Check your email for the confirmation and{' '}
             {form.appointmentType === 'virtual' ? 'Google Meet link.' : 'directions to our office.'}
           </p>
-          <div className="flex gap-3 justify-center">
-            <a href="/apply" className="bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition-colors">
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <a href="/apply" className="bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition-colors text-center">
               Apply Now
             </a>
-            <a href="/programs" className="text-sm font-semibold px-5 py-2.5 rounded-lg border hover:bg-muted transition-colors">
+            <a href="/programs" className="text-sm font-semibold px-5 py-2.5 rounded-lg border hover:bg-muted transition-colors text-center">
               Browse Programs
             </a>
           </div>
         </div>
-      </section>
+      </SectionWrapper>
     )
   }
 
   return (
-    <section id={sectionId ?? 'book-form'} className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20">
+    <SectionWrapper section={section} containerSize="lg">
       {/* Section header */}
       <div className="text-center max-w-2xl mx-auto space-y-3 mb-10">
         {badge && (
@@ -258,15 +259,15 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
       </div>
 
       {/* Step indicator */}
-      <div className="flex justify-center mb-10">
+      <div className="flex justify-center mb-8 md:mb-10">
         <StepIndicator current={step + 1} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8 items-start">
         {/* ── Form card ── */}
-        <div className="lg:col-span-8">
+        <div className="md:col-span-7 lg:col-span-8">
           <Card className="border border-border rounded-2xl">
-            <CardContent className="p-6 sm:p-8">
+            <CardContent className="p-5 sm:p-6 lg:p-8">
 
               {/* Step 0 — Type & Host */}
               {step === 0 && (
@@ -358,7 +359,7 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
                     </p>
                   )}
                   {!slotsLoading && !slotsError && availableDates.length > 0 && (
-                    <div className="grid sm:grid-cols-[180px_1fr] gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-4">
                       <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
                           <Calendar className="w-3.5 h-3.5" /> Select Date
@@ -562,7 +563,7 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
         </div>
 
         {/* ── Sidebar ── */}
-        <div className="lg:col-span-4 lg:sticky lg:top-24 space-y-5">
+        <div className="md:col-span-5 lg:col-span-4 md:sticky md:top-24 space-y-5">
           {sidebarItems.length > 0 && (
             <Card className="border border-border rounded-2xl">
               <CardContent className="p-5 space-y-4">
@@ -632,6 +633,6 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
           </Card>
         </div>
       </div>
-    </section>
+    </SectionWrapper>
   )
 }
