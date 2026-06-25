@@ -216,7 +216,7 @@ GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
 # reCAPTCHA secret key for server-side verification
 RECAPTCHA_SECRET_KEY = config('RECAPTCHA_SECRET_KEY', default='')
 RECAPTCHA_V3_ACTION = config('RECAPTCHA_V3_ACTION', default='application_submit')
-RECAPTCHA_MIN_SCORE = config('RECAPTCHA_MIN_SCORE', default=0.5, cast=float)
+RECAPTCHA_MIN_SCORE = config('RECAPTCHA_MIN_SCORE', default=0.3, cast=float)
 RECAPTCHA_ENFORCE = config('RECAPTCHA_ENFORCE', default=not DEBUG, cast=bool)
 
 # Gemini LLM for RAG chatbot
