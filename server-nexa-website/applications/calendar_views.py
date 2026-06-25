@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.core.cache import cache
@@ -208,6 +208,22 @@ class CalendarEventsView(APIView):
                 })
         return result
 
+    def _external_event_range(self, ev_start, ev_end):
+        start = ev_start.get('dateTime') or ev_start.get('date', '')
+        end = ev_end.get('dateTime') or ev_end.get('date', '')
+
+        if 'date' in ev_start and 'dateTime' not in ev_start and ev_end.get('date'):
+            try:
+                start_date = date.fromisoformat(ev_start['date'])
+                exclusive_end = date.fromisoformat(ev_end['date'])
+            except (TypeError, ValueError):
+                return start, end
+
+            if exclusive_end > start_date:
+                end = (exclusive_end - timedelta(days=1)).isoformat()
+
+        return start, end
+
     def _external_events(self, start_dt, end_dt):
         from .models import InterviewBlackout, CustomCalendarEvent
         known_gcal_ids = set(
@@ -249,12 +265,13 @@ class CalendarEventsView(APIView):
                 ev_start = ev.get('start', {})
                 ev_end = ev.get('end', {})
                 all_day = 'date' in ev_start and 'dateTime' not in ev_start
+                event_start, event_end = self._external_event_range(ev_start, ev_end)
                 result.append({
                     'id': ev['id'],
                     'type': 'external',
                     'title': ev.get('summary', 'No title'),
-                    'start': ev_start.get('dateTime') or ev_start.get('date', ''),
-                    'end': ev_end.get('dateTime') or ev_end.get('date', ''),
+                    'start': event_start,
+                    'end': event_end,
                     'all_day': all_day,
                     'meta': {
                         'gcal_event_id': ev['id'],
