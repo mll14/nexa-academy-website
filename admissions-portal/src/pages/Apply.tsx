@@ -417,6 +417,10 @@ export function Apply() {
       } catch {
         // Non-fatal here; the API decides whether reCAPTCHA is required.
       }
+      if (!recaptchaToken) {
+        toast.error('reCAPTCHA could not be verified. Refresh the page and try again.')
+        return
+      }
 
       await api.submitApplication({
         full_name: form.fullName.trim(),
