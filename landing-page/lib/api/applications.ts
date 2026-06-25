@@ -22,9 +22,13 @@ export async function submitApplication(
   payload: ApplicationPayload,
 ): Promise<{ success: boolean; id?: string; error?: string }> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (payload.recaptchaToken) {
+      headers['X-Recaptcha-Token'] = payload.recaptchaToken;
+    }
     const res = await fetch(`${BASE_URL}/api/applications/`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify(payload),
     })
     if (!res.ok) {

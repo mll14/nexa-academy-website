@@ -31,13 +31,12 @@ export function HeroSection({ section }: { section: HeroSectionType }) {
           )}
 
           {(section.primaryCta || section.secondaryCta) && (
-            <div className={`flex flex-row items-center gap-3 ${!isSplit ? 'justify-center' : ''}`}>
+            <div className={`flex flex-wrap items-center gap-3 ${!isSplit ? 'justify-center' : ''}`}>
               {section.primaryCta && (
                 <LinkButton
                   href={section.primaryCta.url}
                   variant={section.primaryCta.variant ?? 'primary'}
                   size="lg"
-                  className="whitespace-nowrap"
                   target={section.primaryCta.openInNewTab ? '_blank' : undefined}
                 >
                   {section.primaryCta.label}
@@ -48,7 +47,6 @@ export function HeroSection({ section }: { section: HeroSectionType }) {
                   href={section.secondaryCta.url}
                   variant={section.secondaryCta.variant ?? 'outline'}
                   size="lg"
-                  className="whitespace-nowrap"
                   target={section.secondaryCta.openInNewTab ? '_blank' : undefined}
                 >
                   {section.secondaryCta.label}

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import * as api from '../lib/api'
-import { tokens, getStoredUser, setStoredUser, clearStoredUser } from '../lib/auth'
+import { getStoredUser, setStoredUser, clearStoredUser, isAuthenticated as hasAccessToken } from '../lib/auth'
 import type { User } from '../types'
 
 type LoginResponse =
@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   const refreshUser = useCallback(async () => {
-    if (!tokens.access) return
+    if (!hasAccessToken()) return
     try {
       const profile = await api.getProfile()
       setUser(profile)
@@ -63,23 +63,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
-      // If there's a cached user, try to restore their session from the httpOnly
-      // refresh cookie. On page reload the in-memory access token is gone, so
-      // we must exchange the cookie for a fresh access token first.
-      if (getStoredUser()) {
-        const restored = await api.tryRefreshToken()
-        if (restored) {
-          await refreshUser()
-        } else {
-          // Cookie expired or was revoked — clear the stale cached user
-          setUser(null)
-          clearStoredUser()
-        }
+      // Always attempt to exchange the httpOnly refresh cookie for a fresh
+      // access token on startup — regardless of sessionStorage state.
+      // This handles: cleared storage, new tab, post-security-audit sessions.
+      const restored = await api.tryRefreshToken()
+      if (restored) {
+        await refreshUser()
+      } else {
+        // Cookie expired or was revoked — clear any optimistic cached user
+        setUser(null)
+        clearStoredUser()
       }
       setLoading(false)
     }
     init()
   }, [refreshUser])
+
+  // Reset auth state when the API layer detects a mid-flight session expiry
+  // (401 + failed refresh on a background request, not caught by the init flow).
+  useEffect(() => {
+    const handleExpired = () => {
+      setUser(null)
+      clearStoredUser()
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.replace('/login')
+      }
+    }
+    window.addEventListener('auth:session-expired', handleExpired)
+    return () => window.removeEventListener('auth:session-expired', handleExpired)
+  }, [])
 
   const login = useCallback(async (email: string, password: string): Promise<LoginResponse> => {
     try {
@@ -138,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshUser,
     isAdmin: () => user?.role === 'admin',
     isStudent: () => user?.role === 'student',
-    isAuthenticated: Boolean(tokens.access),
+    isAuthenticated: user !== null,
     isFullAdmin: () => user?.role === 'admin' && !user?.staffRole,
     hasPermission: (codename: string) => {
       if (!user || user.role !== 'admin') return false

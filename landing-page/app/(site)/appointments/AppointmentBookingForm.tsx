@@ -467,10 +467,11 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
                       <label className="text-sm font-medium mb-1.5 block">
                         Invite others to the Google Meet <span className="text-muted-foreground font-normal">(optional)</span>
                       </label>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 min-w-0">
                         <Input
                           type="email"
                           placeholder="colleague@email.com"
+                          className="min-w-0"
                           value={attendeeInput}
                           onChange={(e) => setAttendeeInput(e.target.value)}
                           onKeyDown={(e) => {
@@ -511,11 +512,11 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
                     </div>
                   )}
 
-                  <div className="bg-muted/50 rounded-xl p-4 text-sm space-y-1.5 border">
+                  <div className="bg-muted/50 rounded-xl p-4 text-sm space-y-1.5 border overflow-hidden">
                     <p className="font-semibold text-xs uppercase tracking-wider text-muted-foreground mb-2">Booking Summary</p>
-                    <p><span className="text-muted-foreground">Type:</span> {form.appointmentType === 'virtual' ? 'Virtual (Google Meet)' : 'In Person'}</p>
-                    <p><span className="text-muted-foreground">With:</span> {form.host === 'admissions_manager' ? 'Admissions Manager' : 'Technical Mentor'}</p>
-                    <p><span className="text-muted-foreground">Time:</span> {form.chosenTime ? formatFullDateTime(form.chosenTime) : '—'}</p>
+                    <p className="break-words"><span className="text-muted-foreground">Type: </span>{form.appointmentType === 'virtual' ? 'Virtual (Google Meet)' : 'In Person'}</p>
+                    <p className="break-words"><span className="text-muted-foreground">With: </span>{form.host === 'admissions_manager' ? 'Admissions Manager' : 'Technical Mentor'}</p>
+                    <p className="break-words"><span className="text-muted-foreground">Time: </span>{form.chosenTime ? formatFullDateTime(form.chosenTime) : '—'}</p>
                   </div>
 
                   {submitError && (
@@ -623,7 +624,7 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
             <CardContent className="p-5">
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Contact</p>
               <p className="text-sm text-muted-foreground">Questions before you book?</p>
-              <a href="mailto:admissions@nexaacademy.co.ke" className="text-sm font-medium text-primary hover:underline block mt-2">
+              <a href="mailto:admissions@nexaacademy.co.ke" className="text-sm font-medium text-primary hover:underline block mt-2 break-all">
                 admissions@nexaacademy.co.ke
               </a>
               <a href="tel:+254713067311" className="text-sm font-medium text-primary hover:underline block mt-1">
