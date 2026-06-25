@@ -335,13 +335,13 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
             <button
               key={value}
               onClick={() => setActiveCategory(value as PaymentCategory)}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              className={`flex items-center gap-1.5 px-3 sm:px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
                 activeCategory === value
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Icon className="w-4 h-4" />
+              <Icon className="w-4 h-4 shrink-0" />
               {label}
             </button>
           ))}
@@ -386,15 +386,15 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
 
               <Separator />
 
-              <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="grid grid-cols-3 gap-2 text-center">
                 {[
                   { label: 'Program Fee', value: totalFee },
                   { label: 'Paid', value: amountPaid },
                   { label: 'Balance', value: balance, highlight: !isFullyPaid && balance > 0 },
                 ].map(({ label, value, highlight }) => (
-                  <div key={label}>
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className={`text-sm font-bold mt-0.5 ${highlight ? 'text-destructive' : ''}`}>
+                  <div key={label} className="min-w-0">
+                    <p className="text-xs text-muted-foreground truncate">{label}</p>
+                    <p className={`text-xs sm:text-sm font-bold mt-0.5 break-words ${highlight ? 'text-destructive' : ''}`}>
                       KSh {value.toLocaleString()}
                     </p>
                   </div>
