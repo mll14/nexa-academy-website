@@ -53,9 +53,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         router.navigate({ to: '/admin', replace: true })
       } else if (
         profile.role === 'student' &&
-        pathname.startsWith('/admin')
+        (pathname === '/' || pathname === '/login' || pathname.startsWith('/admin'))
       ) {
-        router.navigate({ to: '/login', replace: true })
+        router.navigate({ to: '/student/dashboard', replace: true })
       }
     } catch {
       // keep cached user if network fails
