@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  GraduationCap, UserPlus, Search,
-  ArrowUpDown,
-  TrendingUp, Users, ChevronRight,
-  CheckCircle2, AlertCircle, XCircle,
+  GraduationCap, UserPlus, Search, ArrowUpDown,
+  TrendingUp, Users, ChevronRight, CheckCircle2,
+  AlertCircle, XCircle, BookOpen, CalendarDays,
+  Wallet, Filter,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Select } from '../../components/ui/select'
@@ -14,11 +14,11 @@ import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { Dialog } from '../../components/ui/dialog'
 import { Separator } from '../../components/ui/separator'
+import { Badge } from '../../components/ui/badge'
 import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { Enrollment, Program, User } from '../../types'
-
 import { Pagination } from '../../components/ui/pagination'
 
 function fmtKSh(n: number): string {
@@ -43,17 +43,40 @@ const SORT_OPTIONS = [
   { value: '-amount',          label: 'Highest fee' },
 ]
 
-function enrollmentStatusConfig(s: string) {
+function statusConfig(s: string) {
   switch (s) {
-    case 'active':    return { cls: 'bg-success/10 text-success border-success/20',         icon: CheckCircle2, label: 'Active' }
-    case 'completed': return { cls: 'bg-primary/10 text-primary border-primary/20',          icon: GraduationCap, label: 'Completed' }
-    case 'withdrawn': return { cls: 'bg-destructive/10 text-destructive border-destructive/20', icon: XCircle, label: 'Withdrawn' }
-    default:          return { cls: 'bg-muted text-muted-foreground border-border',          icon: AlertCircle,  label: s }
+    case 'active':    return { cls: 'bg-success/10 text-success border-success/20',               icon: CheckCircle2,  label: 'Active',     dot: 'bg-success' }
+    case 'completed': return { cls: 'bg-primary/10 text-primary border-primary/20',               icon: GraduationCap, label: 'Completed',  dot: 'bg-primary' }
+    case 'withdrawn': return { cls: 'bg-destructive/10 text-destructive border-destructive/20',   icon: XCircle,       label: 'Withdrawn',  dot: 'bg-destructive' }
+    default:          return { cls: 'bg-muted text-muted-foreground border-border',               icon: AlertCircle,   label: s,            dot: 'bg-muted-foreground' }
   }
 }
 
+function progressColor(pct: number, status: string) {
+  if (status === 'withdrawn') return 'bg-destructive/60'
+  if (pct >= 100) return 'bg-success'
+  if (pct >= 50)  return 'bg-primary'
+  return 'bg-warning'
+}
 
-// ─── Student picker: search existing OR enter manually ───────────────────────
+// ─── Avatar ──────────────────────────────────────────────────────────────────
+
+const AVATAR_COLORS = [
+  'bg-violet-100 text-violet-700',
+  'bg-blue-100 text-blue-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-amber-100 text-amber-700',
+  'bg-rose-100 text-rose-700',
+  'bg-cyan-100 text-cyan-700',
+]
+
+function avatarColor(name: string) {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+}
+
+// ─── Student picker ───────────────────────────────────────────────────────────
 
 type StudentValue = { uid?: string; email: string; display_name: string }
 
@@ -61,23 +84,19 @@ function StudentPicker({ value, onChange }: {
   value: StudentValue | null
   onChange: (v: StudentValue | null) => void
 }) {
-  const [query, setQuery]       = useState('')
-  const [results, setResults]   = useState<User[]>([])
-  const [searching, setSearching] = useState(false)
-  const [open, setOpen]         = useState(false)
-  const [manual, setManual]     = useState(false)
+  const [query, setQuery]           = useState('')
+  const [results, setResults]       = useState<User[]>([])
+  const [searching, setSearching]   = useState(false)
+  const [open, setOpen]             = useState(false)
+  const [manual, setManual]         = useState(false)
   const [manualName, setManualName] = useState('')
   const [manualEmail, setManualEmail] = useState('')
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // sync manual fields → parent value
   useEffect(() => {
     if (!manual) return
-    if (manualName || manualEmail) {
-      onChange({ display_name: manualName, email: manualEmail })
-    } else {
-      onChange(null)
-    }
+    if (manualName || manualEmail) onChange({ display_name: manualName, email: manualEmail })
+    else onChange(null)
   }, [manual, manualName, manualEmail]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const doSearch = (q: string) => {
@@ -91,7 +110,7 @@ function StudentPicker({ value, onChange }: {
         const res = await api.getStudents({ search: q })
         const list = Array.isArray(res) ? res : (res as { results: User[] }).results ?? []
         setResults(list)
-        setOpen(true) // always open so "not found" hint is visible
+        setOpen(true)
       } catch {
         setResults([])
         setOpen(true)
@@ -107,19 +126,8 @@ function StudentPicker({ value, onChange }: {
     onChange({ uid: u.uid, email: u.email, display_name: u.display_name })
   }
 
-  const switchToManual = () => {
-    setOpen(false)
-    setManual(true)
-    setQuery('')
-    onChange(null)
-  }
-
-  const switchToSearch = () => {
-    setManual(false)
-    setManualName('')
-    setManualEmail('')
-    onChange(null)
-  }
+  const switchToManual = () => { setOpen(false); setManual(true); setQuery(''); onChange(null) }
+  const switchToSearch = () => { setManual(false); setManualName(''); setManualEmail(''); onChange(null) }
 
   if (manual) {
     return (
@@ -130,19 +138,8 @@ function StudentPicker({ value, onChange }: {
             Search instead
           </button>
         </div>
-        <Input
-          placeholder="Full name *"
-          value={manualName}
-          onChange={(e) => setManualName(e.target.value)}
-          className="h-9 rounded-xl"
-        />
-        <Input
-          type="email"
-          placeholder="Email address *"
-          value={manualEmail}
-          onChange={(e) => setManualEmail(e.target.value)}
-          className="h-9 rounded-xl"
-        />
+        <Input placeholder="Full name *" value={manualName} onChange={(e) => setManualName(e.target.value)} className="h-9 rounded-xl" />
+        <Input type="email" placeholder="Email address *" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} className="h-9 rounded-xl" />
         {manualName && manualEmail && (
           <p className="text-xs text-success font-medium flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" /> Ready to enroll
@@ -171,14 +168,11 @@ function StudentPicker({ value, onChange }: {
       {open && (
         <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-popover border border-border rounded-xl shadow-lg overflow-hidden">
           {results.slice(0, 6).map((u) => (
-            <button
-              key={u.uid}
-              type="button"
-              onClick={() => pick(u)}
+            <button key={u.uid} type="button" onClick={() => pick(u)}
               className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/50 transition-colors"
             >
-              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                <span className="text-xs font-bold text-primary">{(u.display_name || u.email).charAt(0).toUpperCase()}</span>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${avatarColor(u.display_name || u.email)}`}>
+                {(u.display_name || u.email).charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{u.display_name}</p>
@@ -186,9 +180,7 @@ function StudentPicker({ value, onChange }: {
               </div>
             </button>
           ))}
-          <button
-            type="button"
-            onClick={switchToManual}
+          <button type="button" onClick={switchToManual}
             className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm text-primary hover:bg-muted/50 transition-colors border-t border-border"
           >
             <UserPlus className="w-3.5 h-3.5" />
@@ -202,7 +194,6 @@ function StudentPicker({ value, onChange }: {
           <CheckCircle2 className="w-3.5 h-3.5" /> {value.display_name}
         </p>
       )}
-
       {!open && !query && (
         <button type="button" onClick={switchToManual} className="mt-1.5 text-xs text-muted-foreground hover:text-primary transition-colors">
           Or enter student details manually →
@@ -212,7 +203,7 @@ function StudentPicker({ value, onChange }: {
   )
 }
 
-// ─── Manual enrollment dialog ─────────────────────────────────────────────────
+// ─── Enroll dialog ────────────────────────────────────────────────────────────
 
 function EnrollDialog({ open, onClose, programs, onSuccess }: {
   open: boolean
@@ -220,23 +211,23 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
   programs: Program[]
   onSuccess: () => void
 }) {
-  const [student, setStudent] = useState<StudentValue | null>(null)
+  const [student, setStudent]   = useState<StudentValue | null>(null)
   const [programId, setProgramId] = useState('')
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount]     = useState('')
   const [amountPaid, setAmountPaid] = useState('')
 
   const selectedProgram = programs.find((p) => p.program_id === programId) ?? null
-  const balance = (parseFloat(amount) || 0) - (parseFloat(amountPaid) || 0)
+  const balance   = (parseFloat(amount) || 0) - (parseFloat(amountPaid) || 0)
   const canSubmit = !!(student?.email && student?.display_name && programId && parseFloat(amount) > 0)
 
   const mutation = useMutation({
     mutationFn: () => api.manualEnroll({
-      studentId: student!.uid ?? '',
-      studentName: student!.display_name,
+      studentId:    student!.uid ?? '',
+      studentName:  student!.display_name,
       studentEmail: student!.email,
       programId,
-      amount: parseFloat(amount),
-      amountPaid: parseFloat(amountPaid) || 0,
+      amount:       parseFloat(amount),
+      amountPaid:   parseFloat(amountPaid) || 0,
     }),
     onSuccess: () => {
       toast.success(`${student!.display_name} enrolled successfully`)
@@ -258,28 +249,19 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
   }
 
   return (
-    <Dialog
-      open={open}
-      onClose={handleClose}
-      title="Enroll a Student"
+    <Dialog open={open} onClose={handleClose} title="Enroll a Student"
       description="Search for an existing student or enter their details manually."
       className="max-w-lg"
     >
       <div className="space-y-5">
-
-        {/* Student picker */}
         <div className="space-y-1.5">
           <Label>Student *</Label>
           <StudentPicker value={student} onChange={setStudent} />
         </div>
 
-        {/* Program */}
         <div className="space-y-1.5">
           <Label>Program *</Label>
-          <Select
-            value={programId}
-            onChange={handleProgramChange}
-            placeholder="Select a program…"
+          <Select value={programId} onChange={handleProgramChange} placeholder="Select a program…"
             options={programs.map((p) => ({ value: p.program_id, label: p.name }))}
           />
           {selectedProgram && (
@@ -290,37 +272,19 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          {/* Total fee */}
           <div className="space-y-1.5">
             <Label>Total Fee (KSh) *</Label>
-            <Input
-              type="number"
-              min="0"
-              placeholder="e.g. 150000"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
+            <Input type="number" min="0" placeholder="e.g. 150000" value={amount} onChange={(e) => setAmount(e.target.value)} />
             {selectedProgram?.price != null && (
-              <p className="text-xs text-muted-foreground">
-                Suggested: KSh {Number(selectedProgram.price).toLocaleString('en-KE')}
-              </p>
+              <p className="text-xs text-muted-foreground">Suggested: KSh {Number(selectedProgram.price).toLocaleString('en-KE')}</p>
             )}
           </div>
-
-          {/* Amount paid */}
           <div className="space-y-1.5">
             <Label>Amount Paid (KSh)</Label>
-            <Input
-              type="number"
-              min="0"
-              placeholder="0"
-              value={amountPaid}
-              onChange={(e) => setAmountPaid(e.target.value)}
-            />
+            <Input type="number" min="0" placeholder="0" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
           </div>
         </div>
 
-        {/* Balance preview */}
         {amount && (
           <div className="bg-muted/40 border border-border rounded-xl px-4 py-3 space-y-1">
             <div className="flex justify-between text-sm">
@@ -336,11 +300,7 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
         <Separator />
 
         <div className="flex gap-3">
-          <Button
-            className="flex-1"
-            disabled={!canSubmit || mutation.isPending}
-            onClick={() => mutation.mutate()}
-          >
+          <Button className="flex-1" disabled={!canSubmit || mutation.isPending} onClick={() => mutation.mutate()}>
             <UserPlus className="w-4 h-4 mr-2" />
             {mutation.isPending ? 'Enrolling…' : 'Enroll Student'}
           </Button>
@@ -354,63 +314,68 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function EnrolledStudents() {
-  const qc = useQueryClient()
+  const qc       = useQueryClient()
   const navigate = useNavigate()
-  const [search, setSearch]     = useState('')
-  const [status, setStatus]     = useState('all')
+  const [search,    setSearch]    = useState('')
+  const [status,    setStatus]    = useState('all')
   const [programId, setProgramId] = useState('all')
-  const [ordering, setOrdering] = useState('-enrollment_date')
-  const [page, setPage]         = useState(1)
+  const [ordering,  setOrdering]  = useState('-enrollment_date')
+  const [page,      setPage]      = useState(1)
   const [showEnroll, setShowEnroll] = useState(false)
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'enrollments', { search, status, programId, ordering, page }],
-    queryFn: () =>
-      api.getEnrollments({
-        search: search || undefined,
-        status: status === 'all' ? undefined : status,
-        program: programId === 'all' ? undefined : programId,
-        ordering,
-        page,
-        page_size: PAGE_SIZE,
-      } as never),
+    queryFn: () => api.getEnrollments({
+      search:   search || undefined,
+      status:   status === 'all' ? undefined : status,
+      program:  programId === 'all' ? undefined : programId,
+      ordering,
+      page,
+      page_size: PAGE_SIZE,
+    } as never),
     placeholderData: (prev) => prev,
   })
 
   const { data: programs = [] } = useQuery({
     queryKey: ['admin', 'programs'],
-    queryFn: () => api.getPrograms(),
+    queryFn:  () => api.getPrograms(),
   })
 
   const enrollments: Enrollment[] = (data as { results?: Enrollment[] })?.results ?? []
   const total: number             = (data as { count?: number })?.count ?? 0
   const totalPages                = Math.ceil(total / PAGE_SIZE)
 
-  // Stats from current page
   const active    = enrollments.filter((e) => e.status === 'active').length
   const completed = enrollments.filter((e) => e.status === 'completed').length
+  const withdrawn = enrollments.filter((e) => e.status === 'withdrawn').length
   const revenue   = enrollments.reduce((s, e) => s + (e.amount_paid ?? 0), 0)
-  const balance   = enrollments.reduce((s, e) => s + (e.balance ?? 0), 0)
+  const outstanding = enrollments.reduce((s, e) => s + (e.balance ?? 0), 0)
 
   const programOptions = [
     { value: 'all', label: 'All Programs' },
     ...(programs as Program[]).map((p) => ({ value: p.program_id, label: p.name })),
   ]
 
+  const activeFilters = [
+    search && `"${search}"`,
+    status !== 'all' && status,
+    programId !== 'all' && (programs as Program[]).find(p => p.program_id === programId)?.name,
+  ].filter(Boolean)
+
   return (
     <AdminLayout>
       <div className="space-y-6">
 
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className="font-heading text-2xl font-bold">Enrolled Students</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {isLoading ? 'Loading…' : `${total} enrollment${total !== 1 ? 's' : ''} total`}
+              {isLoading ? 'Loading…' : `${total.toLocaleString()} student${total !== 1 ? 's' : ''} enrolled`}
             </p>
           </div>
-          <Button onClick={() => setShowEnroll(true)}>
-            <UserPlus className="w-4 h-4 mr-2" />
+          <Button onClick={() => setShowEnroll(true)} className="self-start sm:self-auto gap-2">
+            <UserPlus className="w-4 h-4" />
             <span className="sm:hidden">Enroll</span>
             <span className="hidden sm:inline">Enroll Student</span>
           </Button>
@@ -418,25 +383,38 @@ export function EnrolledStudents() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { label: 'Total enrolled', value: String(total), icon: <Users className="w-5 h-5" /> },
-            { label: 'Active',         value: String(active), icon: <CheckCircle2 className="w-5 h-5" /> },
-            { label: 'Completed',      value: String(completed), icon: <GraduationCap className="w-5 h-5" /> },
-            { label: 'Revenue paid',   value: fmtKSh(revenue), icon: <TrendingUp className="w-5 h-5" />, sub: balance > 0 ? `${fmtKSh(balance)} outstanding` : 'All paid up' },
-          ].map(({ label, value, icon, sub }) => (
-            <div key={label} className="bg-card border border-border rounded-2xl px-5 py-4 flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0">{icon}</div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground font-medium">{label}</p>
-                <p className="text-xl font-bold font-heading mt-0.5 leading-tight">{value}</p>
-                {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
-              </div>
-            </div>
-          ))}
+          <StatCard
+            label="Total enrolled"
+            value={total.toLocaleString()}
+            icon={<Users className="w-4 h-4" />}
+            iconBg="bg-primary/10 text-primary"
+          />
+          <StatCard
+            label="Active"
+            value={String(active)}
+            icon={<CheckCircle2 className="w-4 h-4" />}
+            iconBg="bg-success/10 text-success"
+            sub={completed > 0 ? `${completed} completed` : undefined}
+          />
+          <StatCard
+            label="Withdrawn"
+            value={String(withdrawn)}
+            icon={<XCircle className="w-4 h-4" />}
+            iconBg="bg-destructive/10 text-destructive"
+            sub={withdrawn === 0 ? 'None this page' : undefined}
+          />
+          <StatCard
+            label="Revenue collected"
+            value={fmtKSh(revenue)}
+            icon={<TrendingUp className="w-4 h-4" />}
+            iconBg="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+            sub={outstanding > 0 ? `${fmtKSh(outstanding)} outstanding` : 'All settled'}
+            subColor={outstanding > 0 ? 'text-warning' : 'text-success'}
+          />
         </div>
 
         {/* Filter bar */}
-        <div className="flex flex-col sm:flex-row gap-2.5">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <Input
@@ -446,79 +424,114 @@ export function EnrolledStudents() {
               onChange={(e) => { setSearch(e.target.value); setPage(1) }}
             />
           </div>
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            <div className="w-full sm:w-44">
+          <div className="flex flex-wrap gap-2">
+            <div className="w-full xs:w-auto sm:w-40">
               <Select value={status} onChange={(v) => { setStatus(v); setPage(1) }} options={STATUS_OPTIONS} />
             </div>
-            <div className="w-full sm:w-52">
+            <div className="w-full xs:w-auto sm:w-52">
               <Select value={programId} onChange={(v) => { setProgramId(v); setPage(1) }} options={programOptions} />
             </div>
-            <div className="w-full sm:w-44">
+            <div className="w-full xs:w-auto sm:w-40">
               <Select value={ordering} onChange={setOrdering} options={SORT_OPTIONS} icon={<ArrowUpDown className="w-3.5 h-3.5" />} />
             </div>
           </div>
         </div>
 
+        {/* Active filter chips */}
+        {activeFilters.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap -mt-2">
+            <Filter className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            {activeFilters.map((f) => (
+              <Badge key={f as string} variant="secondary" className="text-xs font-normal">{f}</Badge>
+            ))}
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => { setSearch(''); setStatus('all'); setProgramId('all'); setPage(1) }}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
         {/* List */}
         {isLoading ? (
           <div className="space-y-2">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-16 bg-muted rounded-2xl animate-pulse" style={{ opacity: 1 - i * 0.12 }} />
+              <div key={i} className="h-[72px] bg-muted rounded-2xl animate-pulse" style={{ opacity: 1 - i * 0.13 }} />
             ))}
           </div>
         ) : enrollments.length === 0 ? (
-          <div className="py-20 text-center border border-dashed border-border rounded-2xl">
-            <GraduationCap className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">No enrolled students match your filters.</p>
-          </div>
+          <EmptyState hasFilters={activeFilters.length > 0} onClear={() => { setSearch(''); setStatus('all'); setProgramId('all'); setPage(1) }} />
         ) : (
           <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border">
             {enrollments.map((e) => {
-              const cfg = enrollmentStatusConfig(e.status)
+              const cfg = statusConfig(e.status)
               const StatusIcon = cfg.icon
+              const displayName = e.student_name || e.student_details?.display_name || '?'
               const pct = e.amount > 0 ? Math.min(100, Math.round(((e.amount_paid ?? 0) / e.amount) * 100)) : 0
+
               return (
                 <div
                   key={e.enrollment_id}
                   onClick={() => navigate({ to: '/admin/enrolled/$enrollmentId', params: { enrollmentId: e.enrollment_id } })}
                   className="flex items-center gap-4 px-5 py-4 hover:bg-muted/40 transition-colors cursor-pointer group"
                 >
-                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <span className="text-sm font-bold text-primary">
-                      {(e.student_name || e.student_details?.display_name || '?').charAt(0).toUpperCase()}
-                    </span>
+                  {/* Avatar */}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-sm font-bold ${avatarColor(displayName)}`}>
+                    {displayName.charAt(0).toUpperCase()}
                   </div>
+
+                  {/* Name + meta */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold">{e.student_name || e.student_details?.display_name}</p>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${cfg.cls}`}>
+                      <p className="text-sm font-semibold">{displayName}</p>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${cfg.cls}`}>
                         <StatusIcon className="w-3 h-3" />{cfg.label}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {e.student_details?.email}
-                      {e.program_name && <span className="mx-1.5 opacity-40">·</span>}
-                      {e.program_name}
-                    </p>
+                    <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                      {e.student_details?.email && (
+                        <p className="text-xs text-muted-foreground truncate max-w-[180px]">{e.student_details.email}</p>
+                      )}
+                      {e.program_name && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <BookOpen className="w-3 h-3 shrink-0" />
+                          <span className="truncate max-w-[140px]">{e.program_name}</span>
+                        </span>
+                      )}
+                      {e.enrollment_date && (
+                        <span className="hidden lg:flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                          <CalendarDays className="w-3 h-3" />
+                          {formatDate(e.enrollment_date)}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Payment progress */}
-                  <div className="hidden md:flex flex-col items-end gap-1 shrink-0 w-36">
-                    <div className="flex justify-between w-full text-xs">
-                      <span className="text-muted-foreground">{pct}% paid</span>
-                      {e.balance > 0 && <span className="text-warning font-medium">KSh {e.balance.toLocaleString('en-KE')} due</span>}
+                  {/* Payment column */}
+                  <div className="hidden md:flex flex-col items-end gap-1.5 shrink-0 min-w-[140px]">
+                    <div className="flex items-center justify-between w-full gap-2">
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Wallet className="w-3 h-3" />
+                        {pct}% paid
+                      </span>
+                      {e.balance > 0 ? (
+                        <span className="text-xs font-semibold text-warning">
+                          {fmtKSh(e.balance)} due
+                        </span>
+                      ) : (
+                        <span className="text-xs font-medium text-success">Settled</span>
+                      )}
                     </div>
                     <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full ${pct >= 100 ? 'bg-success' : 'bg-warning'}`}
+                        className={`h-full rounded-full transition-all duration-300 ${progressColor(pct, e.status)}`}
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                  </div>
-
-                  <div className="hidden sm:block shrink-0 text-right">
-                    <p className="text-xs font-medium">KSh {(e.amount_paid ?? 0).toLocaleString('en-KE')}</p>
-                    <p className="text-xs text-muted-foreground">{e.enrollment_date ? formatDate(e.enrollment_date) : '—'}</p>
+                    <p className="text-[10px] text-muted-foreground w-full text-right">
+                      KSh {(e.amount_paid ?? 0).toLocaleString('en-KE')} / {(e.amount ?? 0).toLocaleString('en-KE')}
+                    </p>
                   </div>
 
                   <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
@@ -538,8 +551,6 @@ export function EnrolledStudents() {
         />
       </div>
 
-
-      {/* Enroll dialog */}
       <EnrollDialog
         open={showEnroll}
         onClose={() => setShowEnroll(false)}
@@ -547,5 +558,54 @@ export function EnrolledStudents() {
         onSuccess={() => qc.invalidateQueries({ queryKey: ['admin', 'enrollments'] })}
       />
     </AdminLayout>
+  )
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function StatCard({
+  label, value, icon, iconBg, sub, subColor = 'text-muted-foreground',
+}: {
+  label: string
+  value: string
+  icon: React.ReactNode
+  iconBg: string
+  sub?: string
+  subColor?: string
+}) {
+  return (
+    <div className="bg-card border border-border rounded-2xl px-5 py-4 flex items-start gap-3">
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${iconBg}`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground font-medium">{label}</p>
+        <p className="text-xl font-bold font-heading mt-0.5 leading-tight">{value}</p>
+        {sub && <p className={`text-xs mt-0.5 ${subColor}`}>{sub}</p>}
+      </div>
+    </div>
+  )
+}
+
+function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () => void }) {
+  return (
+    <div className="py-20 text-center border border-dashed border-border rounded-2xl space-y-3">
+      <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mx-auto">
+        <GraduationCap className="w-6 h-6 text-muted-foreground/50" />
+      </div>
+      <div>
+        <p className="text-sm font-medium text-foreground">
+          {hasFilters ? 'No students match these filters' : 'No enrolled students yet'}
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          {hasFilters ? 'Try adjusting your search or filter criteria.' : 'Use the Enroll Student button to add the first student.'}
+        </p>
+      </div>
+      {hasFilters && (
+        <button onClick={onClear} className="text-xs text-primary hover:underline">
+          Clear filters
+        </button>
+      )}
+    </div>
   )
 }

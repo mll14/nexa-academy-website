@@ -12,7 +12,7 @@ from django.core import signing
 from django.http import HttpResponseRedirect
 from .models import NewsletterSubscription, NewsletterCampaign
 from .serializers import NewsletterSubscriptionSerializer, SubscribeSerializer, NewsletterCampaignSerializer
-from accounts.permissions import IsAdminUser
+from accounts.permissions import IsAdminUser, HasAppPermission
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
 
@@ -46,13 +46,19 @@ def _unsubscribe_result_url(status_value, reason=''):
 class NewsletterViewSet(viewsets.ModelViewSet):
     queryset = NewsletterSubscription.objects.all()
     serializer_class = NewsletterSubscriptionSerializer
-    permission_classes = [IsAuthenticated, IsAdminUser]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'source']
     search_fields = ['email', 'name']
     ordering_fields = ['subscribed_at', 'email']
     ordering = ['-subscribed_at']
     pagination_class = StandardResultsSetPagination
+
+    def get_permissions(self):
+        if self.action in ('subscribe', 'unsubscribe', 'unsubscribe_via_token'):
+            return [AllowAny()]
+        if self.action in ('list', 'retrieve'):
+            return [HasAppPermission('newsletter.view')()]
+        return [HasAppPermission('newsletter.manage')()]
 
     @action(detail=False, methods=['post'], permission_classes=[AllowAny])
     def subscribe(self, request):
@@ -191,8 +197,12 @@ class NewsletterViewSet(viewsets.ModelViewSet):
 class NewsletterCampaignViewSet(viewsets.ModelViewSet):
     queryset = NewsletterCampaign.objects.all()
     serializer_class = NewsletterCampaignSerializer
-    permission_classes = [IsAuthenticated, IsAdminUser]
     ordering = ['-created_at']
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [HasAppPermission('newsletter.view')()]
+        return [HasAppPermission('newsletter.manage')()]
 
     def get_queryset(self):
         qs = super().get_queryset()

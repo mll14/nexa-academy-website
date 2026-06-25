@@ -23,7 +23,6 @@ import {
   Shield,
   ShieldCheck,
   User,
-  ChevronDown,
   MailIcon,
   Clock,
   Plus,
@@ -432,7 +431,6 @@ function RolesSection() {
   const navigate = useNavigate()
   const [roles, setRoles] = useState<Role[]>([])
   const [loading, setLoading] = useState(true)
-  const [openCoverageId, setOpenCoverageId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Role | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
@@ -495,8 +493,6 @@ function RolesSection() {
               key={role.id}
               role={role}
               canManage={isFullAdmin()}
-              coverageOpen={openCoverageId === role.id}
-              onToggleCoverage={() => setOpenCoverageId(prev => prev === role.id ? null : role.id)}
               onEdit={() => openEdit(role)}
               onDelete={() => handleDelete(role)}
             />
@@ -520,15 +516,11 @@ function RolesSection() {
 function RoleCard({
   role,
   canManage,
-  coverageOpen,
-  onToggleCoverage,
   onEdit,
   onDelete,
 }: {
   role: Role
   canManage: boolean
-  coverageOpen: boolean
-  onToggleCoverage: () => void
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -557,17 +549,12 @@ function RoleCard({
                 {role.user_count} assigned
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onToggleCoverage}
-              className="rounded-xl border bg-muted/20 px-3 py-2.5 text-left hover:border-primary/40 transition-colors"
-            >
+            <div className="rounded-xl border bg-muted/20 px-3 py-2.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Permissions</p>
-              <p className="mt-2 flex items-center justify-between text-sm font-medium">
+              <p className="mt-2 text-sm font-medium">
                 {role.permissions.length} permission{role.permissions.length !== 1 ? 's' : ''}
-                <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${coverageOpen ? 'rotate-180' : ''}`} />
               </p>
-            </button>
+            </div>
           </div>
         </div>
         {canManage && (
@@ -584,28 +571,6 @@ function RoleCard({
         )}
       </div>
 
-      {coverageOpen && (
-        <div className="mt-4 border-t pt-4">
-          {role.permissions.length > 0 ? (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {permissionGroups.map(([resource, permissions]) => (
-                <div key={resource} className="rounded-xl border bg-muted/20 px-3 py-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold">{formatPermissionResource(resource)}</p>
-                    <Badge variant="outline" className="text-[11px]">{permissions.length}</Badge>
-                  </div>
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    {permissions.slice(0, 3).map(permission => permission.name).join(' • ')}
-                    {permissions.length > 3 ? ` • +${permissions.length - 3} more` : ''}
-                  </p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No permissions assigned yet.</p>
-          )}
-        </div>
-      )}
     </div>
   )
 }

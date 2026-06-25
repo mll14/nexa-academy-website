@@ -26,20 +26,20 @@ import { getNotifications } from '../lib/api'
 import { cn } from '../lib/utils'
 
 const PRIMARY_NAV = [
-  { to: '/admin',              label: 'Dashboard',          icon: LayoutDashboard, exact: true,  permission: 'dashboard.view' },
-  { to: '/admin/applications', label: 'Applications',       icon: Users,                         permission: 'applications.view' },
-  { to: '/admin/interviews',   label: 'Interviews',         icon: Calendar,                      permission: 'interviews.view' },
-  { to: '/admin/appointments', label: 'Appointments',       icon: Calendar,                      permission: 'appointments.view' },
-  { to: '/admin/programs',     label: 'Programs & Intakes', icon: BookOpen,                      permission: 'programs.view' },
-  { to: '/admin/enrolled',     label: 'Enrolled Students',  icon: GraduationCap,                 permission: 'students.view' },
+  { to: '/admin',              label: 'Dashboard',         icon: LayoutDashboard, exact: true },
+  { to: '/admin/applications', label: 'Applications',      icon: Users,           permission: 'applications.view' },
+  { to: '/admin/interviews',   label: 'Interviews',        icon: Calendar,        permission: 'interviews.view' },
+  { to: '/admin/appointments', label: 'Appointments',      icon: Calendar,        permission: 'appointments.view' },
+  { to: '/admin/enrolled',     label: 'Enrolled Students', icon: GraduationCap,   permission: 'students.view' },
 ]
 
 const MORE_NAV = [
-  { to: '/admin/payments',       label: 'Payments',      icon: CreditCard,     permission: 'transactions.view' },
-  { to: '/admin/leads',         label: 'Leads',         icon: Flame,          permission: 'leads.view' },
-  { to: '/admin/messages',      label: 'Messages',      icon: MessageSquare,  permission: 'messages.view' },
-  { to: '/admin/newsletter',    label: 'Newsletter',    icon: Mail,           permission: 'newsletter.view' },
-  { to: '/admin/users',         label: 'Staff Access',  icon: UserCog,        anyPermissions: ['users.view', 'roles.view', 'roles.manage'] },
+  { to: '/admin/programs',   label: 'Programs & Intakes', icon: BookOpen,      permission: 'programs.view' },
+  { to: '/admin/payments',   label: 'Payments',           icon: CreditCard,    permission: 'transactions.view' },
+  { to: '/admin/leads',      label: 'Leads',              icon: Flame,         permission: 'leads.view' },
+  { to: '/admin/messages',   label: 'Messages',           icon: MessageSquare, permission: 'messages.view' },
+  { to: '/admin/newsletter', label: 'Newsletter',         icon: Mail,          permission: 'newsletter.view' },
+  { to: '/admin/users',      label: 'Staff Access',       icon: UserCog,       anyPermissions: ['users.view', 'roles.view', 'roles.manage'] },
   { href: 'https://nexaacademy.sanity.studio/', label: 'Sanity Studio', icon: ExternalLink },
 ]
 

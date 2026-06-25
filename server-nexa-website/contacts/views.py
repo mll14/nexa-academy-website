@@ -9,7 +9,7 @@ from .models import ContactMessage
 from .serializers import ContactMessageSerializer
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
-from accounts.permissions import IsAdminUser
+from accounts.permissions import IsAdminUser, HasAppPermission
 
 class ContactMessageViewSet(viewsets.ModelViewSet):
     queryset = ContactMessage.objects.all()
@@ -22,13 +22,11 @@ class ContactMessageViewSet(viewsets.ModelViewSet):
     pagination_class = StandardResultsSetPagination
 
     def get_permissions(self):
-        """
-        AllowAny for creating a message, 
-        IsAdminUser for everything else.
-        """
         if self.action == 'create':
             return [AllowAny()]
-        return [IsAdminUser()]
+        if self.action in ('list', 'retrieve', 'count'):
+            return [HasAppPermission('messages.view')()]
+        return [HasAppPermission('messages.manage')()]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

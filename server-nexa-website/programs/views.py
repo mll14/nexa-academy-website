@@ -22,7 +22,7 @@ from .serializers import (
     HelpMeLeadSerializer, IncompleteApplicationSerializer, LeadAdminNoteSerializer, PaymentPlanChangeRequestSerializer,
     normalize_payment_plan,
 )
-from accounts.permissions import IsAdminUser
+from accounts.permissions import IsAdminUser, HasAppPermission, IsSuperAdmin
 from accounts.views import create_audit_log
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
@@ -137,11 +137,11 @@ class ProgramViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_permissions(self):
-        if self.action in ['list', 'retrieve']:
-            permission_classes = [AllowAny]
-        else:
-            permission_classes = [IsAuthenticated, IsAdminUser]
-        return [permission() for permission in permission_classes]
+        if self.action in ('list', 'retrieve'):
+            return [AllowAny()]
+        if self.action == 'destroy':
+            return [IsSuperAdmin()]
+        return [HasAppPermission('programs.manage')()]
 
     def retrieve(self, request, *args, **kwargs):
         program = self.get_object()
@@ -169,7 +169,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             return Enrollment.objects.all()
         return Enrollment.objects.filter(student=user)
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=False, methods=['post'], permission_classes=[HasAppPermission('students.manage')])
     def manual_enroll(self, request):
         """Manually enroll a student (Admin only). Accepts student_id (existing user) or student_name+student_email (new/external)."""
         student_id = request.data.get('student_id')
@@ -348,11 +348,9 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
     def get_permissions(self):
-        if self.action in ['update', 'partial_update', 'destroy', 'approve', 'reject']:
-            permission_classes = [IsAuthenticated, IsAdminUser]
-        else:
-            permission_classes = [IsAuthenticated]
-        return [permission() for permission in permission_classes]
+        if self.action in ('update', 'partial_update', 'destroy', 'approve', 'reject'):
+            return [HasAppPermission('transactions.manage')()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         user = self.request.user
@@ -466,7 +464,7 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
             program_name__iexact=enrollment.program_name,
         ).update(payment_plan=payment_plan)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('transactions.manage')])
     def approve(self, request, pk=None):
         change_request = self.get_object()
         if change_request.status != 'pending':
@@ -518,7 +516,7 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
 
         return Response(self.get_serializer(change_request).data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('transactions.manage')])
     def reject(self, request, pk=None):
         change_request = self.get_object()
         if change_request.status != 'pending':
@@ -552,7 +550,11 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
 
 class LeadAdminNoteViewSet(viewsets.ModelViewSet):
     serializer_class = LeadAdminNoteSerializer
-    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [HasAppPermission('leads.view')()]
+        return [HasAppPermission('leads.manage')()]
     http_method_names = ['get', 'post', 'head', 'options']
     ordering = ['-created_at']
 
@@ -688,7 +690,7 @@ class CertificateViewSet(viewsets.ModelViewSet):
                 'message': 'Certificate not found'
             })
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('students.manage')])
     def generate_for_student(self, request, pk=None):
         """Generate certificate for a student (admin only)"""
         try:
@@ -757,7 +759,9 @@ class ProgramIntakeViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve'):
             return [AllowAny()]
-        return [IsAuthenticated(), IsAdminUser()]
+        if self.action == 'destroy':
+            return [IsSuperAdmin()]
+        return [HasAppPermission('programs.manage')()]
 
     def perform_create(self, serializer):
         serializer.save(source='site')
@@ -881,7 +885,7 @@ class ProgramInterestCreate(APIView):
 
 class ProgramInterestListView(APIView):
     """Admin-only endpoint: list, filter, and count program interest submissions."""
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [HasAppPermission('leads.view')]
 
     def get(self, request):
         qs = ProgramInterest.objects.all().order_by('-created_at')
@@ -935,7 +939,7 @@ class ProgramInterestListView(APIView):
 
 class ProgramInterestDetailView(APIView):
     """Admin-only endpoint: retrieve or mark follow-up on one program interest submission."""
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [HasAppPermission('leads.manage')]
 
     def get(self, request, pk):
         interest = get_object_or_404(ProgramInterest, pk=pk)
@@ -972,7 +976,7 @@ class ProgramInterestDetailView(APIView):
 
 class ProgramInterestNotifyView(APIView):
     """Admin: send an intake-open notification email to ProgramInterest submitters."""
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [HasAppPermission('leads.manage')]
 
     def post(self, request):
         program_slug = request.data.get('program_slug', '').strip()
@@ -1062,7 +1066,7 @@ class HelpMeLeadView(APIView):
 
 
 class HelpMeLeadDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [HasAppPermission('leads.manage')]
 
     def get(self, request, pk):
         lead = get_object_or_404(HelpMeLead, pk=pk)
@@ -1189,7 +1193,7 @@ class IncompleteApplicationView(APIView):
 
 
 class IncompleteApplicationDetailView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [HasAppPermission('leads.manage')]
 
     def get(self, request, pk):
         from django.db.models import Exists, OuterRef

@@ -6,7 +6,7 @@ from django.db.models import Q
 from django.conf import settings
 import logging
 
-from accounts.permissions import IsAdminUser
+from accounts.permissions import IsAdminUser, HasAppPermission
 from ubuntu_labs.email_utils import send_html_email
 from ubuntu_labs.pagination import StandardResultsSetPagination
 from applications.gcal_service import get_all_slots_with_status, CalendarServiceError
@@ -31,7 +31,9 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ('create', 'available_slots'):
             return [AllowAny()]
-        return [IsAdminUser()]
+        if self.action in ('list', 'retrieve'):
+            return [HasAppPermission('appointments.view')()]
+        return [HasAppPermission('appointments.manage')()]
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -148,7 +150,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
-    @action(detail=True, methods=['patch'], permission_classes=[IsAdminUser])
+    @action(detail=True, methods=['patch'], permission_classes=[HasAppPermission('appointments.manage')])
     def cancel(self, request, pk=None):
         appointment = self.get_object()
         if appointment.status == 'cancelled':

@@ -13,7 +13,7 @@ from html.parser import HTMLParser
 from .models import Application, ApplicationAdminNote, ApplicationLog, DraftApplication, InterviewBlackout, CustomCalendarEvent
 from .serializers import ApplicationAdminNoteSerializer, ApplicationSerializer, ApplicationCreateSerializer, InterviewSlotSerializer, InterviewBlackoutSerializer, CustomCalendarEventSerializer
 from .models import InterviewSlot
-from accounts.permissions import IsAdminUser, HasAppPermission
+from accounts.permissions import IsAdminUser, HasAppPermission, IsSuperAdmin
 from accounts.views import create_audit_log
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
@@ -258,9 +258,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             permission_classes = [AllowAny]
         elif self.action == 'destroy':
-            permission_classes = [IsAuthenticated, HasAppPermission('applications.manage')]
+            permission_classes = [IsSuperAdmin]
         elif self.action in ['update', 'partial_update', 'cancel_interview']:
-            permission_classes = [IsAuthenticated, IsAdminUser]
+            permission_classes = [IsAuthenticated, HasAppPermission('applications.manage')]
         else:
             permission_classes = [IsAuthenticated]
         return [permission() for permission in permission_classes]
@@ -480,7 +480,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         return Response(ApplicationSerializer(application).data, status=status.HTTP_201_CREATED)
     
-    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['patch'], permission_classes=[HasAppPermission('applications.manage')])
     def update_status(self, request, pk=None):
         application = self.get_object()
         new_status = request.data.get('status')
@@ -659,7 +659,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         return Response({'status': 'scheduled', 'chosen_time': chosen})
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('interviews.manage')])
     def propose_interview_times(self, request, pk=None):
         """Admin action: propose interview times for the applicant."""
         application = self.get_object()
@@ -739,7 +739,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         return Response(InterviewSlotSerializer(slot).data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('interviews.manage')])
     def complete_interview(self, request, pk=None):
         """Admin marks the interview complete and approves the result."""
         application = self.get_object()
@@ -1085,7 +1085,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         return Response(InterviewSlotSerializer(slot).data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('interviews.manage')])
     def cancel_interview(self, request, pk=None):
         application = self.get_object()
         slot = getattr(application, 'interview_slot', None)
@@ -1214,7 +1214,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         return Response(InterviewSlotSerializer(slot).data)
 
-    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=False, methods=['get'], permission_classes=[HasAppPermission('applications.view')])
     def stats(self, request):
         total = Application.objects.count()
         pending = Application.objects.filter(status='pending').count()
@@ -1234,7 +1234,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             'enrolled': enrolled,
         })
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('applications.manage')])
     def notify_intake(self, request, pk=None):
         """Send a next-intake notification email to the applicant."""
         application = self.get_object()
@@ -1284,7 +1284,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
 class ApplicationAdminNoteViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationAdminNoteSerializer
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [HasAppPermission('applications.manage')]
     http_method_names = ['get', 'post', 'head', 'options']
     ordering = ['-created_at']
 
@@ -1320,7 +1320,7 @@ class ApplicationAdminNoteViewSet(viewsets.ModelViewSet):
 
 
 class AdminFollowUpEmailView(APIView):
-    permission_classes = [IsAuthenticated, IsAdminUser]
+    permission_classes = [HasAppPermission('applications.manage')]
 
     def post(self, request):
         to = (request.data.get('to') or '').strip()
@@ -1381,7 +1381,7 @@ class DraftApplicationViewSet(viewsets.ViewSet):
 
 class InterviewBlackoutViewSet(viewsets.ModelViewSet):
     """Admin-only CRUD for blocked interview times/days."""
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasAppPermission('interviews.manage')]
     serializer_class = InterviewBlackoutSerializer
 
     def get_queryset(self):
@@ -1425,7 +1425,7 @@ class InterviewBlackoutViewSet(viewsets.ModelViewSet):
 
 class CustomCalendarEventViewSet(viewsets.ModelViewSet):
     """Admin CRUD for custom calendar events (follow-ups, meetings, personal, etc.)."""
-    permission_classes = [IsAdminUser]
+    permission_classes = [HasAppPermission('interviews.manage')]
     serializer_class = CustomCalendarEventSerializer
 
     def get_queryset(self):

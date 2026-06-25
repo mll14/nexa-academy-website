@@ -15,6 +15,7 @@ import { Select } from '../../components/ui/select'
 import { Dialog } from '../../components/ui/dialog'
 import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 import { Separator } from '../../components/ui/separator'
+import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -120,6 +121,7 @@ function ProgramFormFields({ form, setForm }: {
 
 function ProgramsTab() {
   const qc = useQueryClient()
+  const { isFullAdmin } = useAuth()
   const [selected, setSelected] = useState<Program | null>(null)
   const [showForm, setShowForm] = useState<'create' | 'edit' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Program | null>(null)
@@ -268,9 +270,11 @@ function ProgramsTab() {
               <Button className="flex-1" onClick={() => openEdit(selected)}>
                 <Pencil className="w-4 h-4 mr-1.5" /> Edit
               </Button>
-              <Button variant="destructive" className="flex-1" onClick={() => setConfirmDelete(selected)}>
-                <Trash2 className="w-4 h-4 mr-1.5" /> Delete
-              </Button>
+              {isFullAdmin() && (
+                <Button variant="destructive" className="flex-1" onClick={() => setConfirmDelete(selected)}>
+                  <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                </Button>
+              )}
             </div>
           </div>
         </Dialog>
@@ -419,6 +423,7 @@ function IntakeFormFields({ form, setForm, programs }: {
 
 function IntakesTab() {
   const qc = useQueryClient()
+  const { isFullAdmin } = useAuth()
   const [selected, setSelected] = useState<Intake | null>(null)
   const [showForm, setShowForm] = useState<'create' | 'edit' | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Intake | null>(null)
@@ -578,9 +583,11 @@ function IntakesTab() {
               <Button className="flex-1" onClick={() => openEdit(selected)}>
                 <Pencil className="w-4 h-4 mr-1.5" /> Edit
               </Button>
-              <Button variant="destructive" className="flex-1" onClick={() => setConfirmDelete(selected)}>
-                <Trash2 className="w-4 h-4 mr-1.5" /> Delete
-              </Button>
+              {isFullAdmin() && (
+                <Button variant="destructive" className="flex-1" onClick={() => setConfirmDelete(selected)}>
+                  <Trash2 className="w-4 h-4 mr-1.5" /> Delete
+                </Button>
+              )}
             </div>
           </div>
         </Dialog>

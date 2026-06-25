@@ -33,6 +33,16 @@ import { CreateRolePage, EditRolePage } from "./pages/admin/RoleEditor";
 import { AccountManager } from "./pages/admin/AccountManager";
 import { AcceptInvite } from "./pages/AcceptInvite";
 
+// ─── Permission helper ───────────────────────────────────────────────────────
+
+function requirePermission(codename: string) {
+  const user = getStoredUser()
+  if (!user?.effectivePermissions) return  // super admin — no restrictions
+  if (!user.effectivePermissions.includes(codename)) {
+    throw redirect({ to: '/admin' })
+  }
+}
+
 // ─── Root ────────────────────────────────────────────────────────────────────
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
@@ -173,24 +183,28 @@ const adminDashboardRoute = createRoute({
 const adminApplicationsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "applications",
+  beforeLoad: () => requirePermission('applications.view'),
   component: Applications,
 });
 
 const adminApplicationDetailRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "applications/$id",
+  beforeLoad: () => requirePermission('applications.view'),
   component: ApplicationDetail,
 });
 
 const adminInterviewsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "interviews",
+  beforeLoad: () => requirePermission('interviews.view'),
   component: Interviews,
 });
 
 const adminPaymentsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "payments",
+  beforeLoad: () => requirePermission('transactions.view'),
   component: Payments,
 });
 
@@ -211,6 +225,7 @@ const adminPaymentPlansRoute = createRoute({
 const adminProgramsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "programs",
+  beforeLoad: () => requirePermission('programs.view'),
   component: Programs,
 });
 
@@ -224,36 +239,42 @@ const adminIntakesRoute = createRoute({
 const adminLeadsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "leads",
+  beforeLoad: () => requirePermission('leads.view'),
   component: Leads,
 });
 
 const adminLeadDetailRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "leads/$leadType/$id",
+  beforeLoad: () => requirePermission('leads.view'),
   component: LeadDetail,
 });
 
 const adminEnrolledRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "enrolled",
+  beforeLoad: () => requirePermission('students.view'),
   component: EnrolledStudents,
 });
 
 const adminEnrolledDetailRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "enrolled/$enrollmentId",
+  beforeLoad: () => requirePermission('students.view'),
   component: EnrolledStudentDetail,
 });
 
 const adminMessagesRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "messages",
+  beforeLoad: () => requirePermission('messages.view'),
   component: Messages,
 });
 
 const adminStudentDetailRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "students/$uid",
+  beforeLoad: () => requirePermission('students.view'),
   component: StudentDetail,
 });
 
@@ -266,12 +287,14 @@ const adminNotificationsRoute = createRoute({
 const adminNewsletterRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "newsletter",
+  beforeLoad: () => requirePermission('newsletter.view'),
   component: Newsletter,
 });
 
 const adminAppointmentsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "appointments",
+  beforeLoad: () => requirePermission('appointments.view'),
   component: Appointments,
 });
 

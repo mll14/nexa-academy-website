@@ -4,8 +4,10 @@ import {
   Mail, Users, Send, Plus, Pencil, Trash2,
   RefreshCw, Search, Download,
   CheckCircle2, Clock, AlertTriangle, ArrowLeft,
-  Save,
+  Save, PauseCircle,
 } from 'lucide-react'
+
+const CAMPAIGNS_PAUSED = true
 import { AdminLayout } from '../../components/AdminLayout'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -14,10 +16,29 @@ import { Select } from '../../components/ui/select'
 import { Dialog } from '../../components/ui/dialog'
 import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 import { EmailEditor } from '../../components/admin/EmailEditor'
+import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
 import toast from 'react-hot-toast'
 import type { NewsletterCampaign, NewsletterSubscriber } from '../../types'
 import { Pagination } from '../../components/ui/pagination'
+
+// ── Announcement bar ──────────────────────────────────────────────────────────
+
+function CampaignsPausedBanner() {
+  if (!CAMPAIGNS_PAUSED) return null
+  return (
+    <div className="flex items-start gap-3 rounded-2xl border border-warning/40 bg-warning/8 px-4 py-3.5">
+      <PauseCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+      <div>
+        <p className="text-sm font-semibold text-warning">Campaign sending is temporarily paused</p>
+        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+          Creating and sending new campaigns has been disabled to keep daily email usage within limits.
+          Existing drafts and subscriber data are safe. Campaign actions will be re-enabled shortly.
+        </p>
+      </div>
+    </div>
+  )
+}
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -209,7 +230,8 @@ function ComposeView({
               size="sm"
               className="gap-1.5"
               onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
+              disabled={saveMutation.isPending || CAMPAIGNS_PAUSED}
+              title={CAMPAIGNS_PAUSED ? 'Campaign sending is temporarily paused' : undefined}
             >
               {saveMutation.isPending
                 ? <span className="w-3.5 h-3.5 border-2 border-foreground/30 border-t-foreground rounded-full animate-spin" />
@@ -220,7 +242,8 @@ function ComposeView({
               size="sm"
               className="gap-1.5"
               onClick={handleSaveAndSend}
-              disabled={saveMutation.isPending || sendMutation.isPending}
+              disabled={saveMutation.isPending || sendMutation.isPending || CAMPAIGNS_PAUSED}
+              title={CAMPAIGNS_PAUSED ? 'Campaign sending is temporarily paused' : undefined}
             >
               <Send className="w-3.5 h-3.5" /> Send
             </Button>
@@ -326,6 +349,7 @@ function CampaignsTab({
   onEdit: (c: NewsletterCampaign) => void
 }) {
   const qc = useQueryClient()
+  const { isFullAdmin } = useAuth()
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
   const PAGE_SIZE = 10
@@ -386,7 +410,12 @@ function CampaignsTab({
           <RefreshCw className="w-4 h-4" />
         </button>
         <div className="ml-auto">
-          <Button className="gap-1.5" onClick={onCompose}>
+          <Button
+            className="gap-1.5"
+            onClick={onCompose}
+            disabled={CAMPAIGNS_PAUSED}
+            title={CAMPAIGNS_PAUSED ? 'Campaign sending is temporarily paused' : undefined}
+          >
             <Plus className="w-4 h-4" />
             <span className="sm:hidden">New</span>
             <span className="hidden sm:inline">New Campaign</span>
@@ -405,7 +434,13 @@ function CampaignsTab({
           <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
             <Mail className="w-8 h-8 opacity-30" />
             <p className="text-sm">No campaigns yet — create your first one!</p>
-            <Button size="sm" className="gap-1.5 mt-2" onClick={onCompose}>
+            <Button
+              size="sm"
+              className="gap-1.5 mt-2"
+              onClick={onCompose}
+              disabled={CAMPAIGNS_PAUSED}
+              title={CAMPAIGNS_PAUSED ? 'Campaign sending is temporarily paused' : undefined}
+            >
               <Plus className="w-4 h-4" />
               <span className="sm:hidden">New</span>
               <span className="hidden sm:inline">New Campaign</span>
@@ -464,22 +499,24 @@ function CampaignsTab({
                               if (window.confirm(`Send "${c.subject}" to subscribers now?`))
                                 sendMutation.mutate(c.campaign_id)
                             }}
-                            className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors text-muted-foreground hover:text-primary"
-                            title="Send"
-                            disabled={sendMutation.isPending}
+                            className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors text-muted-foreground hover:text-primary disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
+                            title={CAMPAIGNS_PAUSED ? 'Campaign sending is temporarily paused' : 'Send'}
+                            disabled={sendMutation.isPending || CAMPAIGNS_PAUSED}
                           >
                             <Send className="w-3.5 h-3.5" />
                           </button>
                         </>
                       )}
-                      <button
-                        onClick={() => handleDelete(c)}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
-                        title="Delete"
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {isFullAdmin() && (
+                        <button
+                          onClick={() => handleDelete(c)}
+                          className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                          title="Delete"
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -693,6 +730,9 @@ export function Newsletter() {
     <AdminLayout>
       <div className="space-y-6">
 
+        {/* Announcement bar */}
+        <CampaignsPausedBanner />
+
         {/* Header */}
         <div className="flex items-center justify-between gap-4">
           <div>
@@ -701,7 +741,12 @@ export function Newsletter() {
               Write and send email campaigns to your subscribers
             </p>
           </div>
-          <Button className="gap-1.5" onClick={goCompose}>
+          <Button
+            className="gap-1.5"
+            onClick={goCompose}
+            disabled={CAMPAIGNS_PAUSED}
+            title={CAMPAIGNS_PAUSED ? 'Campaign sending is temporarily paused' : undefined}
+          >
             <Plus className="w-4 h-4" />
             <span className="sm:hidden">New</span>
             <span className="hidden sm:inline">New Campaign</span>

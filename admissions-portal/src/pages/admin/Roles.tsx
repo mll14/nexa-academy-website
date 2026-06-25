@@ -4,7 +4,7 @@ import { PermissionGate } from '../../components/PermissionGate'
 import { useAuth } from '../../context/AuthContext'
 import { getRoles, createRole, updateRole, deleteRole, getPermissions } from '../../lib/api'
 import type { Role, AppPermission } from '../../types'
-import { Plus, Pencil, Trash2, Lock, Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { Plus, Pencil, Trash2, Lock, Users } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
@@ -138,12 +138,8 @@ export function Roles() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Role | null | 'new'>('new' as never)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [expandedCards, setExpandedCards] = useState<Record<number, boolean>>({})
   const [deleteTarget, setDeleteTarget] = useState<Role | null>(null)
   const [deleting, setDeleting] = useState(false)
-
-  const toggleCard = (id: number) =>
-    setExpandedCards(prev => ({ ...prev, [id]: !prev[id] }))
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -233,42 +229,6 @@ export function Roles() {
                     )}
                   </div>
 
-                  {role.permissions.length > 0 && (
-                    <div className="mt-3 pt-3 border-t">
-                      <button
-                        type="button"
-                        onClick={() => toggleCard(role.id)}
-                        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {expandedCards[role.id] ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        Permission coverage
-                        <span className="font-medium text-foreground">{role.permissions.length}</span>
-                      </button>
-
-                      {expandedCards[role.id] && (() => {
-                        const grouped = role.permissions.reduce<Record<string, AppPermission[]>>((acc, p) => {
-                          ;(acc[p.resource] ??= []).push(p)
-                          return acc
-                        }, {})
-                        return (
-                          <div className="mt-3 space-y-3">
-                            {Object.entries(grouped).map(([resource, perms]) => (
-                              <div key={resource}>
-                                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1.5 capitalize">
-                                  {resource.replace(/_/g, ' ')}
-                                </p>
-                                <div className="flex flex-wrap gap-1">
-                                  {perms.map(p => (
-                                    <Badge key={p.id} variant="secondary" className="text-xs font-normal">{p.name}</Badge>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      })()}
-                    </div>
-                  )}
                 </div>
               ))}
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
-import { ArrowLeft, Lock, Search, Shield, Users } from 'lucide-react'
+import { ArrowLeft, Lock, Search, Shield, Users, CheckCircle2, Circle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { AdminLayout } from '../../components/AdminLayout'
 import { PermissionGate } from '../../components/PermissionGate'
@@ -16,13 +16,7 @@ import { formatPermissionResource, groupPermissionsByResource, slugify } from '.
 
 type RoleEditorMode = 'create' | 'edit'
 
-function RoleEditorScreen({
-  mode,
-  roleId,
-}: {
-  mode: RoleEditorMode
-  roleId?: number
-}) {
+function RoleEditorScreen({ mode, roleId }: { mode: RoleEditorMode; roleId?: number }) {
   const { isFullAdmin } = useAuth()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
@@ -36,7 +30,6 @@ function RoleEditorScreen({
   const [search, setSearch] = useState('')
 
   const isNew = mode === 'create'
-
   const goBack = () => navigate({ to: '/admin/users', search: { tab: 'roles' } } as never)
 
   useEffect(() => {
@@ -46,7 +39,6 @@ function RoleEditorScreen({
 
   useEffect(() => {
     let active = true
-
     const load = async () => {
       setLoading(true)
       try {
@@ -55,9 +47,7 @@ function RoleEditorScreen({
           if (!active) return
           setAllPermissions(permissions)
         } else {
-          if (!roleId || Number.isNaN(roleId)) {
-            throw new Error('Invalid role.')
-          }
+          if (!roleId || Number.isNaN(roleId)) throw new Error('Invalid role.')
           const [permissions, existingRole] = await Promise.all([getPermissions(), getRole(roleId)])
           if (!active) return
           setAllPermissions(permissions)
@@ -65,72 +55,54 @@ function RoleEditorScreen({
           setName(existingRole.name)
           setSlug(existingRole.slug)
           setDescription(existingRole.description ?? '')
-          setSelectedPerms(existingRole.permissions.map(permission => permission.id))
+          setSelectedPerms(existingRole.permissions.map(p => p.id))
         }
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Failed to load role details.')
-        if (active) {
-          navigate({ to: '/admin/users', search: { tab: 'roles' }, replace: true } as never)
-        }
+        if (active) navigate({ to: '/admin/users', search: { tab: 'roles' }, replace: true } as never)
       } finally {
         if (active) setLoading(false)
       }
     }
-
     load()
-
-    return () => {
-      active = false
-    }
+    return () => { active = false }
   }, [mode, navigate, roleId])
 
   const groupedPermissions = groupPermissionsByResource(allPermissions)
+
   const normalizedSearch = search.trim().toLowerCase()
   const filteredGroups = groupedPermissions
-    .map(([resource, permissions]) => [
+    .map(([resource, perms]) => [
       resource,
-      permissions.filter(permission => {
+      perms.filter(p => {
         if (!normalizedSearch) return true
-        const haystack = `${permission.name} ${permission.codename} ${permission.resource} ${permission.action}`.toLowerCase()
-        return haystack.includes(normalizedSearch)
+        return `${p.name} ${p.codename} ${p.resource} ${p.action}`.toLowerCase().includes(normalizedSearch)
       }),
     ] as const)
-    .filter(([, permissions]) => permissions.length > 0)
+    .filter(([, perms]) => perms.length > 0)
 
-  const visiblePermissionIds = filteredGroups.flatMap(([, permissions]) => permissions.map(permission => permission.id))
-  const selectedVisibleCount = visiblePermissionIds.filter(id => selectedPerms.includes(id)).length
+  const visibleIds = filteredGroups.flatMap(([, perms]) => perms.map(p => p.id))
+  const selectedVisibleCount = visibleIds.filter(id => selectedPerms.includes(id)).length
 
-  const togglePermission = (id: number) => {
-    setSelectedPerms(prev => prev.includes(id) ? prev.filter(permissionId => permissionId !== id) : [...prev, id])
-  }
+  const togglePermission = (id: number) =>
+    setSelectedPerms(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
-  const togglePermissionGroup = (permissionIds: number[]) => {
-    const allSelected = permissionIds.every(id => selectedPerms.includes(id))
+  const toggleGroup = (ids: number[]) => {
+    const allSelected = ids.every(id => selectedPerms.includes(id))
     setSelectedPerms(prev =>
-      allSelected
-        ? prev.filter(id => !permissionIds.includes(id))
-        : [...new Set([...prev, ...permissionIds])],
+      allSelected ? prev.filter(id => !ids.includes(id)) : [...new Set([...prev, ...ids])]
     )
   }
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault()
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
     setSaving(true)
     try {
       if (isNew) {
-        await createRole({
-          name,
-          slug,
-          description,
-          permission_ids: selectedPerms,
-        })
+        await createRole({ name, slug, description, permission_ids: selectedPerms })
         toast.success('Role created.')
       } else if (roleId) {
-        await updateRole(roleId, {
-          name,
-          description,
-          permission_ids: selectedPerms,
-        })
+        await updateRole(roleId, { name, description, permission_ids: selectedPerms })
         toast.success('Role updated.')
       }
       goBack()
@@ -143,169 +115,229 @@ function RoleEditorScreen({
 
   if (!isFullAdmin()) return null
 
+  const coverageGroups = groupedPermissions.map(([resource, perms]) => ({
+    resource,
+    total: perms.length,
+    selected: perms.filter(p => selectedPerms.includes(p.id)).length,
+  })).filter(g => g.selected > 0)
+
   return (
     <AdminLayout>
       <PermissionGate permission="roles.view">
         <div className="space-y-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <Button type="button" variant="ghost" className="h-auto px-0 text-muted-foreground hover:text-foreground" onClick={goBack}>
-                <ArrowLeft className="w-4 h-4" /> Back to Staff Access
-              </Button>
-              <h1 className="mt-3 text-2xl font-semibold">{isNew ? 'Create Role' : `Edit ${role?.name ?? 'Role'}`}</h1>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Manage permissions on a full page so large role definitions are easier to review and maintain.
-              </p>
+
+          {/* Header */}
+          <div className="flex flex-col gap-1">
+            <button
+              onClick={goBack}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Staff Access · Roles
+            </button>
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-xl font-semibold">
+                  {isNew ? 'New Role' : (role?.name ?? 'Edit Role')}
+                </h1>
+                {!isNew && slug && (
+                  <span className="font-mono text-xs px-2 py-1 rounded-lg bg-muted text-muted-foreground border">
+                    {slug}
+                  </span>
+                )}
+                {role?.is_system && (
+                  <Badge variant="outline" className="gap-1 text-xs">
+                    <Lock className="w-3 h-3" /> System role
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {selectedPerms.length} permission{selectedPerms.length !== 1 ? 's' : ''} selected
+                </span>
+              </div>
             </div>
-            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs uppercase tracking-[0.18em]">
-              {isNew ? 'New Role' : 'Role Editor'}
-            </Badge>
           </div>
 
           {loading ? (
-            <div className="flex min-h-60 items-center justify-center rounded-2xl border text-sm text-muted-foreground">Loading role details…</div>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="space-y-4">
+                <div className="h-48 rounded-2xl border bg-muted/30 animate-pulse" />
+                <div className="h-96 rounded-2xl border bg-muted/30 animate-pulse" />
+              </div>
+              <div className="h-64 rounded-2xl border bg-muted/30 animate-pulse" />
+            </div>
           ) : (
-            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <section className="rounded-2xl border bg-card p-5 shadow-sm">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-1.5 md:col-span-2">
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <form onSubmit={handleSubmit} className="space-y-5">
+
+                {/* Identity */}
+                <section className="rounded-2xl border bg-card p-5 shadow-sm space-y-4">
+                  <p className="text-sm font-semibold text-foreground">Role Identity</p>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5 sm:col-span-2">
                       <Label>Role Name</Label>
                       <Input
                         value={name}
-                        onChange={event => {
-                          setName(event.target.value)
-                          if (isNew) setSlug(slugify(event.target.value))
+                        onChange={e => {
+                          setName(e.target.value)
+                          if (isNew) setSlug(slugify(e.target.value))
                         }}
-                        placeholder="e.g. Finance Manager"
+                        placeholder="e.g. Admissions Officer"
                         required
+                        className="text-sm"
                       />
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label>{isNew ? 'Slug' : 'Role Slug'}</Label>
-                      <Input
-                        value={slug}
-                        onChange={event => {
-                          if (isNew) setSlug(slugify(event.target.value))
-                        }}
-                        placeholder="finance_manager"
-                        readOnly={!isNew}
-                        required
-                      />
+                      <Label>Slug</Label>
+                      <div className="relative">
+                        {!isNew && <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />}
+                        <Input
+                          value={slug}
+                          onChange={e => { if (isNew) setSlug(slugify(e.target.value)) }}
+                          placeholder="admissions_officer"
+                          readOnly={!isNew}
+                          required
+                          className={`text-sm font-mono ${!isNew ? 'pl-8 bg-muted/30 text-muted-foreground' : ''}`}
+                        />
+                      </div>
                       <p className="text-xs text-muted-foreground">
-                        {isNew ? 'Generated from the role name. You can still adjust it before saving.' : 'Role slugs stay fixed after creation.'}
+                        {isNew ? 'Auto-generated from name. Adjust before saving.' : 'Fixed after creation.'}
                       </p>
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label>Selection Summary</Label>
-                      <div className="flex h-10 items-center rounded-xl border bg-muted/30 px-3 text-sm text-muted-foreground">
-                        {selectedPerms.length} permission{selectedPerms.length !== 1 ? 's' : ''} selected
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5 md:col-span-2">
                       <Label>Description</Label>
                       <Textarea
-                        rows={4}
+                        rows={3}
                         value={description}
-                        onChange={event => setDescription(event.target.value)}
-                        placeholder="Describe what this role should control and any limits the team should know about."
+                        onChange={e => setDescription(e.target.value)}
+                        placeholder="Who is this role for and what should it control?"
+                        className="text-sm resize-none"
                       />
                     </div>
                   </div>
                 </section>
 
-                <section className="rounded-2xl border bg-card p-5 shadow-sm">
-                  <div className="flex flex-col gap-4 border-b pb-4 md:flex-row md:items-end md:justify-between">
+                {/* Permissions */}
+                <section className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+                  <div className="flex flex-col gap-3 px-5 pt-5 pb-4 border-b sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm font-semibold">Permissions</p>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        Browse by access area, search by permission name, and bulk select the groups you need.
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {selectedVisibleCount} of {visibleIds.length} visible selected
+                        {normalizedSearch && ` · filtered by "${search}"`}
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs">
-                        {selectedVisibleCount}/{visiblePermissionIds.length} visible selected
-                      </Badge>
+                    <div className="flex items-center gap-2">
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={visiblePermissionIds.length === 0}
-                        onClick={() => setSelectedPerms(prev => [...new Set([...prev, ...visiblePermissionIds])])}
+                        className="text-xs h-8"
+                        disabled={visibleIds.length === 0 || selectedVisibleCount === visibleIds.length}
+                        onClick={() => setSelectedPerms(prev => [...new Set([...prev, ...visibleIds])])}
                       >
-                        Select visible
+                        Select all visible
                       </Button>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
+                        className="text-xs h-8"
                         disabled={selectedVisibleCount === 0}
-                        onClick={() => setSelectedPerms(prev => prev.filter(id => !visiblePermissionIds.includes(id)))}
+                        onClick={() => setSelectedPerms(prev => prev.filter(id => !visibleIds.includes(id)))}
                       >
                         Clear visible
                       </Button>
                     </div>
                   </div>
 
-                  <div className="mt-4 space-y-4">
+                  <div className="p-5 space-y-4">
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         type="search"
                         value={search}
-                        onChange={event => setSearch(event.target.value)}
-                        placeholder="Search permissions, actions, or resource groups"
-                        className="pl-9"
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Search permissions…"
+                        className="pl-9 h-9 text-sm"
                       />
                     </div>
 
                     {filteredGroups.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
-                        No permissions match this search.
+                      <div className="rounded-xl border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
+                        No permissions match "{search}".
                       </div>
                     ) : (
-                      <div className="grid gap-4 lg:grid-cols-2">
-                        {filteredGroups.map(([resource, permissions]) => {
-                          const permissionIds = permissions.map(permission => permission.id)
-                          const groupSelectedCount = permissionIds.filter(id => selectedPerms.includes(id)).length
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        {filteredGroups.map(([resource, perms]) => {
+                          const ids = perms.map(p => p.id)
+                          const selectedCount = ids.filter(id => selectedPerms.includes(id)).length
+                          const allSelected = selectedCount === perms.length
+                          const pct = perms.length > 0 ? (selectedCount / perms.length) * 100 : 0
 
                           return (
-                            <div key={resource} className="rounded-2xl border bg-muted/20 p-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold">{formatPermissionResource(resource)}</p>
-                                  <p className="mt-1 text-xs text-muted-foreground">
-                                    {groupSelectedCount}/{permissions.length} permission{permissions.length !== 1 ? 's' : ''} selected
-                                  </p>
+                            <div key={resource} className="rounded-xl border bg-muted/20 overflow-hidden">
+                              {/* Group header */}
+                              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b bg-card">
+                                <div className="min-w-0">
+                                  <p className="text-xs font-semibold truncate">{formatPermissionResource(resource)}</p>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <div className="h-1 w-20 rounded-full bg-muted overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full transition-all duration-300 ${pct === 100 ? 'bg-success' : pct > 0 ? 'bg-primary' : 'bg-muted'}`}
+                                        style={{ width: `${pct}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground">
+                                      {selectedCount}/{perms.length}
+                                    </span>
+                                  </div>
                                 </div>
-                                <Button type="button" variant="ghost" size="sm" onClick={() => togglePermissionGroup(permissionIds)}>
-                                  {groupSelectedCount === permissions.length ? 'Clear group' : 'Select group'}
-                                </Button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleGroup(ids)}
+                                  className="text-xs text-primary hover:underline shrink-0"
+                                >
+                                  {allSelected ? 'Deselect all' : 'Select all'}
+                                </button>
                               </div>
 
-                              <div className="mt-4 space-y-2">
-                                {permissions.map(permission => (
-                                  <label
-                                    key={permission.id}
-                                    className="flex cursor-pointer items-start gap-3 rounded-xl border bg-card px-3 py-2.5 text-sm transition-colors hover:border-primary/40 hover:bg-background"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={selectedPerms.includes(permission.id)}
-                                      onChange={() => togglePermission(permission.id)}
-                                      className="mt-0.5 rounded"
-                                    />
-                                    <span className="min-w-0">
-                                      <span className="block font-medium text-foreground">{permission.name}</span>
-                                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                                        {permission.codename}
+                              {/* Permission rows */}
+                              <div className="divide-y">
+                                {perms.map(p => {
+                                  const checked = selectedPerms.includes(p.id)
+                                  return (
+                                    <label
+                                      key={p.id}
+                                      className={`flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors ${
+                                        checked ? 'bg-primary/5' : 'hover:bg-background'
+                                      }`}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => togglePermission(p.id)}
+                                        className="sr-only"
+                                      />
+                                      {checked
+                                        ? <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                                        : <Circle className="w-4 h-4 text-muted-foreground/40 shrink-0" />
+                                      }
+                                      <span className="min-w-0 flex-1">
+                                        <span className={`block text-xs font-medium ${checked ? 'text-foreground' : 'text-muted-foreground'}`}>
+                                          {p.name}
+                                        </span>
+                                        <span className="block text-[10px] font-mono text-muted-foreground/60 truncate">
+                                          {p.codename}
+                                        </span>
                                       </span>
-                                    </span>
-                                  </label>
-                                ))}
+                                    </label>
+                                  )
+                                })}
                               </div>
                             </div>
                           )
@@ -315,55 +347,80 @@ function RoleEditorScreen({
                   </div>
                 </section>
 
-                <div className="flex flex-col-reverse justify-end gap-3 border-t pt-4 sm:flex-row">
+                <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
                   <Button type="button" variant="outline" onClick={goBack}>Cancel</Button>
-                  <Button type="submit" disabled={saving}>
+                  <Button type="submit" disabled={saving} className="min-w-28">
                     {saving ? 'Saving…' : isNew ? 'Create Role' : 'Save Changes'}
                   </Button>
                 </div>
               </form>
 
+              {/* Sidebar */}
               <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-                <section className="rounded-2xl border bg-card p-5 shadow-sm">
-                  <p className="text-sm font-semibold">Role Snapshot</p>
-                  <div className="mt-4 space-y-3 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Status</span>
-                      {role?.is_system ? (
-                        <Badge variant="outline" className="gap-1">
-                          <Lock className="w-3 h-3" /> System role
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">Custom role</Badge>
-                      )}
+
+                {/* Stats */}
+                <section className="rounded-2xl border bg-card p-5 shadow-sm space-y-4">
+                  <p className="text-sm font-semibold">Overview</p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-xl bg-muted/40 border px-3 py-3">
+                      <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Assigned</p>
+                      <p className="mt-1.5 flex items-center gap-1.5 text-xl font-bold">
+                        <Users className="w-4 h-4 text-muted-foreground" />
+                        {role?.user_count ?? 0}
+                      </p>
                     </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Users assigned</span>
-                      <span className="font-medium">{role?.user_count ?? 0}</span>
+                    <div className="rounded-xl bg-muted/40 border px-3 py-3">
+                      <p className="text-[10px] uppercase tracking-wide font-semibold text-muted-foreground">Selected</p>
+                      <p className="mt-1.5 flex items-center gap-1.5 text-xl font-bold">
+                        <Shield className="w-4 h-4 text-muted-foreground" />
+                        {selectedPerms.length}
+                      </p>
                     </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Permission areas</span>
-                      <span className="font-medium">{groupedPermissions.length}</span>
+                  </div>
+
+                  <div className="space-y-1.5 text-xs">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Type</span>
+                      {role?.is_system
+                        ? <Badge variant="outline" className="gap-1 text-[10px] h-5"><Lock className="w-2.5 h-2.5" /> System</Badge>
+                        : <Badge variant="secondary" className="text-[10px] h-5">Custom</Badge>
+                      }
                     </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-muted-foreground">Selected permissions</span>
-                      <span className="font-medium">{selectedPerms.length}</span>
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>Areas covered</span>
+                      <span className="font-medium text-foreground">{coverageGroups.length} / {groupedPermissions.length}</span>
                     </div>
                   </div>
                 </section>
 
+                {/* Live coverage */}
                 <section className="rounded-2xl border bg-card p-5 shadow-sm">
-                  <p className="text-sm font-semibold">What changes here</p>
-                  <div className="mt-4 space-y-3 text-sm text-muted-foreground">
-                    <div className="flex gap-3">
-                      <Shield className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                      <p>Role permissions are grouped by access area so large role definitions stay readable.</p>
+                  <p className="text-sm font-semibold">Permission Coverage</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 mb-4">Access areas with at least one permission enabled.</p>
+
+                  {coverageGroups.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">No permissions selected yet.</p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {coverageGroups.map(g => (
+                        <div key={g.resource}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium truncate">{formatPermissionResource(g.resource)}</span>
+                            <span className="text-[10px] text-muted-foreground shrink-0 ml-2">
+                              {g.selected}/{g.total}
+                            </span>
+                          </div>
+                          <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${g.selected === g.total ? 'bg-success' : 'bg-primary'}`}
+                              style={{ width: `${(g.selected / g.total) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    <div className="flex gap-3">
-                      <Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                      <p>Changes affect every staff user assigned to this role after the update is saved.</p>
-                    </div>
-                  </div>
+                  )}
                 </section>
               </aside>
             </div>

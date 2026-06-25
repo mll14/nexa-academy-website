@@ -160,8 +160,8 @@ function NotifyForm({
 function InterestsTab() {
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { hasPermission } = useAuth()
-  const canDelete = hasPermission('leads.manage')
+  const { hasPermission, isFullAdmin } = useAuth()
+  const canDelete = isFullAdmin()
   const [followUp, setFollowUp] = useState<FollowUpFilter>('pending')
   const [search, setSearch] = useState('')
   const [programSlug, setProgramSlug] = useState('')
@@ -321,8 +321,8 @@ function InterestsTab() {
 function HelpMeTab() {
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { hasPermission } = useAuth()
-  const canDelete = hasPermission('leads.manage')
+  const { hasPermission, isFullAdmin } = useAuth()
+  const canDelete = isFullAdmin()
   const [followUp, setFollowUp] = useState<FollowUpFilter>('pending')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -548,8 +548,8 @@ const STEP_LABELS: Record<number, string> = { 1: 'About You', 2: 'Program & Plan
 function IncompleteTab() {
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { hasPermission } = useAuth()
-  const canDelete = hasPermission('leads.manage')
+  const { hasPermission, isFullAdmin } = useAuth()
+  const canDelete = isFullAdmin()
   const [deleteTarget, setDeleteTarget] = useState<IncompleteApplication | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [followUp, setFollowUp] = useState<FollowUpFilter>('pending')

@@ -14,7 +14,7 @@ from .models import Payment, PaymentHistory
 from .serializers import PaymentSerializer, PaymentHistorySerializer, ProcessPaymentSerializer
 from .reconciliation import payment_reconciliation_for_student, serialize_reconciliation
 from programs.models import Program, Enrollment
-from accounts.permissions import IsAdminUser
+from accounts.permissions import IsAdminUser, HasAppPermission
 from notifications.models import Notification
 from .paystack import PaystackProvider
 import uuid
@@ -670,7 +670,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             'payment': PaymentSerializer(payment).data,
         })
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
     def check_all_pending(self, request):
         """
         Admin: sweep all pending payments with a reference and update their status from Paystack.
@@ -704,7 +704,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             **results,
         })
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
     def confirm(self, request, pk=None):
         """Admin confirms a payment"""
         payment = self.get_object()
@@ -782,7 +782,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
         return Response(PaymentSerializer(payment).data)
 
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
     def refund(self, request, pk=None):
         """Admin processes a refund"""
         payment = self.get_object()
@@ -818,7 +818,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
         return Response(PaymentSerializer(payment).data)
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
     def backfill_enrollments(self, request):
         """
         Admin action: retroactively enroll all students who have paid >= KSh 10,000
@@ -878,7 +878,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
             'errors': errors,
         })
 
-    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdminUser])
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
     def admin_send_payment_link(self, request):
         """
         Admin initiates a Paystack payment link for a specific student and emails it to them.
