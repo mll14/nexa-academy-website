@@ -16,6 +16,8 @@ import { VideoSection } from './VideoSection'
 import { FinanceCalculatorSection } from './FinanceCalculatorSection'
 import { ApplicationSection } from './ApplicationSection'
 import LegalSection from './LegalSection'
+import { GallerySection } from './GallerySection'
+import { AppointmentFormSection } from './AppointmentFormSection'
 
 interface SectionRendererProps {
   sections: Section[]
@@ -46,6 +48,8 @@ export function SectionRenderer({ sections }: SectionRendererProps) {
             case 'financeCalculatorSection': return <FinanceCalculatorSection key={key} section={section} />
             case 'applicationSection': return <ApplicationSection key={key} section={section} />
             case 'legalSection': return <LegalSection key={key} section={section} />
+            case 'gallerySection': return <GallerySection key={key} section={section} />
+            case 'appointmentFormSection': return <AppointmentFormSection key={key} section={section} />
             default: return null
           }
         })}

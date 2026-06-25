@@ -34,6 +34,8 @@ import { videoSectionSchema } from './sections/videoSection'
 import { financeCalculatorSectionSchema } from './sections/financeCalculatorSection'
 import { applicationSectionSchema } from './sections/applicationSection'
 import { legalSectionSchema } from './sections/legalSection'
+import { gallerySectionSchema } from './sections/gallerySection'
+import { appointmentFormSectionSchema } from './sections/appointmentFormSection'
 
 // Documents
 import { programSchema } from './documents/program'
@@ -90,6 +92,8 @@ export const schemas = [
   financeCalculatorSectionSchema,
   applicationSectionSchema,
   legalSectionSchema,
+  gallerySectionSchema,
+  appointmentFormSectionSchema,
 
   // Documents
   programSchema,

@@ -286,12 +286,45 @@ export interface LegalSection extends SectionBase {
   tabs: LegalTab[]
 }
 
+export interface GalleryPhoto {
+  _key: string
+  image: SanityImage
+  caption?: string
+}
+
+export interface GallerySection extends SectionBase {
+  _type: 'gallerySection'
+  badge?: string
+  headline?: string
+  subheadline?: string
+  photos?: GalleryPhoto[]
+  layout?: 'grid' | 'masonry' | 'featured'
+  columns?: 2 | 3 | 4
+}
+
+export interface AppointmentSidebarItem {
+  _key: string
+  title: string
+  description?: string
+}
+
+export interface AppointmentFormSection extends SectionBase {
+  _type: 'appointmentFormSection'
+  badge?: string
+  headline?: string
+  subheadline?: string
+  sidebarItems?: AppointmentSidebarItem[]
+  nextSteps?: string[]
+  officeAddress?: string
+  officeMapUrl?: string
+}
+
 export type Section =
   | HeroSection | StatsSection | FeaturesSection | TestimonialsSection
   | FaqSection | CtaSection | PartnersSection | ProgramsSection
   | PricingSection | RichTextSection | ImageTextSection | ContactSection
   | TeamSection | VideoSection | FinanceCalculatorSection | ApplicationSection
-  | LegalSection
+  | LegalSection | GallerySection | AppointmentFormSection
 
 // ─── Document types ───────────────────────────────────────────────────────────
 
