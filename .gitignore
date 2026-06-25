@@ -4,3 +4,9 @@
 graphify-out/
 .superpowers/
 .claude/.env
+
+# Developer tooling — not relevant to project contributors
+.mcp.json
+.claude/.mcp.json
+.graphifyignore
+.code-review-ignore
