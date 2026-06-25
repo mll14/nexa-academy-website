@@ -74,6 +74,8 @@ export async function saveDraft(data: {
   full_name: string;
   program: string;
   step_reached: number;
+  phone?: string;
+  program_name?: string;
 }): Promise<{ id: string; email: string }> {
   return req<{ id: string; email: string }>("/application-drafts/", {
     method: "POST",
