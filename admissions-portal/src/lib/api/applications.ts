@@ -66,7 +66,12 @@ export async function getApplicationStats(): Promise<ApplicationStats> {
 }
 
 export async function submitApplication(data: Record<string, unknown>): Promise<Application> {
-  return req<Application>("/applications/", { method: "POST", body: JSON.stringify(data) });
+  const headers: Record<string, string> = {};
+  const token = data.recaptchaToken ?? data.recaptcha_token;
+  if (typeof token === "string" && token) {
+    headers["X-Recaptcha-Token"] = token;
+  }
+  return req<Application>("/applications/", { method: "POST", body: JSON.stringify(data), headers });
 }
 
 export async function saveDraft(data: {

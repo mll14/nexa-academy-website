@@ -1,4 +1,4 @@
-import { tokens } from "../auth";
+import { tokens, dispatchSessionExpired } from "../auth";
 
 export const BASE = import.meta.env.VITE_API_URL ?? "/api";
 
@@ -51,7 +51,11 @@ export async function req<T>(
   endpoint: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const headers: Record<string, string> = {};
+  // Merge caller-supplied headers first so auth/content-type always win,
+  // but callers can still inject extra headers (e.g. X-Recaptcha-Token).
+  const headers: Record<string, string> = {
+    ...(options.headers as Record<string, string> | undefined ?? {}),
+  };
   if (!(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
@@ -70,6 +74,7 @@ export async function req<T>(
       return retryData as T;
     }
     tokens.clear();
+    dispatchSessionExpired();
     throw new ApiError(401, "Session expired. Please log in again.");
   }
 
