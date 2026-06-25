@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import * as api from '../lib/api'
 import { getStoredUser, setStoredUser, clearStoredUser, isAuthenticated as hasAccessToken } from '../lib/auth'
+import { router } from '../router'
 import type { User } from '../types'
 
 type LoginResponse =
@@ -49,12 +50,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile.role === 'admin' &&
         (pathname === '/' || pathname.startsWith('/student') || pathname === '/login')
       ) {
-        window.location.replace('/admin')
+        router.navigate({ to: '/admin', replace: true })
       } else if (
         profile.role === 'student' &&
         pathname.startsWith('/admin')
       ) {
-        window.location.replace('/login')
+        router.navigate({ to: '/login', replace: true })
       }
     } catch {
       // keep cached user if network fails

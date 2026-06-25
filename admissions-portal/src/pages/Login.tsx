@@ -242,6 +242,7 @@ export function Login() {
                   onSuccess={handleGoogle}
                   onError={() => toast.error('Google login failed')}
                   width="100%"
+                  itp_support
                 />
               </>
             )}
