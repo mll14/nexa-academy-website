@@ -28,7 +28,7 @@ export function GallerySection({ section }: { section: GallerySectionType }) {
       {layout === 'featured' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Large featured photo */}
-          <div className="relative aspect-[4/3] rounded-2xl overflow-hidden md:row-span-2">
+          <div className="relative aspect-[4/3] rounded-2xl overflow-hidden">
             <SanityImage
               image={photos[0].image}
               fill
@@ -42,7 +42,7 @@ export function GallerySection({ section }: { section: GallerySectionType }) {
               </div>
             )}
           </div>
-          {/* Remaining photos */}
+          {/* Thumbnails — 2×2 grid */}
           <div className="grid grid-cols-2 gap-3">
             {photos.slice(1, 5).map((photo, i) => (
               <div key={photo._key ?? i} className="relative aspect-square rounded-xl overflow-hidden">
@@ -50,7 +50,7 @@ export function GallerySection({ section }: { section: GallerySectionType }) {
                   image={photo.image}
                   fill
                   className="object-cover"
-                  sizes="25vw"
+                  sizes="(max-width: 768px) 50vw, 25vw"
                 />
                 {photo.caption && (
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent px-2 py-2">
