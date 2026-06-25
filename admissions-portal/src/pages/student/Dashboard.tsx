@@ -96,7 +96,7 @@ function StatCard({ icon: Icon, label, value, sub, tone = 'default' }: {
 
 function NotificationItem({ n, onMarkRead }: { n: Notification; onMarkRead: (id: string) => void }) {
   return (
-    <div className={`flex gap-3 px-5 py-4 transition-colors ${n.read ? 'bg-card' : 'bg-primary/5'}`}>
+    <div className={`flex gap-3 px-3 sm:px-5 py-4 transition-colors ${n.read ? 'bg-card' : 'bg-primary/5'}`}>
       <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${n.read ? 'bg-muted' : 'bg-primary/15'}`}>
         <Bell className={`w-4 h-4 ${n.read ? 'text-muted-foreground' : 'text-primary'}`} />
       </div>
@@ -108,7 +108,7 @@ function NotificationItem({ n, onMarkRead }: { n: Notification; onMarkRead: (id:
         </p>
       </div>
       {!n.read && (
-        <button onClick={() => onMarkRead(n.id)} className="shrink-0 text-xs text-primary font-medium hover:underline">
+        <button onClick={() => onMarkRead(n.id)} className="shrink-0 self-start text-xs text-primary font-medium hover:underline mt-0.5">
           Mark read
         </button>
       )}
@@ -753,13 +753,13 @@ function StudentPage({ section }: { section: StudentSection }) {
         <div className="space-y-6">
           <PageHeader title="Notifications" subtitle="Admissions and payment updates from Nexa Academy." onRefresh={() => load(true)} refreshing={refreshing} />
           <div className="bg-card border rounded-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <div className="flex items-center gap-2">
-                <Bell className="w-4 h-4 text-primary" />
-                <h2 className="font-semibold">Inbox</h2>
-                {unread > 0 && <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">{unread} unread</span>}
+            <div className="flex items-center justify-between px-3 sm:px-5 py-4 border-b border-border gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Bell className="w-4 h-4 text-primary shrink-0" />
+                <h2 className="font-semibold shrink-0">Inbox</h2>
+                {unread > 0 && <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full shrink-0">{unread} unread</span>}
               </div>
-              {unread > 0 && <Button variant="ghost" size="sm" onClick={markAllRead}>Mark all read</Button>}
+              {unread > 0 && <Button variant="ghost" size="sm" onClick={markAllRead} className="shrink-0">Mark all read</Button>}
             </div>
             {notifications.length === 0 ? (
               <div className="text-center py-14 space-y-2 px-6">
@@ -891,16 +891,16 @@ function StudentPage({ section }: { section: StudentSection }) {
             <Separator />
             <div className="space-y-3 text-sm">
               <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Program</span>
-                <span className="font-medium text-right">{enrollment?.programName ?? application?.program_name ?? '—'}</span>
+                <span className="text-muted-foreground shrink-0">Program</span>
+                <span className="font-medium text-right min-w-0 break-words">{enrollment?.programName ?? application?.program_name ?? '—'}</span>
               </div>
               <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Payment plan</span>
-                <span className="font-medium text-right">{enrollment?.paymentPlan ?? application?.payment_plan ?? 'Standard plan'}</span>
+                <span className="text-muted-foreground shrink-0">Payment plan</span>
+                <span className="font-medium text-right min-w-0 break-words">{enrollment?.paymentPlan ?? application?.payment_plan ?? 'Standard plan'}</span>
               </div>
               <div className="flex justify-between gap-4">
-                <span className="text-muted-foreground">Interview</span>
-                <span className="font-medium text-right">{interviewDate ?? '—'}</span>
+                <span className="text-muted-foreground shrink-0">Interview</span>
+                <span className="font-medium text-right min-w-0 break-words">{interviewDate ?? '—'}</span>
               </div>
             </div>
           </div>
