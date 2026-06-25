@@ -17,6 +17,7 @@ import { Separator } from '../components/ui/separator'
 import { Badge } from '../components/ui/badge'
 import * as api from '../lib/api'
 import { calcFee } from '../lib/utils'
+import { getRecaptchaToken } from '../lib/recaptcha'
 import toast from 'react-hot-toast'
 import type { Program, Intake } from '../types'
 
@@ -410,6 +411,13 @@ export function Apply() {
         return
       }
 
+      let recaptchaToken: string | undefined
+      try {
+        recaptchaToken = await getRecaptchaToken('application_submit')
+      } catch {
+        // Non-fatal here; the API decides whether reCAPTCHA is required.
+      }
+
       await api.submitApplication({
         full_name: form.fullName.trim(),
         email: form.email.trim().toLowerCase(),
@@ -424,6 +432,7 @@ export function Apply() {
         message: form.message.trim(),
         status: 'pending',
         source: 'admissions_portal',
+        recaptchaToken,
       })
       setShowSuccess(true)
     } catch (err) {
