@@ -5,100 +5,34 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from django.core.cache import cache
-from html import escape
-from html.parser import HTMLParser
 from .models import Application, ApplicationAdminNote, ApplicationLog, DraftApplication, InterviewBlackout, CustomCalendarEvent
 from .serializers import ApplicationAdminNoteSerializer, ApplicationSerializer, ApplicationCreateSerializer, InterviewSlotSerializer, InterviewBlackoutSerializer, CustomCalendarEventSerializer
 from .models import InterviewSlot
 from accounts.permissions import IsAdminUser, HasAppPermission, IsSuperAdmin
-from accounts.views import create_audit_log
+from accounts.utils import create_audit_log
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
+from ubuntu_labs.html_utils import clean_admin_note_html as _clean_admin_note_html
 from notifications.models import Notification
 import requests as http_req
 import uuid
 import logging
-import re
-from urllib.parse import urlparse
 from accounts.models import User
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 
 
 logger = logging.getLogger(__name__)
 
-
-_NOTE_ALLOWED_TAGS = frozenset({
-    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's',
-    'ul', 'ol', 'li', 'blockquote', 'a',
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'pre', 'code',
-})
-_NOTE_ALLOWED_ATTRS = {'a': {'href', 'title'}}
-_SAFE_HREF_SCHEMES = frozenset({'http', 'https', 'mailto', ''})
+_GCAL_BLACKOUT_VERSION_KEY = 'gcal_bv'
 
 
-class _AdminNoteHTMLCleaner(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=False)
-        self.parts = []
-        self.skip_depth = 0
-
-    def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
-        if tag in {'script', 'style'}:
-            self.skip_depth += 1
-            return
-        if self.skip_depth or tag not in _NOTE_ALLOWED_TAGS:
-            return
-
-        cleaned_attrs = []
-        for name, value in attrs:
-            name = name.lower()
-            if name not in _NOTE_ALLOWED_ATTRS.get(tag, set()) or value is None:
-                continue
-            if name == 'href':
-                # Strip control characters before parsing to prevent scheme-bypass via \x00 etc.
-                normalized = re.sub(r'[\x00-\x20]+', '', value)
-                scheme = urlparse(normalized).scheme.lower()
-                if scheme not in _SAFE_HREF_SCHEMES:
-                    continue
-            cleaned_attrs.append(f'{name}="{escape(value, quote=True)}"')
-
-        suffix = f" {' '.join(cleaned_attrs)}" if cleaned_attrs else ''
-        self.parts.append(f'<{tag}{suffix}>')
-
-    def handle_endtag(self, tag):
-        tag = tag.lower()
-        if tag in {'script', 'style'} and self.skip_depth:
-            self.skip_depth -= 1
-            return
-        if self.skip_depth or tag not in _NOTE_ALLOWED_TAGS or tag == 'br':
-            return
-        self.parts.append(f'</{tag}>')
-
-    def handle_data(self, data):
-        if not self.skip_depth:
-            self.parts.append(escape(data))
-
-    def handle_entityref(self, name):
-        if not self.skip_depth:
-            self.parts.append(f'&{name};')
-
-    def handle_charref(self, name):
-        if not self.skip_depth:
-            self.parts.append(f'&#{name};')
-
-
-def _clean_admin_note_html(html):
-    if not html:
-        return ''
-    cleaner = _AdminNoteHTMLCleaner()
-    cleaner.feed(html)
-    cleaner.close()
-    return ''.join(cleaner.parts)
+def _bump_gcal_blackout_version():
+    """Increment the slot-cache generation so stale blackout data is invalidated immediately."""
+    v = cache.get(_GCAL_BLACKOUT_VERSION_KEY, 0)
+    cache.set(_GCAL_BLACKOUT_VERSION_KEY, v + 1, timeout=None)
 
 
 def _admissions_notification_email():
@@ -242,7 +176,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             return Application.objects.none()
         # Admins see everything
         if getattr(user, 'role', None) == 'admin':
-            qs = Application.objects.all()
+            qs = Application.objects.select_related('user', 'interview_slot').all()
             intake_status = self.request.query_params.get('intake_status')
             if intake_status == 'with':
                 return qs.filter(start_date__isnull=False)
@@ -250,7 +184,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 return qs.filter(start_date__isnull=True)
             return qs
         # Students only see their own applications (matched by FK or email)
-        return Application.objects.filter(
+        return Application.objects.select_related('user', 'interview_slot').filter(
             Q(user=user) | Q(email__iexact=user.email)
         )
 
@@ -645,15 +579,17 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         # Notify admins
         try:
-            admins = User.objects.filter(role='admin')
-            for admin in admins:
-                Notification.objects.create(
+            admins = list(User.objects.filter(role='admin'))
+            Notification.objects.bulk_create([
+                Notification(
                     user=admin,
                     type='info',
                     title='Interview Time Selected',
                     message=f"{application.full_name} has chosen their interview time: {chosen}.",
                     application=application,
                 )
+                for admin in admins
+            ])
         except Exception:
             pass
 
@@ -826,7 +762,8 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         if not is_admin and application.status not in ('approved', 'interview_scheduled'):
             return Response({'error': 'Application is not in approved status'}, status=status.HTTP_400_BAD_REQUEST)
 
-        cache_key = f'gcal_slots_v2_{application.id}'
+        bv = cache.get(_GCAL_BLACKOUT_VERSION_KEY, 0)
+        cache_key = f'gcal_slots_v2_{application.id}_bv{bv}'
         slot_data = cache.get(cache_key)
         if slot_data is None:
             try:
@@ -1216,22 +1153,17 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], permission_classes=[HasAppPermission('applications.view')])
     def stats(self, request):
-        total = Application.objects.count()
-        pending = Application.objects.filter(status='pending').count()
-        approved = Application.objects.filter(status='approved').count()
-        rejected = Application.objects.filter(status='rejected').count()
-        interview_scheduled = Application.objects.filter(status='interview_scheduled').count()
-        interview_completed = Application.objects.filter(status='interview_completed').count()
-        enrolled = Application.objects.filter(status='enrolled').count()
-
+        counts = dict(
+            Application.objects.values('status').annotate(n=Count('id')).values_list('status', 'n')
+        )
         return Response({
-            'total': total,
-            'pending': pending,
-            'approved': approved,
-            'rejected': rejected,
-            'interview_scheduled': interview_scheduled,
-            'interview_completed': interview_completed,
-            'enrolled': enrolled,
+            'total': sum(counts.values()),
+            'pending': counts.get('pending', 0),
+            'approved': counts.get('approved', 0),
+            'rejected': counts.get('rejected', 0),
+            'interview_scheduled': counts.get('interview_scheduled', 0),
+            'interview_completed': counts.get('interview_completed', 0),
+            'enrolled': counts.get('enrolled', 0),
         })
 
     @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('applications.manage')])
@@ -1403,9 +1335,7 @@ class InterviewBlackoutViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             logger.warning('Could not create GCal blackout event: %s', exc)
 
-        # Clear slot caches so the block is reflected immediately
-        from django.core.cache import cache as _cache
-        _cache.clear()
+        _bump_gcal_blackout_version()
 
         serializer.save(created_by=created_by, gcal_event_id=gcal_event_id)
 
@@ -1417,8 +1347,7 @@ class InterviewBlackoutViewSet(viewsets.ModelViewSet):
             except Exception as exc:
                 logger.warning('Could not delete GCal blackout event %s: %s', instance.gcal_event_id, exc)
 
-        from django.core.cache import cache as _cache
-        _cache.clear()
+        _bump_gcal_blackout_version()
 
         instance.delete()
 
@@ -1476,12 +1405,10 @@ class CustomCalendarEventViewSet(viewsets.ModelViewSet):
             created_by=getattr(self.request.user, 'email', str(self.request.user))
         )
         self._sync_to_gcal(instance, created=True)
-        cache.delete_pattern('gcal_events:*') if hasattr(cache, 'delete_pattern') else cache.clear()
 
     def perform_update(self, serializer):
         instance = serializer.save()
         self._sync_to_gcal(instance, created=False)
-        cache.delete_pattern('gcal_events:*') if hasattr(cache, 'delete_pattern') else cache.clear()
 
     def perform_destroy(self, instance):
         if instance.gcal_event_id:
@@ -1490,5 +1417,4 @@ class CustomCalendarEventViewSet(viewsets.ModelViewSet):
                 delete_custom_event(instance.gcal_event_id)
             except Exception as exc:
                 logger.warning('CustomCalendarEvent GCal delete failed: %s', exc)
-        cache.clear()
         instance.delete()

@@ -16,6 +16,8 @@ export async function generateMetadata(): Promise<Metadata> {
     page?.seo,
     { title: 'Book an Appointment', description: 'Book a physical or virtual appointment with the Nexa Academy admissions team or a technical mentor.' },
     'Nexa Academy',
+    undefined,
+    '/appointments',
   )
 }
 

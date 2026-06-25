@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useGoogleReCaptcha } from "react-google-recaptcha-v3";
 import Link from "next/link";
@@ -43,7 +43,6 @@ import {
   saveDraft,
   submitHelpMeLead,
   submitComingSoonInterest,
-  getClientPrograms,
   getClientIntakes,
 } from "@/lib/api/applications";
 
@@ -116,7 +115,7 @@ function fmtDate(s: string) {
 
 // ── Step indicator ─────────────────────────────────────────────────────────────
 
-function StepIndicator({ current }: { current: number }) {
+const StepIndicator = memo(function StepIndicator({ current }: { current: number }) {
   return (
     <div className="flex items-center justify-center">
       {STEPS.map((s, i) => {
@@ -153,7 +152,7 @@ function StepIndicator({ current }: { current: number }) {
       })}
     </div>
   );
-}
+})
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
@@ -191,14 +190,18 @@ function HelpMeForm({
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
+  useEffect(() => {
+    if (!done) return;
+    const id = setTimeout(onDone, 1800);
+    return () => clearTimeout(id);
+  }, [done, onDone]);
+
   async function submit() {
     setLoading(true);
     const res = await submitHelpMeLead({ name, email, phone, message: msg });
     setLoading(false);
-    if (res.success) {
-      setDone(true);
-      setTimeout(onDone, 1800);
-    } else toast.error(res.error ?? "Submission failed");
+    if (res.success) setDone(true);
+    else toast.error(res.error ?? "Submission failed");
   }
 
   if (done)
@@ -271,6 +274,12 @@ function ComingSoonForm({
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
+  useEffect(() => {
+    if (!done) return;
+    const id = setTimeout(onDone, 1800);
+    return () => clearTimeout(id);
+  }, [done, onDone]);
+
   async function submit() {
     setLoading(true);
     const res = await submitComingSoonInterest({
@@ -282,10 +291,8 @@ function ComingSoonForm({
       message: msg,
     });
     setLoading(false);
-    if (res.success) {
-      setDone(true);
-      setTimeout(onDone, 1800);
-    } else toast.error(res.error ?? "Submission failed");
+    if (res.success) setDone(true);
+    else toast.error(res.error ?? "Submission failed");
   }
 
   if (done)
@@ -343,10 +350,12 @@ export function ApplicationPageClient({
   admissionsTimeline,
   whyNexa,
   nextSteps,
+  programs: initialPrograms = [],
 }: {
   admissionsTimeline?: { label: string; value: string }[];
   whyNexa?: string[];
   nextSteps?: string[];
+  programs?: Program[];
 }) {
   const timeline = admissionsTimeline?.length
     ? admissionsTimeline
@@ -356,8 +365,7 @@ export function ApplicationPageClient({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [programs, setPrograms] = useState<Program[]>([]);
-  const [programsLoading, setProgramsLoading] = useState(true);
+  const [programs] = useState<Program[]>(initialPrograms);
   const [intakes, setIntakes] = useState<Intake[]>([]);
   const [intakesLoading, setIntakesLoading] = useState(false);
   const [selectedMode, setSelectedMode] = useState("");
@@ -379,14 +387,6 @@ export function ApplicationPageClient({
     paymentPlan: "full",
     message: "",
   });
-
-  // Load programs on mount
-  useEffect(() => {
-    getClientPrograms().then((data) => {
-      setPrograms(data);
-      setProgramsLoading(false);
-    });
-  }, []);
 
   // Pre-fill program from ?program= query param
   useEffect(() => {
@@ -437,12 +437,11 @@ export function ApplicationPageClient({
       return;
     }
     const filtered = intakes.filter((i) => i.mode === selectedMode);
-    if (filtered.length > 0 && !filtered.find((i) => i.start_date === form.startDate)) {
-      setForm((f) => ({ ...f, startDate: filtered[0].start_date }));
-    } else if (filtered.length === 0) {
-      setForm((f) => ({ ...f, startDate: "" }));
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    setForm((f) => {
+      const alreadyValid = filtered.some((i) => i.start_date === f.startDate);
+      if (alreadyValid) return f;
+      return { ...f, startDate: filtered[0]?.start_date ?? "" };
+    });
   }, [selectedMode, intakes]);
 
   // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -455,46 +454,33 @@ export function ApplicationPageClient({
       setErrors((f) => ({ ...f, [field]: "" }));
     };
 
-  const currentProgram = programs.find((p) => p.slug === form.program);
-  const selectedIntake =
-    intakes.find((i) => i.start_date === form.startDate && i.mode === selectedMode) ?? null;
-  const availableModes = MODE_OPTIONS.filter((m) =>
-    intakes.some((i) => i.mode === m.value),
+  const currentProgram = useMemo(
+    () => programs.find((p) => p.slug === form.program),
+    [programs, form.program],
+  );
+  const selectedIntake = useMemo(
+    () => intakes.find((i) => i.start_date === form.startDate && i.mode === selectedMode) ?? null,
+    [intakes, form.startDate, selectedMode],
+  );
+  const availableModes = useMemo(
+    () => MODE_OPTIONS.filter((m) => intakes.some((i) => i.mode === m.value)),
+    [intakes],
   );
   const base = currentProgram?.price ?? 0;
-  const totalFee = calcFee(base, form.paymentPlan);
-  const inst2Per = Math.round((base * 1.1) / 2 / 500) * 500;
-  const inst3Per = Math.round((base * 1.2) / 3 / 500) * 500;
-  const inst2Total = inst2Per * 2;
-  const inst3Total = inst3Per * 3;
-
-  const finance =
-    form.paymentPlan === "full"
-      ? {
-          total: base,
-          per: base,
-          count: 1,
-          label: "One-time payment",
-          savings: inst3Total - base,
-          savingsLabel: "vs 3-instalment plan",
-        }
-      : form.paymentPlan === "installment3"
-        ? {
-            total: inst3Total,
-            per: inst3Per,
-            count: 3,
-            label: "3 instalments",
-            savings: 0,
-            savingsLabel: "",
-          }
-        : {
-            total: inst2Total,
-            per: inst2Per,
-            count: 2,
-            label: "2 instalments",
-            savings: inst3Total - inst2Total,
-            savingsLabel: "vs 3-instalment plan",
-          };
+  const finance = useMemo(() => {
+    const inst2Per = Math.round((base * 1.1) / 2 / 500) * 500;
+    const inst3Per = Math.round((base * 1.2) / 3 / 500) * 500;
+    const inst2Total = inst2Per * 2;
+    const inst3Total = inst3Per * 3;
+    if (form.paymentPlan === "full") {
+      return { total: base, per: base, count: 1, label: "One-time payment", savings: inst3Total - base, savingsLabel: "vs 3-instalment plan" };
+    }
+    if (form.paymentPlan === "installment3") {
+      return { total: inst3Total, per: inst3Per, count: 3, label: "3 instalments", savings: 0, savingsLabel: "" };
+    }
+    return { total: inst2Total, per: inst2Per, count: 2, label: "2 instalments", savings: inst3Total - inst2Total, savingsLabel: "vs 3-instalment plan" };
+  }, [base, form.paymentPlan]);
+  const totalFee = finance.total;
 
   // ── Draft ─────────────────────────────────────────────────────────────────────
 
@@ -784,13 +770,7 @@ export function ApplicationPageClient({
                     </div>
                     <Separator />
 
-                    {programsLoading ? (
-                      <div className="flex items-center justify-center py-10 text-sm text-muted-foreground gap-2">
-                        <span className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                        Loading programs…
-                      </div>
-                    ) : (
-                      <div className="space-y-5">
+                    <div className="space-y-5">
                         <div className="grid sm:grid-cols-2 gap-5">
                           <div className="sm:col-span-2">
                             <Field
@@ -1182,7 +1162,7 @@ export function ApplicationPageClient({
                             </div>
                           )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 )}
 

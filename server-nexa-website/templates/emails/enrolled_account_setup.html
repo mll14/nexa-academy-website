@@ -1,0 +1,49 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}You've been enrolled in {{ program_name }} — Nexa Academy{% endblock %}
+{% block content %}
+<p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Enrollment Confirmed</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a202c;line-height:1.3;">Welcome to {{ program_name }}, {{ display_name }}.</h2>
+<p style="margin:0 0 20px;font-size:15px;color:#4a5568;line-height:1.7;">You've been enrolled in the <strong>{{ program_name }}</strong> program at Nexa Academy. Click below to create your password and access your student dashboard.</p>
+
+<div style="background:#f0faf4;border-radius:10px;padding:18px 22px;margin-bottom:24px;border:1px solid #c6f6d5;">
+  <p style="margin:0 0 10px;font-size:11px;color:#276749;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Enrollment Details</p>
+  <p style="margin:0 0 4px;font-size:14px;color:#2d3748;"><strong>Program:</strong> {{ program_name }}</p>
+  {% if payment_plan %}<p style="margin:0 0 4px;font-size:14px;color:#2d3748;"><strong>Payment Plan:</strong> {{ payment_plan }}</p>{% endif %}
+  <p style="margin:0;font-size:14px;color:#2d3748;"><strong>Total Fee:</strong> KSh {{ total_fee }}</p>
+</div>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:28px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 14px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Next steps</p>
+  <table cellpadding="0" cellspacing="0" width="100%">
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">1</div>
+      </td>
+      <td style="padding:0 0 12px 10px;font-size:14px;color:#2d3748;line-height:1.5;">Click the button below to create your password and access your student dashboard</td>
+    </tr>
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">2</div>
+      </td>
+      <td style="padding:0 0 12px 10px;font-size:14px;color:#2d3748;line-height:1.5;">View your enrollment and program details on your student dashboard</td>
+    </tr>
+    <tr>
+      <td style="width:28px;vertical-align:top;padding-top:1px;">
+        <div style="width:22px;height:22px;border-radius:50%;background:#00bf63;color:#fff;font-size:11px;font-weight:700;text-align:center;line-height:22px;">3</div>
+      </td>
+      <td style="padding:0 0 0 10px;font-size:14px;color:#2d3748;line-height:1.5;">Complete your fee payment to secure your place in the program</td>
+    </tr>
+  </table>
+</div>
+
+<a href="{{ setup_url }}" style="display:inline-block;background:#00bf63;color:#fff;padding:13px 26px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">Set Up My Account &rarr;</a>
+
+<div style="background:#f7f9fc;border-radius:8px;padding:14px 18px;margin-top:24px;margin-bottom:20px;border:1px solid #e2e8f0;">
+  <p style="margin:0;font-size:12px;color:#718096;line-height:1.6;">This setup link expires in <strong>3 days</strong>. If you weren't expecting this, contact us at <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a></p>
+</div>
+
+<p style="margin:0;font-size:13px;color:#718096;">Having trouble with the button? Copy and paste this link into your browser:<br>
+  <a href="{{ setup_url }}" style="color:#141a42;word-break:break-all;">{{ setup_url }}</a>
+</p>
+<p style="margin:20px 0 0;font-size:13px;color:#718096;">Questions? Contact us at <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;font-weight:600;">admissions@nexaacademy.co.ke</a></p>
+{% endblock %}

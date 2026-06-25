@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { sanityFetch } from '@/lib/sanity/client'
 import { blogPostBySlugQuery, siteSettingsQuery } from '@/lib/sanity/queries'
-import { buildMetadata } from '@/lib/seo'
+import { buildMetadata, serializeJsonLd } from '@/lib/seo'
 import { urlFor } from '@/lib/sanity/image'
 import { BlogBody } from '@/components/blog/BlogBody'
 import { BlogCard } from '@/components/blog/BlogCard'
@@ -45,6 +45,7 @@ export async function generateMetadata({
     { title: post.title, description: post.excerpt },
     settings?.siteName,
     settings?.defaultSeo?.ogImage,
+    `/blog/${slug}`,
   )
 }
 
@@ -63,8 +64,33 @@ export default async function BlogPostPage({
 
   if (!post) notFound()
 
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://nexaacademy.co.ke'
+  const articleSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: post.title,
+    description: post.excerpt,
+    datePublished: post.publishedAt,
+    url: `${SITE_URL}/blog/${slug}`,
+    image: post.coverImage?.asset
+      ? urlFor(post.coverImage).width(1200).height(630).url()
+      : undefined,
+    author: post.author?.name
+      ? { '@type': 'Person', name: post.author.name }
+      : undefined,
+    publisher: {
+      '@type': 'Organization',
+      name: 'Nexa Academy',
+      url: SITE_URL,
+    },
+  }
+
   return (
     <main className="min-h-screen bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(articleSchema) }}
+      />
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
 
         {/* Back */}

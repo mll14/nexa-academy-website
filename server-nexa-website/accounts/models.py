@@ -69,7 +69,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     uid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
     display_name = models.CharField(max_length=255)
-    photo_url = models.URLField(blank=True, null=True)
+    photo_url = models.URLField(max_length=2000, blank=True, null=True)
     phone = models.CharField(max_length=20, blank=True)
     id_number = models.CharField(max_length=50, blank=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='student')
@@ -87,6 +87,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     individual_permissions = models.ManyToManyField(
         AppPermission, blank=True, related_name='users'
     )
+
+    google_linked = models.BooleanField(default=False)
 
     # Timestamps
     created_at = models.DateTimeField(default=timezone.now)
@@ -131,6 +133,43 @@ class User(AbstractBaseUser, PermissionsMixin):
         perms = set(self.staff_role.permissions.values_list('codename', flat=True))
         perms.update(self.individual_permissions.values_list('codename', flat=True))
         return list(perms)
+
+
+class LoginSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='login_sessions'
+    )
+    # Tracks the latest refresh token JTI for this session (updated on each rotation)
+    refresh_jti = models.CharField(max_length=255, blank=True, db_index=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    is_revoked = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'login_sessions'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Session({self.user.email}, {'revoked' if self.is_revoked else 'active'})"
+
+
+class TwoFADevice(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='two_fa_device'
+    )
+    secret = models.CharField(max_length=64)
+    enabled = models.BooleanField(default=False)
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'two_fa_devices'
+
+    def __str__(self):
+        return f"2FA({'on' if self.enabled else 'off'}) — {self.user.email}"
 
 
 class AuditLog(models.Model):

@@ -47,10 +47,9 @@ export function AcceptInvite() {
     try {
       const res = await acceptInvite({ uid, token, display_name: displayName, password })
       tokens.setAccess(res.access)
-      tokens.setRefresh(res.refresh)
       setStoredUser(res.user)
       setDone(true)
-      setTimeout(() => navigate({ to: '/admin' }), 1800)
+      setTimeout(() => navigate({ to: res.user.role === 'student' ? '/student/dashboard' : '/admin' }), 1800)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to set up account.')
     } finally {
@@ -67,7 +66,7 @@ export function AcceptInvite() {
           </div>
           <div>
             <h2 className="text-lg font-semibold">Account ready!</h2>
-            <p className="text-sm text-muted-foreground mt-1">Taking you to the portal…</p>
+            <p className="text-sm text-muted-foreground mt-1">Taking you to your dashboard…</p>
           </div>
         </div>
       </div>

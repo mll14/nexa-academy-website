@@ -11,7 +11,8 @@
     "commit-commands@claude-plugins-official": true,
     "claude-code-setup@claude-plugins-official": true,
     "ralph-loop@claude-plugins-official": true,
-    "figma@claude-plugins-official": true
+    "figma@claude-plugins-official": true,
+    "ecc@ecc": true
   },
   "hooks": {
     "PostToolUse": [],

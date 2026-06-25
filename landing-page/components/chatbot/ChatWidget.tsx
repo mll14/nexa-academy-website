@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { MessageCircle, X, Send, Bot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -25,16 +25,16 @@ export function ChatWidget() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50)
-    }
+    if (!open) return
+    const id = setTimeout(() => inputRef.current?.focus(), 50)
+    return () => clearTimeout(id)
   }, [open])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
 
-  const send = useCallback(async () => {
+  async function send() {
     const text = input.trim()
     if (!text || loading) return
 
@@ -72,7 +72,7 @@ export function ChatWidget() {
     } finally {
       setLoading(false)
     }
-  }, [input, loading])
+  }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

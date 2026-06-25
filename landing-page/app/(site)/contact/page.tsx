@@ -18,6 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
     { title: 'Contact Us', description: 'Get in touch with the Nexa Academy team. We respond within 24 hours.' },
     s?.siteName,
     s?.defaultSeo?.ogImage,
+    '/contact',
   )
 }
 

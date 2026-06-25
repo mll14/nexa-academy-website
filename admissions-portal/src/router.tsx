@@ -5,33 +5,55 @@ import {
   redirect,
   Outlet,
 } from "@tanstack/react-router";
+import { lazy, Suspense } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { tokens, getStoredUser } from "./lib/auth";
-import { Login } from "./pages/Login";
-import { ForgotPassword } from "./pages/ForgotPassword";
-import { ResetPassword } from "./pages/ResetPassword";
-import { Apply } from "./pages/Apply";
-import { Unsubscribe } from "./pages/Unsubscribe";
-import { StudentApplication, StudentDashboard, StudentNotifications, StudentPayments } from "./pages/student/Dashboard";
-import { StudentProfile } from "./pages/student/StudentProfile";
-import { AdminDashboard } from "./pages/admin/Dashboard";
-import { Applications } from "./pages/admin/Applications";
-import { ApplicationDetail } from "./pages/admin/ApplicationDetail";
-import { Interviews } from "./pages/admin/Interviews";
-import { Payments } from "./pages/admin/Payments";
-import { Programs } from "./pages/admin/Programs";
-import { Messages } from "./pages/admin/Messages";
-import { EnrolledStudents } from "./pages/admin/EnrolledStudents";
-import { EnrolledStudentDetail } from "./pages/admin/EnrolledStudentDetail";
-import { Leads } from "./pages/admin/Leads";
-import { LeadDetail } from "./pages/admin/LeadDetail";
-import { StudentDetail } from "./pages/admin/StudentDetail";
-import { Notifications } from "./pages/admin/Notifications"
-import { Newsletter } from "./pages/admin/Newsletter";
-import { Appointments } from "./pages/admin/Appointments";
-import { Users } from "./pages/admin/Users";
-import { CreateRolePage, EditRolePage } from "./pages/admin/RoleEditor";
-import { AccountManager } from "./pages/admin/AccountManager";
-import { AcceptInvite } from "./pages/AcceptInvite";
+
+// ─── Lazy page imports ───────────────────────────────────────────────────────
+// Each route chunk is only downloaded when that route is first visited.
+
+const Login = lazy(() => import("./pages/Login").then(m => ({ default: m.Login })));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword").then(m => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import("./pages/ResetPassword").then(m => ({ default: m.ResetPassword })));
+const Apply = lazy(() => import("./pages/Apply").then(m => ({ default: m.Apply })));
+const Unsubscribe = lazy(() => import("./pages/Unsubscribe").then(m => ({ default: m.Unsubscribe })));
+const AcceptInvite = lazy(() => import("./pages/AcceptInvite").then(m => ({ default: m.AcceptInvite })));
+
+const StudentDashboard = lazy(() => import("./pages/student/Dashboard").then(m => ({ default: m.StudentDashboard })));
+const StudentApplication = lazy(() => import("./pages/student/Dashboard").then(m => ({ default: m.StudentApplication })));
+const StudentPayments = lazy(() => import("./pages/student/Dashboard").then(m => ({ default: m.StudentPayments })));
+const StudentNotifications = lazy(() => import("./pages/student/Dashboard").then(m => ({ default: m.StudentNotifications })));
+const StudentProfile = lazy(() => import("./pages/student/StudentProfile").then(m => ({ default: m.StudentProfile })));
+
+const AdminDashboard = lazy(() => import("./pages/admin/Dashboard").then(m => ({ default: m.AdminDashboard })));
+const Applications = lazy(() => import("./pages/admin/Applications").then(m => ({ default: m.Applications })));
+const ApplicationDetail = lazy(() => import("./pages/admin/ApplicationDetail").then(m => ({ default: m.ApplicationDetail })));
+const Interviews = lazy(() => import("./pages/admin/Interviews").then(m => ({ default: m.Interviews })));
+const Payments = lazy(() => import("./pages/admin/Payments").then(m => ({ default: m.Payments })));
+const Programs = lazy(() => import("./pages/admin/Programs").then(m => ({ default: m.Programs })));
+const Messages = lazy(() => import("./pages/admin/Messages").then(m => ({ default: m.Messages })));
+const EnrolledStudents = lazy(() => import("./pages/admin/EnrolledStudents").then(m => ({ default: m.EnrolledStudents })));
+const EnrolledStudentDetail = lazy(() => import("./pages/admin/EnrolledStudentDetail").then(m => ({ default: m.EnrolledStudentDetail })));
+const Leads = lazy(() => import("./pages/admin/Leads").then(m => ({ default: m.Leads })));
+const LeadDetail = lazy(() => import("./pages/admin/LeadDetail").then(m => ({ default: m.LeadDetail })));
+const StudentDetail = lazy(() => import("./pages/admin/StudentDetail").then(m => ({ default: m.StudentDetail })));
+const Notifications = lazy(() => import("./pages/admin/Notifications").then(m => ({ default: m.Notifications })));
+const Newsletter = lazy(() => import("./pages/admin/Newsletter").then(m => ({ default: m.Newsletter })));
+const Appointments = lazy(() => import("./pages/admin/Appointments").then(m => ({ default: m.Appointments })));
+const Users = lazy(() => import("./pages/admin/Users").then(m => ({ default: m.Users })));
+const CreateRolePage = lazy(() => import("./pages/admin/RoleEditor").then(m => ({ default: m.CreateRolePage })));
+const EditRolePage = lazy(() => import("./pages/admin/RoleEditor").then(m => ({ default: m.EditRolePage })));
+const AccountManager = lazy(() => import("./pages/admin/AccountManager").then(m => ({ default: m.AccountManager })));
+
+// ─── Suspense spinner ────────────────────────────────────────────────────────
+
+function RouteSpinner() {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 // ─── Permission helper ───────────────────────────────────────────────────────
 
@@ -45,7 +67,15 @@ function requirePermission(codename: string) {
 
 // ─── Root ────────────────────────────────────────────────────────────────────
 
-const rootRoute = createRootRoute({ component: () => <Outlet /> });
+const rootRoute = createRootRoute({
+  component: () => (
+    <ErrorBoundary>
+      <Suspense fallback={<RouteSpinner />}>
+        <Outlet />
+      </Suspense>
+    </ErrorBoundary>
+  ),
+});
 
 // ─── Public routes ───────────────────────────────────────────────────────────
 
@@ -64,6 +94,9 @@ const indexRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/login",
+  validateSearch: (s: Record<string, unknown>) => ({
+    redirect: typeof s.redirect === "string" ? s.redirect : undefined,
+  }),
   beforeLoad: () => {
     const user = getStoredUser();
     if (user?.role === "admin") throw redirect({ to: "/admin" });
@@ -123,8 +156,8 @@ const acceptInviteRoute = createRoute({
 const studentLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/student",
-  beforeLoad: () => {
-    if (!tokens.access) throw redirect({ to: "/login" });
+  beforeLoad: ({ location }) => {
+    if (!tokens.access) throw redirect({ to: "/login", search: { redirect: location.href } });
     const user = getStoredUser();
     if (user?.role === "admin") throw redirect({ to: "/admin" });
   },
@@ -166,8 +199,8 @@ const studentProfileRoute = createRoute({
 const adminLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
-  beforeLoad: () => {
-    if (!tokens.access) throw redirect({ to: "/login" });
+  beforeLoad: ({ location }) => {
+    if (!tokens.access) throw redirect({ to: "/login", search: { redirect: location.href } });
     const user = getStoredUser();
     if (user && user.role !== "admin") throw redirect({ to: "/login" });
   },

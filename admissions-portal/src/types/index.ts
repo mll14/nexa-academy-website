@@ -42,6 +42,7 @@ export interface User {
   role: UserRole
   phone?: string
   photo_url?: string
+  google_linked?: boolean
   fee_balance?: number
   total_fee_paid?: number
   program_fee?: number

@@ -1,21 +1,26 @@
 import type { User } from '../types'
 
+// Access token lives in memory only — never written to localStorage.
+// The refresh token is managed as an httpOnly cookie by the backend.
+// This eliminates the XSS token-theft vector from localStorage.
+let _accessToken: string | null = null
+
 export const tokens = {
   get access(): string | null {
-    return localStorage.getItem('accessToken')
+    return _accessToken
   },
+  // Refresh token is backend-managed (httpOnly cookie). This getter always
+  // returns null so call-sites that check it treat the session as cookie-based.
   get refresh(): string | null {
-    return localStorage.getItem('refreshToken')
+    return null
   },
   setAccess(t: string) {
-    localStorage.setItem('accessToken', t)
+    _accessToken = t
   },
-  setRefresh(t: string) {
-    localStorage.setItem('refreshToken', t)
-  },
+  // No-op: the backend sets the refresh cookie via Set-Cookie on login/refresh responses.
+  setRefresh(_t: string) {},
   clear() {
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
+    _accessToken = null
     localStorage.removeItem('currentUser')
   },
 }
@@ -37,6 +42,10 @@ export function setStoredUser(user: User) {
   }
 }
 
+export function clearStoredUser() {
+  localStorage.removeItem('currentUser')
+}
+
 export function isAuthenticated(): boolean {
-  return Boolean(tokens.access)
+  return _accessToken !== null
 }

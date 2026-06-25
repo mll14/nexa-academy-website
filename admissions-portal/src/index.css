@@ -194,3 +194,46 @@
     @apply list-none;
   }
 }
+
+/* react-phone-number-input overrides — strip default styles, let container handle them */
+.PhoneInput {
+  gap: 0.375rem;
+}
+.PhoneInputCountry {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+.PhoneInputCountryIcon {
+  width: 1.25rem;
+  height: auto;
+  line-height: 0;
+}
+.PhoneInputCountryIcon--square {
+  width: 1.25rem;
+}
+.PhoneInputCountryIconImg {
+  display: block;
+  width: 100%;
+  border-radius: 2px;
+}
+.PhoneInputCountrySelect {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+  z-index: 1;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.PhoneInputCountrySelectArrow {
+  width: 0.28em;
+  height: 0.28em;
+  border-bottom: 1.5px solid currentColor;
+  border-right: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-20%);
+  opacity: 0.4;
+}

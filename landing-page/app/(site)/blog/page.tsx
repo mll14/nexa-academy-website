@@ -11,8 +11,9 @@ import { BlogFilter } from '@/components/blog/BlogFilter'
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'] })
   return {
-    title: 'Blog',
-    description: `Tutorials, career advice, and stories from ${settings?.siteName ?? 'Nexa Academy'}.`,
+    title: 'Tech Blog & Tutorials',
+    description: `Coding tutorials, career advice, and student stories from ${settings?.siteName ?? 'Nexa Academy'} — Kenya's leading tech bootcamp.`,
+    alternates: { canonical: `${process.env.NEXT_PUBLIC_SITE_URL ?? 'https://nexaacademy.co.ke'}/blog` },
   }
 }
 

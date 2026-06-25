@@ -1,5 +1,5 @@
 import uuid
-from django.db import models
+from django.db import models, transaction
 from django.conf import settings
 from django.utils import timezone
 from django.utils.text import slugify
@@ -283,15 +283,15 @@ class Certificate(models.Model):
             self.program_name = self.program.name
         if not self.certificate_number:
             year = self.issued_date.strftime('%Y')
-            # Get last certificate number for this year
-            last_cert = Certificate.objects.filter(
-                certificate_number__startswith=f'UBUNTULABS-{year}'
-            ).order_by('-certificate_number').first()
-            if last_cert:
-                last_num = int(last_cert.certificate_number.split('-')[-1])
-                new_num = last_num + 1
-            else:
-                new_num = 1
+            with transaction.atomic():
+                last_cert = (
+                    Certificate.objects
+                    .select_for_update()
+                    .filter(certificate_number__startswith=f'UBUNTULABS-{year}')
+                    .order_by('-certificate_number')
+                    .first()
+                )
+                new_num = (int(last_cert.certificate_number.split('-')[-1]) + 1) if last_cert else 1
             self.certificate_number = f'UBUNTULABS-{year}-{new_num:04d}'
         if not self.verification_code:
             import secrets

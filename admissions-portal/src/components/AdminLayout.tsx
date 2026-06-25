@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard,
   Users,
@@ -65,6 +66,10 @@ function MoreSection({
   collapsed: boolean
 }) {
   const hasActiveChild = items.some((i) => i.to && isActive(i.to, i.exact))
+  // Initial value only — intentionally not synced after mount so the accordion
+  // state survives navigations within the "More" group. If AdminLayout ever
+  // becomes a persistent shell (not remounted on route change), add a useEffect
+  // that calls setOpen(hasActiveChild) when hasActiveChild flips.
   const [open, setOpen] = useState(hasActiveChild)
 
   if (collapsed) return null
@@ -73,6 +78,7 @@ function MoreSection({
     <div className="mt-1">
       <button
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className={cn(
           'flex w-full items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
           hasActiveChild
@@ -138,26 +144,33 @@ export function AdminLayout({ children }: Props) {
   const { user, logout, hasPermission } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [unreadCount, setUnreadCount] = useState(0)
   const routerState = useRouterState()
   const pathname = routerState.location.pathname
 
-  useEffect(() => {
-    getNotifications(50)
-      .then((items) => setUnreadCount(items.filter((n) => !n.read).length))
-      .catch(() => {})
-  }, [pathname])
+  const { data: notificationsData } = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: () => getNotifications(50),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  })
+  const unreadCount = useMemo(
+    () => notificationsData?.filter((n) => !n.read).length ?? 0,
+    [notificationsData],
+  )
 
   const isActive = (to: string, exact?: boolean) =>
     exact ? pathname === to : pathname.startsWith(to)
 
-  const canSee = (item: NavItem) => {
-    if (item.anyPermissions?.length) return item.anyPermissions.some((permission) => hasPermission(permission))
-    return !item.permission || hasPermission(item.permission)
-  }
-
-  const visiblePrimary = PRIMARY_NAV.filter(canSee)
-  const visibleMore = MORE_NAV.filter(canSee)
+  const { visiblePrimary, visibleMore } = useMemo(() => {
+    const canSee = (item: NavItem) => {
+      if (item.anyPermissions?.length) return item.anyPermissions.some((p) => hasPermission(p))
+      return !item.permission || hasPermission(item.permission)
+    }
+    return {
+      visiblePrimary: PRIMARY_NAV.filter(canSee),
+      visibleMore: MORE_NAV.filter(canSee),
+    }
+  }, [hasPermission])
 
   return (
     <div className="min-h-screen flex bg-background">
@@ -241,46 +254,64 @@ export function AdminLayout({ children }: Props) {
         </nav>
 
         {/* User */}
-        <div className={cn('border-t border-border', sidebarCollapsed ? 'lg:p-2 p-4' : 'p-4')}>
-          <div className={cn('flex items-center gap-3 px-2 py-2', sidebarCollapsed && 'lg:flex-col lg:px-0 lg:gap-2')}>
+        <div className={cn('border-t border-border', sidebarCollapsed ? 'lg:p-2 p-4' : 'p-4 space-y-0.5')}>
+          {/* Notifications */}
+          <Link
+            to="/admin/notifications"
+            onClick={() => setSidebarOpen(false)}
+            title={sidebarCollapsed ? 'Notifications' : undefined}
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
+              sidebarCollapsed && 'lg:justify-center lg:px-0',
+              isActive('/admin/notifications')
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+            )}
+          >
+            <div className="relative shrink-0">
+              <Bell className="w-4 h-4" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-primary" />
+              )}
+            </div>
+            <span className={cn('flex-1', sidebarCollapsed && 'lg:hidden')}>Notifications</span>
+            {unreadCount > 0 && (
+              <span className={cn('text-xs font-semibold bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center leading-tight', sidebarCollapsed && 'lg:hidden')}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </Link>
+
+          {/* Account + Logout */}
+          <div className={cn('flex items-center gap-2', sidebarCollapsed && 'lg:flex-col lg:gap-2')}>
             <Link
               to="/admin/account"
               onClick={() => setSidebarOpen(false)}
-              title="My Account"
-              className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0 hover:bg-primary/25 transition-colors"
+              title={sidebarCollapsed ? 'My Account' : undefined}
+              className={cn(
+                'flex items-center gap-3 flex-1 min-w-0 rounded-xl px-2 py-1.5 hover:bg-muted transition-colors',
+                sidebarCollapsed && 'lg:justify-center lg:px-0',
+              )}
             >
-              <span className="text-xs font-bold text-primary">
-                {(user?.display_name || user?.email || 'A').charAt(0).toUpperCase()}
-              </span>
-            </Link>
-            <div className={cn('flex-1 min-w-0', sidebarCollapsed && 'lg:hidden')}>
-              <Link to="/admin/account" onClick={() => setSidebarOpen(false)} className="block hover:underline underline-offset-2">
+              <div className="w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                <span className="text-xs font-bold text-primary">
+                  {(user?.display_name || user?.email || 'A').charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <div className={cn('flex-1 min-w-0', sidebarCollapsed && 'lg:hidden')}>
                 <p className="text-xs font-medium truncate">{user?.display_name || 'Admin'}</p>
-              </Link>
-              <p className="text-xs text-muted-foreground truncate">
-                {user?.staffRole ? user.staffRole.name : 'Super Admin'}
-              </p>
-            </div>
-            <div className={cn('flex items-center gap-1', sidebarCollapsed && 'lg:flex-col')}>
-              <Link
-                to="/admin/notifications"
-                onClick={() => setSidebarOpen(false)}
-                className="relative p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="Notifications"
-              >
-                <Bell className="w-4 h-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-primary" />
-                )}
-              </Link>
-              <button
-                onClick={() => logout('/login')}
-                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                title="Log out"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user?.staffRole ? user.staffRole.name : 'Super Admin'}
+                </p>
+              </div>
+            </Link>
+            <button
+              onClick={() => logout('/login')}
+              className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              title="Log out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </aside>
@@ -288,6 +319,7 @@ export function AdminLayout({ children }: Props) {
       {/* Overlay */}
       {sidebarOpen && (
         <div
+          aria-hidden="true"
           className="fixed inset-0 z-40 bg-black/30 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />

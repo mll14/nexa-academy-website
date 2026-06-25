@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useNavigate, Link } from '@tanstack/react-router'
+import { useNavigate, useSearch, Link } from '@tanstack/react-router'
 import { GoogleLogin } from '@react-oauth/google'
-import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff, Smartphone, ArrowLeft } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
@@ -12,7 +12,13 @@ import toast from 'react-hot-toast'
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
 
-function redirectForUser(user: User, navigate: ReturnType<typeof useNavigate>) {
+function redirectForUser(user: User, navigate: ReturnType<typeof useNavigate>, redirectTo?: string) {
+  if (redirectTo) {
+    const isAdminPath = redirectTo.startsWith('/admin')
+    const isStudentPath = redirectTo.startsWith('/student')
+    if (user.role === 'admin' && isAdminPath) { navigate({ to: redirectTo as any }); return }
+    if (user.role === 'student' && isStudentPath) { navigate({ to: redirectTo as any }); return }
+  }
   if (user.role === 'admin') {
     navigate({ to: '/admin' })
   } else {
@@ -20,13 +26,16 @@ function redirectForUser(user: User, navigate: ReturnType<typeof useNavigate>) {
   }
 }
 
-function LoginForm() {
-  const { login, googleLogin } = useAuth()
+export function Login() {
+  const { login, googleLogin, completeTwoFALogin } = useAuth()
   const navigate = useNavigate()
+  const { redirect: redirectTo } = useSearch({ from: '/login' })
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [twoFAState, setTwoFAState] = useState<{ tempToken: string } | null>(null)
+  const [twoFACode, setTwoFACode] = useState('')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,10 +43,28 @@ function LoginForm() {
     setLoading(true)
     const res = await login(email.trim(), password)
     setLoading(false)
+    if (res.success && res.requires_2fa) {
+      setTwoFAState({ tempToken: res.temp_token })
+      return
+    }
     if (res.success && res.user) {
-      redirectForUser(res.user, navigate)
-    } else {
+      redirectForUser(res.user, navigate, redirectTo)
+    } else if (!res.success) {
       toast.error(res.error ?? 'Incorrect email or password')
+    }
+  }
+
+  const handleTwoFA = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!twoFAState || twoFACode.length < 6) return
+    setLoading(true)
+    const res = await completeTwoFALogin(twoFAState.tempToken, twoFACode)
+    setLoading(false)
+    if (res.success && res.user) {
+      redirectForUser(res.user, navigate, redirectTo)
+    } else {
+      toast.error(res.error ?? 'Invalid code. Please try again.')
+      setTwoFACode('')
     }
   }
 
@@ -46,11 +73,77 @@ function LoginForm() {
     setLoading(true)
     const res = await googleLogin(credentialResponse.credential)
     setLoading(false)
-    if (res.success && res.user) {
-      redirectForUser(res.user, navigate)
-    } else {
-      toast.error(res.error ?? 'Google login failed')
+    if (res.success && 'requires_2fa' in res && res.requires_2fa) {
+      setTwoFAState({ tempToken: res.temp_token })
+      return
     }
+    if (res.success && 'user' in res && res.user) {
+      redirectForUser(res.user, navigate, redirectTo)
+    } else if (!res.success) {
+      toast.error('error' in res ? res.error : 'Google login failed')
+    }
+  }
+
+  if (twoFAState) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="text-center space-y-1">
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-3">
+              <Smartphone className="w-6 h-6 text-primary" />
+            </div>
+            <h1 className="font-heading text-2xl font-bold">Two-step verification</h1>
+            <p className="text-sm text-muted-foreground">
+              Enter the 6-digit code from your authenticator app.
+            </p>
+          </div>
+
+          <Card>
+            <CardContent className="p-6 space-y-4">
+              <form onSubmit={handleTwoFA} className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="totp-code">Authenticator code</Label>
+                  <Input
+                    id="totp-code"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    className="text-center tracking-[0.4em] text-lg font-mono"
+                    placeholder="000000"
+                    maxLength={6}
+                    value={twoFACode}
+                    onChange={e => setTwoFACode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    disabled={loading}
+                    autoFocus
+                    required
+                  />
+                </div>
+
+                <Button type="submit" className="w-full" disabled={loading || twoFACode.length < 6}>
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Verifying…
+                    </span>
+                  ) : (
+                    'Verify'
+                  )}
+                </Button>
+              </form>
+
+              <button
+                type="button"
+                onClick={() => { setTwoFAState(null); setTwoFACode('') }}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mx-auto"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Back to login
+              </button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -169,6 +262,3 @@ function LoginForm() {
   )
 }
 
-export function Login() {
-  return <LoginForm />
-}

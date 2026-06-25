@@ -7,6 +7,7 @@ import { RecaptchaProvider } from '@/components/application/RecaptchaProvider'
 import { sanityFetch } from '@/lib/sanity/client'
 import { siteSettingsQuery } from '@/lib/sanity/queries'
 import { buildMetadata } from '@/lib/seo'
+import { getClientPrograms } from '@/lib/api/applications'
 import type { SiteSettings } from '@/types'
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -16,11 +17,15 @@ export async function generateMetadata(): Promise<Metadata> {
     { title: 'Apply', description: 'Apply for a Nexa Academy program and start your tech journey today.' },
     s?.siteName,
     s?.defaultSeo?.ogImage,
+    '/apply',
   )
 }
 
 export default async function ApplyPage() {
-  const s = await sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'] })
+  const [s, programs] = await Promise.all([
+    sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'] }),
+    getClientPrograms(),
+  ])
 
   return (
     <Suspense fallback={
@@ -34,6 +39,7 @@ export default async function ApplyPage() {
           admissionsTimeline={s?.admissionsTimeline}
           whyNexa={s?.whyNexa}
           nextSteps={s?.nextSteps}
+          programs={programs}
         />
       </RecaptchaProvider>
     </Suspense>

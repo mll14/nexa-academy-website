@@ -23,15 +23,12 @@ class RoleSerializer(serializers.ModelSerializer):
         many=True, queryset=AppPermission.objects.all(),
         write_only=True, source='permissions', required=False,
     )
-    user_count = serializers.SerializerMethodField()
+    user_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Role
         fields = ['id', 'name', 'slug', 'description', 'is_system', 'permissions', 'permission_ids', 'user_count', 'created_at', 'updated_at']
         read_only_fields = ['id', 'is_system', 'created_at', 'updated_at']
-
-    def get_user_count(self, obj):
-        return obj.users.filter(role='admin').count()
 
     def create(self, validated_data):
         perms = validated_data.pop('permissions', [])
@@ -93,7 +90,8 @@ class StaffUserSerializer(serializers.ModelSerializer):
 class MyProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['display_name', 'email', 'phone', 'photo_url']
+        fields = ['display_name', 'email', 'phone', 'photo_url', 'google_linked']
+        read_only_fields = ['google_linked']
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -123,7 +121,7 @@ class UserSerializer(serializers.ModelSerializer):
             'uid', 'email', 'display_name', 'displayName', 'phone', 'photo_url',
             'role', 'status', 'fee_balance', 'feeBalance', 'total_fee_paid', 'totalFeePaid',
             'id_number', 'idNumber', 'created_at', 'createdAt', 'password',
-            'effectivePermissions', 'staffRole',
+            'effectivePermissions', 'staffRole', 'google_linked',
         ]
         read_only_fields = [
             'uid', 'role', 'status', 'fee_balance', 'feeBalance',

@@ -1,10 +1,6 @@
 import json
 import logging
-import re
-from urllib.parse import urlparse
 from decimal import Decimal
-from html import escape
-from html.parser import HTMLParser
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,6 +9,7 @@ from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.db import transaction
+from django.db.models import Q, Sum, Count, Exists, OuterRef
 from django.shortcuts import get_object_or_404
 from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, LeadAdminNote, PaymentPlanChangeRequest
 from .serializers import (
@@ -23,85 +20,15 @@ from .serializers import (
     normalize_payment_plan,
 )
 from accounts.permissions import IsAdminUser, HasAppPermission, IsSuperAdmin
-from accounts.views import create_audit_log
+from accounts.utils import create_audit_log
 from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
+from ubuntu_labs.html_utils import clean_admin_note_html as _clean_admin_note_html
 from accounts.models import User
 from applications.models import Application
 from notifications.models import Notification
 
 logger = logging.getLogger(__name__)
-
-
-_NOTE_ALLOWED_TAGS = frozenset({
-    'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's',
-    'ul', 'ol', 'li', 'blockquote', 'a',
-    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-    'pre', 'code',
-})
-_NOTE_ALLOWED_ATTRS = {'a': {'href', 'title'}}
-_SAFE_HREF_SCHEMES = frozenset({'http', 'https', 'mailto', ''})
-
-
-class _AdminNoteHTMLCleaner(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=False)
-        self.parts = []
-        self.skip_depth = 0
-
-    def handle_starttag(self, tag, attrs):
-        tag = tag.lower()
-        if tag in {'script', 'style'}:
-            self.skip_depth += 1
-            return
-        if self.skip_depth or tag not in _NOTE_ALLOWED_TAGS:
-            return
-
-        cleaned_attrs = []
-        for name, value in attrs:
-            name = name.lower()
-            if name not in _NOTE_ALLOWED_ATTRS.get(tag, set()) or value is None:
-                continue
-            if name == 'href':
-                # Strip control characters before parsing to prevent scheme-bypass via \x00 etc.
-                normalized = re.sub(r'[\x00-\x20]+', '', value)
-                scheme = urlparse(normalized).scheme.lower()
-                if scheme not in _SAFE_HREF_SCHEMES:
-                    continue
-            cleaned_attrs.append(f'{name}="{escape(value, quote=True)}"')
-
-        suffix = f" {' '.join(cleaned_attrs)}" if cleaned_attrs else ''
-        self.parts.append(f'<{tag}{suffix}>')
-
-    def handle_endtag(self, tag):
-        tag = tag.lower()
-        if tag in {'script', 'style'} and self.skip_depth:
-            self.skip_depth -= 1
-            return
-        if self.skip_depth or tag not in _NOTE_ALLOWED_TAGS or tag == 'br':
-            return
-        self.parts.append(f'</{tag}>')
-
-    def handle_data(self, data):
-        if not self.skip_depth:
-            self.parts.append(escape(data))
-
-    def handle_entityref(self, name):
-        if not self.skip_depth:
-            self.parts.append(f'&{name};')
-
-    def handle_charref(self, name):
-        if not self.skip_depth:
-            self.parts.append(f'&#{name};')
-
-
-def _clean_admin_note_html(html):
-    if not html:
-        return ''
-    cleaner = _AdminNoteHTMLCleaner()
-    cleaner.feed(html)
-    cleaner.close()
-    return ''.join(cleaner.parts)
 
 
 def _admissions_notification_email():
@@ -155,37 +82,71 @@ class ProgramViewSet(viewsets.ModelViewSet):
 
 
 class EnrollmentViewSet(viewsets.ModelViewSet):
-    queryset = Enrollment.objects.all()
+    queryset = Enrollment.objects.select_related('student', 'program')
     serializer_class = EnrollmentSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'program']
-    ordering_fields = ['enrollment_date', 'start_date']
+    search_fields = ['student_name', 'student__email', 'student__display_name']
+    ordering_fields = ['enrollment_date', 'start_date', 'student_name', 'amount']
     ordering = ['-enrollment_date']
 
     def get_queryset(self):
         user = self.request.user
         if user.role == 'admin':
-            return Enrollment.objects.all()
-        return Enrollment.objects.filter(student=user)
+            return Enrollment.objects.select_related('student', 'program').all()
+        return Enrollment.objects.select_related('student', 'program').filter(student=user)
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        stats = queryset.aggregate(
+            total=Count('enrollment_id'),
+            active=Count('enrollment_id', filter=Q(status='active')),
+            completed=Count('enrollment_id', filter=Q(status='completed')),
+            withdrawn=Count('enrollment_id', filter=Q(status='withdrawn')),
+            total_revenue=Sum('amount_paid'),
+            total_outstanding=Sum('balance'),
+        )
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            response = self.get_paginated_response(serializer.data)
+            response.data['stats'] = {
+                'total': stats['total'] or 0,
+                'active': stats['active'] or 0,
+                'completed': stats['completed'] or 0,
+                'withdrawn': stats['withdrawn'] or 0,
+                'total_revenue': float(stats['total_revenue'] or 0),
+                'total_outstanding': float(stats['total_outstanding'] or 0),
+            }
+            return response
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['post'], permission_classes=[HasAppPermission('students.manage')])
     def manual_enroll(self, request):
-        """Manually enroll a student (Admin only). Accepts student_id (existing user) or student_name+student_email (new/external)."""
+        """
+        Manually enroll a student. Accepts student_id (existing user) or
+        student_name + student_email (creates an account if none exists).
+        Amount is taken from program.price — the admin does not enter fees here.
+        """
+        from django.contrib.auth.tokens import PasswordResetTokenGenerator
+        from urllib.parse import urlencode
+        from programs.serializers import normalize_payment_plan
+
         student_id = request.data.get('student_id')
-        student_name_manual = request.data.get('student_name', '').strip()
-        student_email_manual = request.data.get('student_email', '').strip()
+        student_name = request.data.get('student_name', '').strip()
+        student_email = request.data.get('student_email', '').strip().lower()
         program_id = request.data.get('program_id')
-        amount = request.data.get('amount')
-        amount_paid = request.data.get('amount_paid', 0)
+        payment_plan_raw = request.data.get('payment_plan', '').strip()
 
-        if not program_id or amount is None:
-            return Response(
-                {'error': 'program_id and amount are required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if not program_id:
+            return Response({'error': 'program_id is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not student_id and not (student_name_manual and student_email_manual):
+        if not student_id and not (student_name and student_email):
             return Response(
                 {'error': 'Provide either student_id or both student_name and student_email'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -196,28 +157,44 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         except Program.DoesNotExist:
             return Response({'error': 'Program not found'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Resolve student — existing account or manual details
-        student = None
-        resolved_name = student_name_manual
-        resolved_email = student_email_manual
+        if program.price is None:
+            return Response(
+                {'error': 'This program has no price set. Please update the program before enrolling.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        amount = program.price
+
+        normalized_plan = ''
+        if payment_plan_raw:
+            normalized_plan = normalize_payment_plan(payment_plan_raw) or ''
+            if not normalized_plan:
+                return Response(
+                    {'error': 'Invalid payment plan. Use One-time Payment, 2 Installments, or 3 Installments.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Resolve or create student account
+        is_new_account = False
         if student_id:
             try:
                 student = User.objects.get(uid=student_id)
-                resolved_name = student.display_name
-                resolved_email = student.email
             except User.DoesNotExist:
                 return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            student = User.objects.filter(email__iexact=student_email).first()
+            if student is None:
+                student = User.objects.create_user(
+                    email=student_email,
+                    display_name=student_name,
+                    password=None,
+                    role='student',
+                )
+                is_new_account = True
 
-        # Duplicate check (by account if we have one, else by email+program)
-        if student and Enrollment.objects.filter(student=student, program=program).exists():
+        if Enrollment.objects.filter(student=student, program=program).exists():
             return Response(
                 {'error': 'Student is already enrolled in this program'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if not student and Enrollment.objects.filter(student_name=resolved_name, program=program, student__isnull=True).exists():
-            return Response(
-                {'error': 'An enrollment with this name already exists for this program'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -225,49 +202,62 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             enrollment = Enrollment.objects.create(
                 student=student,
                 program=program,
-                student_name=resolved_name,
+                student_name=student.display_name,
                 program_name=program.name,
                 amount=amount,
-                amount_paid=amount_paid,
-                balance=float(amount) - float(amount_paid),
-                status='active'
+                amount_paid=0,
+                balance=float(amount),
+                payment_plan=normalized_plan,
+                status='active',
+            )
+            StudentProgramEnrolled.objects.create(
+                student=student,
+                program=program,
+                program_name=program.name,
+                enrollment_date=enrollment.enrollment_date,
+                status='active',
+            )
+            ProgramProgress.objects.create(
+                student=student,
+                program=program,
+                program_name=program.name,
+                enrollment_date=enrollment.enrollment_date,
+                lessons_total=0,
             )
 
-            # Portal records only exist when there's a real user account
-            if student:
-                StudentProgramEnrolled.objects.create(
-                    student=student,
-                    program=program,
-                    program_name=program.name,
-                    enrollment_date=enrollment.enrollment_date,
-                    status='active'
-                )
-                ProgramProgress.objects.create(
-                    student=student,
-                    program=program,
-                    program_name=program.name,
-                    enrollment_date=enrollment.enrollment_date,
-                    lessons_total=0
-                )
-
-            # Send manual enrollment email
-            try:
+        # Send email — invite to create password for new accounts, confirmation for existing
+        try:
+            admissions_url = getattr(settings, 'ADMISSIONS_PORTAL_URL', 'https://admissions.nexaacademy.co.ke')
+            if is_new_account:
+                token = PasswordResetTokenGenerator().make_token(student)
+                qs = urlencode({'uid': str(student.uid), 'token': token, 'name': student.display_name})
+                setup_url = f"{admissions_url}/accept-invite?{qs}"
                 send_html_email(
-                    subject=f"Enrollment Confirmed - {program.name}",
-                    template_name='welcome_student.html',
+                    subject=f"You've been enrolled in {program.name} — Nexa Academy",
+                    template_name='enrolled_account_setup.html',
                     context={
                         'display_name': student.display_name,
                         'program_name': program.name,
-                        'amount': amount,
-                        'amount_paid': amount_paid,
-                        'balance': enrollment.balance,
-                        'frontend_url': settings.FRONTEND_URL,
-                        'admissions_url': settings.ADMISSIONS_PORTAL_URL,
+                        'payment_plan': normalized_plan,
+                        'total_fee': f"{float(amount):,.0f}",
+                        'setup_url': setup_url,
                     },
                     recipient_email=student.email,
                 )
-            except Exception:
-                pass
+            else:
+                send_html_email(
+                    subject=f"Enrollment Confirmed — {program.name}",
+                    template_name='enrolled.html',
+                    context={
+                        'full_name': student.display_name,
+                        'program_name': program.name,
+                        'admissions_url': admissions_url,
+                        'frontend_url': getattr(settings, 'FRONTEND_URL', ''),
+                    },
+                    recipient_email=student.email,
+                )
+        except Exception:
+            logger.exception('Failed to send enrollment email to %s', student.email)
 
         return Response(EnrollmentSerializer(enrollment).data, status=status.HTTP_201_CREATED)
 
@@ -376,7 +366,7 @@ class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
             'reason': change_request.reason,
             'status': change_request.status,
             'request_url': _admissions_portal_url('/admin/payment-plans'),
-            'student_dashboard_url': _admissions_portal_url('/student/dashboard'),
+            'student_dashboard_url': _admissions_portal_url('/student/payments'),
             'frontend_url': getattr(settings, 'FRONTEND_URL', ''),
             'admissions_url': getattr(settings, 'ADMISSIONS_PORTAL_URL', ''),
         }
@@ -900,7 +890,6 @@ class ProgramInterestListView(APIView):
 
         search = request.query_params.get('search', '').strip()
         if search:
-            from django.db.models import Q
             qs = qs.filter(
                 Q(email__icontains=search) |
                 Q(name__icontains=search) |
@@ -920,7 +909,6 @@ class ProgramInterestListView(APIView):
         items = qs[start:start + page_size]
 
         # Per-program counts (for stats strip)
-        from django.db.models import Count
         program_counts = list(
             ProgramInterest.objects.values('program_slug', 'program_name')
             .annotate(count=Count('id'))
@@ -1053,7 +1041,6 @@ class HelpMeLeadView(APIView):
             qs = qs.filter(follow_up_completed=follow_up_completed.lower() in ('true', '1'))
         search = request.query_params.get('search', '').strip()
         if search:
-            from django.db.models import Q
             qs = qs.filter(Q(email__icontains=search) | Q(name__icontains=search))
         try:
             page = max(1, int(request.query_params.get('page', 1)))
@@ -1159,7 +1146,6 @@ class IncompleteApplicationView(APIView):
         if not (request.user and request.user.is_authenticated and request.user.role == 'admin'):
             return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
 
-        from django.db.models import Exists, OuterRef, Q
         from applications.models import Application
 
         qs = IncompleteApplication.objects.annotate(
@@ -1196,7 +1182,6 @@ class IncompleteApplicationDetailView(APIView):
     permission_classes = [HasAppPermission('leads.manage')]
 
     def get(self, request, pk):
-        from django.db.models import Exists, OuterRef
         from applications.models import Application
 
         qs = IncompleteApplication.objects.annotate(

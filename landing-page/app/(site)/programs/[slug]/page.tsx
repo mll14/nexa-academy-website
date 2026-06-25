@@ -8,7 +8,6 @@ import { MarkdownRenderer } from '@/components/shared/MarkdownRenderer'
 import { urlFor } from '@/lib/sanity/image'
 import { getSanityProgram } from '@/lib/sanity/programs'
 import { getProgramBySlug } from '@/lib/api/programs'
-import { getIntakesForName } from '@/lib/api/intakes'
 import {
   ArrowLeft, CheckCircle2, Calendar, AlertCircle,
   Wallet, ChevronRight, Award, Download, Clock,
@@ -19,8 +18,9 @@ import {
 import { TestimonialsCarousel } from '@/components/sections/TestimonialsCarousel'
 import { sanityFetch } from '@/lib/sanity/client'
 import { siteSettingsQuery } from '@/lib/sanity/queries'
-import { buildMetadata } from '@/lib/seo'
+import { buildMetadata, serializeJsonLd } from '@/lib/seo'
 import type { Metadata } from 'next'
+import { getIntakesForProgram } from '@/lib/api/intakes'
 import type { ApiIntake, SanityProgram, ApiProgram, TestimonialDoc, SiteSettings } from '@/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -59,6 +59,7 @@ export async function generateMetadata(
     { title: sanity.name, description: sanity.heroSubtitle ?? undefined },
     settings?.siteName,
     settings?.defaultSeo?.ogImage,
+    `/programs/${slug}`,
   )
 }
 
@@ -69,21 +70,27 @@ export default async function ProgramDetailPage(
 ) {
   const { slug } = await params
 
-  const [sanity, api] = await Promise.all([
-    getSanityProgram(slug),
-    getProgramBySlug(slug),
-  ])
+  const sanityP = getSanityProgram(slug)
+  const apiP = getProgramBySlug(slug)
+  // Start intakes fetch as soon as the API program resolves — no need to wait for Sanity.
+  // If the API program is missing, fall back to a name-based lookup after Sanity resolves.
+  const intakesP = apiP.then(api => api ? getIntakesForProgram(api.id) : [])
 
+  const [sanity, api] = await Promise.all([sanityP, apiP])
   if (!sanity) notFound()
 
   const program: ApiProgram | null = api
-  const intakes: ApiIntake[] = await getIntakesForName(sanity.name)
+  // Await intakes (likely already in-flight); fall back to name lookup only when API program was missing
+  const intakes: ApiIntake[] = api
+    ? await intakesP
+    : await getIntakesForName(sanity.name)
   const nextIntake = intakes.find((i) => i.status === 'open') ?? intakes[0] ?? null
 
   const price = sanity.price ?? program?.price ?? null
   const originalPrice = sanity.originalPrice ?? program?.original_price ?? null
 
   const heroImgUrl = imageUrl(sanity.heroImage)
+  const syllabusUrl = safeSyllabusUrl(sanity.syllabusUrl)
 
   const navLinks = [
     { href: '#overview', label: 'Overview' },
@@ -95,8 +102,37 @@ export default async function ProgramDetailPage(
 
   const showTestimonials = !sanity.testimonialsHidden && (sanity.testimonials?.length ?? 0) > 0
 
+  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://nexaacademy.co.ke'
+  const courseSchema = {
+    '@context': 'https://schema.org',
+    '@type': 'Course',
+    name: sanity.name,
+    description: sanity.heroSubtitle ?? undefined,
+    url: `${SITE_URL}/programs/${slug}`,
+    provider: {
+      '@type': 'EducationalOrganization',
+      name: 'Nexa Academy',
+      url: SITE_URL,
+    },
+    ...(price != null && {
+      offers: {
+        '@type': 'Offer',
+        price: String(price),
+        priceCurrency: 'KES',
+        availability: nextIntake ? 'https://schema.org/InStock' : 'https://schema.org/PreOrder',
+      },
+    }),
+    ...(sanity.durationMonths && {
+      timeRequired: `P${sanity.durationMonths}M`,
+    }),
+  }
+
   return (
     <div className="min-h-screen bg-background">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(courseSchema) }}
+      />
       {/* Hero */}
       <div className="relative">
         {heroImgUrl ? (
@@ -200,9 +236,9 @@ export default async function ProgramDetailPage(
                 {label}
               </a>
             ))}
-            {safeSyllabusUrl(sanity.syllabusUrl) && (
+            {syllabusUrl && (
               <a
-                href={safeSyllabusUrl(sanity.syllabusUrl) ?? undefined}
+                href={syllabusUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm text-primary py-1.5 px-2 rounded-lg hover:bg-primary/5 transition-colors mt-4 border border-primary/30"
@@ -462,9 +498,9 @@ export default async function ProgramDetailPage(
                       )}
                     </div>
 
-                    {safeSyllabusUrl(sanity.syllabusUrl) && (
+                    {syllabusUrl && (
                       <a
-                        href={safeSyllabusUrl(sanity.syllabusUrl)!}
+                        href={syllabusUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"

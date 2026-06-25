@@ -1,5 +1,6 @@
 export const runtime = 'edge'
 
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Award, ArrowRight, BookOpen, Bell } from 'lucide-react'
@@ -7,12 +8,27 @@ import { getPrograms } from '@/lib/api/programs'
 import { getIntakesForName } from '@/lib/api/intakes'
 import { getAllSanityPrograms } from '@/lib/sanity/programs'
 import { sanityFetch } from '@/lib/sanity/client'
-import { pageBySlugQuery } from '@/lib/sanity/queries'
+import { pageBySlugQuery, siteSettingsQuery } from '@/lib/sanity/queries'
 import { urlFor } from '@/lib/sanity/image'
 import { SectionRenderer } from '@/components/sections/SectionRenderer'
 import { Separator } from '@/components/ui/Separator'
 import { FinanceCalculator } from '@/components/programs/FinanceCalculator'
-import type { SanityProgram, ApiProgram, Page } from '@/types'
+import { buildMetadata } from '@/lib/seo'
+import type { SanityProgram, ApiProgram, Page, SiteSettings } from '@/types'
+
+export async function generateMetadata(): Promise<Metadata> {
+  const s = await sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'] })
+  return buildMetadata(
+    null,
+    {
+      title: 'Coding Bootcamp Programs in Nairobi',
+      description: 'Explore Nexa Academy\'s tech programs — software development, data science, and more. Practical, industry-aligned training designed to get you job-ready fast.',
+    },
+    s?.siteName,
+    s?.defaultSeo?.ogImage,
+    '/programs',
+  )
+}
 
 function fmtDate(dateStr: string, opts: Intl.DateTimeFormatOptions = { month: 'short', year: 'numeric' }) {
   try { return new Date(dateStr).toLocaleDateString('en-KE', opts) } catch { return '—' }
@@ -87,9 +103,9 @@ async function ProgramCard({ sanity, api }: { sanity: SanityProgram; api: ApiPro
       {/* Body */}
       <div className="p-5 sm:p-6 flex flex-col flex-1 gap-4">
         <div className="space-y-1.5">
-          <h4 className="font-bold leading-snug group-hover:text-primary transition-colors">
+          <h2 className="text-base font-bold leading-snug group-hover:text-primary transition-colors">
             {sanity.name}
-          </h4>
+          </h2>
           {sanity.heroSubtitle && (
             <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
               {sanity.heroSubtitle}

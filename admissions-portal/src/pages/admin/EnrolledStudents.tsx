@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -16,9 +16,10 @@ import { Dialog } from '../../components/ui/dialog'
 import { Separator } from '../../components/ui/separator'
 import { Badge } from '../../components/ui/badge'
 import * as api from '../../lib/api'
+import type { EnrollmentFilters } from '../../lib/api/programs'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import type { Enrollment, Program, User } from '../../types'
+import type { Enrollment, Program } from '../../types'
 import { Pagination } from '../../components/ui/pagination'
 
 function fmtKSh(n: number): string {
@@ -76,134 +77,14 @@ function avatarColor(name: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
 }
 
-// ─── Student picker ───────────────────────────────────────────────────────────
-
-type StudentValue = { uid?: string; email: string; display_name: string }
-
-function StudentPicker({ value, onChange }: {
-  value: StudentValue | null
-  onChange: (v: StudentValue | null) => void
-}) {
-  const [query, setQuery]           = useState('')
-  const [results, setResults]       = useState<User[]>([])
-  const [searching, setSearching]   = useState(false)
-  const [open, setOpen]             = useState(false)
-  const [manual, setManual]         = useState(false)
-  const [manualName, setManualName] = useState('')
-  const [manualEmail, setManualEmail] = useState('')
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => {
-    if (!manual) return
-    if (manualName || manualEmail) onChange({ display_name: manualName, email: manualEmail })
-    else onChange(null)
-  }, [manual, manualName, manualEmail]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const doSearch = (q: string) => {
-    setQuery(q)
-    onChange(null)
-    if (!q.trim()) { setResults([]); setOpen(false); return }
-    if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(async () => {
-      setSearching(true)
-      try {
-        const res = await api.getStudents({ search: q })
-        const list = Array.isArray(res) ? res : (res as { results: User[] }).results ?? []
-        setResults(list)
-        setOpen(true)
-      } catch {
-        setResults([])
-        setOpen(true)
-      } finally {
-        setSearching(false)
-      }
-    }, 350)
-  }
-
-  const pick = (u: User) => {
-    setQuery(u.email)
-    setOpen(false)
-    onChange({ uid: u.uid, email: u.email, display_name: u.display_name })
-  }
-
-  const switchToManual = () => { setOpen(false); setManual(true); setQuery(''); onChange(null) }
-  const switchToSearch = () => { setManual(false); setManualName(''); setManualEmail(''); onChange(null) }
-
-  if (manual) {
-    return (
-      <div className="space-y-2.5 rounded-xl border border-border bg-muted/30 p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-muted-foreground">Enter student details manually</span>
-          <button type="button" onClick={switchToSearch} className="text-xs text-primary hover:underline">
-            Search instead
-          </button>
-        </div>
-        <Input placeholder="Full name *" value={manualName} onChange={(e) => setManualName(e.target.value)} className="h-9 rounded-xl" />
-        <Input type="email" placeholder="Email address *" value={manualEmail} onChange={(e) => setManualEmail(e.target.value)} className="h-9 rounded-xl" />
-        {manualName && manualEmail && (
-          <p className="text-xs text-success font-medium flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Ready to enroll
-          </p>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-        <Input
-          className="pl-9 h-9 rounded-xl"
-          placeholder="Search by name or email…"
-          value={query}
-          onChange={(e) => doSearch(e.target.value)}
-          onFocus={() => results.length > 0 && setOpen(true)}
-        />
-        {searching && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-        )}
-      </div>
-
-      {open && (
-        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-popover border border-border rounded-xl shadow-lg overflow-hidden">
-          {results.slice(0, 6).map((u) => (
-            <button key={u.uid} type="button" onClick={() => pick(u)}
-              className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/50 transition-colors"
-            >
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${avatarColor(u.display_name || u.email)}`}>
-                {(u.display_name || u.email).charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-medium truncate">{u.display_name}</p>
-                <p className="text-xs text-muted-foreground truncate">{u.email}</p>
-              </div>
-            </button>
-          ))}
-          <button type="button" onClick={switchToManual}
-            className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm text-primary hover:bg-muted/50 transition-colors border-t border-border"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            {results.length === 0 ? 'No results — enter manually' : 'Enter manually instead'}
-          </button>
-        </div>
-      )}
-
-      {!open && query && value && (
-        <p className="mt-1.5 text-xs text-success font-medium flex items-center gap-1">
-          <CheckCircle2 className="w-3.5 h-3.5" /> {value.display_name}
-        </p>
-      )}
-      {!open && !query && (
-        <button type="button" onClick={switchToManual} className="mt-1.5 text-xs text-muted-foreground hover:text-primary transition-colors">
-          Or enter student details manually →
-        </button>
-      )}
-    </div>
-  )
-}
-
 // ─── Enroll dialog ────────────────────────────────────────────────────────────
+
+const PAYMENT_PLAN_OPTIONS = [
+  { value: '',                 label: 'No plan specified' },
+  { value: 'One-time Payment', label: 'One-time Payment' },
+  { value: '2 Installments',   label: '2 Installments' },
+  { value: '3 Installments',   label: '3 Installments' },
+]
 
 function EnrollDialog({ open, onClose, programs, onSuccess }: {
   open: boolean
@@ -211,26 +92,23 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
   programs: Program[]
   onSuccess: () => void
 }) {
-  const [student, setStudent]   = useState<StudentValue | null>(null)
+  const [name, setName]           = useState('')
+  const [email, setEmail]         = useState('')
   const [programId, setProgramId] = useState('')
-  const [amount, setAmount]     = useState('')
-  const [amountPaid, setAmountPaid] = useState('')
+  const [paymentPlan, setPaymentPlan] = useState('')
 
   const selectedProgram = programs.find((p) => p.program_id === programId) ?? null
-  const balance   = (parseFloat(amount) || 0) - (parseFloat(amountPaid) || 0)
-  const canSubmit = !!(student?.email && student?.display_name && programId && parseFloat(amount) > 0)
+  const canSubmit = !!(name.trim() && email.trim() && programId)
 
   const mutation = useMutation({
     mutationFn: () => api.manualEnroll({
-      studentId:    student!.uid ?? '',
-      studentName:  student!.display_name,
-      studentEmail: student!.email,
+      studentName:  name.trim(),
+      studentEmail: email.trim(),
       programId,
-      amount:       parseFloat(amount),
-      amountPaid:   parseFloat(amountPaid) || 0,
+      paymentPlan:  paymentPlan || undefined,
     }),
     onSuccess: () => {
-      toast.success(`${student!.display_name} enrolled successfully`)
+      toast.success(`${name.trim()} enrolled successfully`)
       onSuccess()
       handleClose()
     },
@@ -238,64 +116,70 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
   })
 
   const handleClose = () => {
-    setStudent(null); setProgramId(''); setAmount(''); setAmountPaid('')
+    setName(''); setEmail(''); setProgramId(''); setPaymentPlan('')
     onClose()
-  }
-
-  const handleProgramChange = (id: string) => {
-    setProgramId(id)
-    const prog = programs.find((p) => p.program_id === id)
-    if (prog?.price != null) setAmount(String(prog.price))
   }
 
   return (
     <Dialog open={open} onClose={handleClose} title="Enroll a Student"
-      description="Search for an existing student or enter their details manually."
+      description="Enter the student's details. A student account will be created if one doesn't exist yet."
       className="max-w-lg"
     >
       <div className="space-y-5">
+
         <div className="space-y-1.5">
-          <Label>Student *</Label>
-          <StudentPicker value={student} onChange={setStudent} />
+          <Label htmlFor="enroll-name">Full Name *</Label>
+          <Input
+            id="enroll-name"
+            placeholder="e.g. Jane Mwangi"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="enroll-email">Email Address *</Label>
+          <Input
+            id="enroll-email"
+            type="email"
+            placeholder="e.g. jane@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">If this email is already registered, the existing account will be used.</p>
         </div>
 
         <div className="space-y-1.5">
           <Label>Program *</Label>
-          <Select value={programId} onChange={handleProgramChange} placeholder="Select a program…"
+          <Select value={programId} onChange={setProgramId} placeholder="Select a program…"
             options={programs.map((p) => ({ value: p.program_id, label: p.name }))}
           />
           {selectedProgram && (
-            <p className="text-xs text-muted-foreground">
-              {[selectedProgram.category, selectedProgram.level, selectedProgram.duration].filter(Boolean).join(' · ')}
-            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <p className="text-xs text-muted-foreground">
+                {[selectedProgram.category, selectedProgram.level, selectedProgram.duration].filter(Boolean).join(' · ')}
+              </p>
+              {selectedProgram.price != null && (
+                <p className="text-xs font-medium text-foreground">
+                  KSh {Number(selectedProgram.price).toLocaleString('en-KE')}
+                </p>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label>Total Fee (KSh) *</Label>
-            <Input type="number" min="0" placeholder="e.g. 150000" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            {selectedProgram?.price != null && (
-              <p className="text-xs text-muted-foreground">Suggested: KSh {Number(selectedProgram.price).toLocaleString('en-KE')}</p>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label>Amount Paid (KSh)</Label>
-            <Input type="number" min="0" placeholder="0" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} />
-          </div>
+        <div className="space-y-1.5">
+          <Label>Installment Plan</Label>
+          <Select value={paymentPlan} onChange={setPaymentPlan} options={PAYMENT_PLAN_OPTIONS} />
+          <p className="text-xs text-muted-foreground">Optional — the student can request a change later from their dashboard.</p>
         </div>
 
-        {amount && (
-          <div className="bg-muted/40 border border-border rounded-xl px-4 py-3 space-y-1">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Remaining balance</span>
-              <span className={`font-bold ${balance <= 0 ? 'text-success' : 'text-warning'}`}>
-                KSh {Math.max(0, balance).toLocaleString('en-KE')}
-              </span>
-            </div>
-            {balance <= 0 && <p className="text-xs text-success">Fully paid</p>}
-          </div>
-        )}
+        <div className="bg-muted/40 border border-border rounded-xl px-4 py-3">
+          <p className="text-xs text-muted-foreground">
+            New students will receive an email to create their password and access their dashboard. Payment is made separately via Paystack or recorded by an admin.
+          </p>
+        </div>
 
         <Separator />
 
@@ -326,13 +210,13 @@ export function EnrolledStudents() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'enrollments', { search, status, programId, ordering, page }],
     queryFn: () => api.getEnrollments({
-      search:   search || undefined,
-      status:   status === 'all' ? undefined : status,
-      program:  programId === 'all' ? undefined : programId,
+      search:    search || undefined,
+      status:    status === 'all' ? undefined : status,
+      program:   programId === 'all' ? undefined : programId,
       ordering,
       page,
       page_size: PAGE_SIZE,
-    } as never),
+    } satisfies EnrollmentFilters),
     placeholderData: (prev) => prev,
   })
 
@@ -341,15 +225,16 @@ export function EnrolledStudents() {
     queryFn:  () => api.getPrograms(),
   })
 
-  const enrollments: Enrollment[] = (data as { results?: Enrollment[] })?.results ?? []
-  const total: number             = (data as { count?: number })?.count ?? 0
+  const enrollments: Enrollment[] = data?.results ?? []
+  const total: number             = data?.count ?? 0
   const totalPages                = Math.ceil(total / PAGE_SIZE)
+  const stats                     = data?.stats
 
-  const active    = enrollments.filter((e) => e.status === 'active').length
-  const completed = enrollments.filter((e) => e.status === 'completed').length
-  const withdrawn = enrollments.filter((e) => e.status === 'withdrawn').length
-  const revenue   = enrollments.reduce((s, e) => s + (e.amount_paid ?? 0), 0)
-  const outstanding = enrollments.reduce((s, e) => s + (e.balance ?? 0), 0)
+  const active      = stats?.active      ?? 0
+  const completed   = stats?.completed   ?? 0
+  const withdrawn   = stats?.withdrawn   ?? 0
+  const revenue     = stats?.total_revenue     ?? 0
+  const outstanding = stats?.total_outstanding ?? 0
 
   const programOptions = [
     { value: 'all', label: 'All Programs' },

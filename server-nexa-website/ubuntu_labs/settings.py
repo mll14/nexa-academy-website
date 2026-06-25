@@ -15,10 +15,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 config = AutoConfig(search_path=str(BASE_DIR))
 
 
-SECRET_KEY = config(
-    'SECRET_KEY',
-    default=config('DJANGO_SECRET_KEY', default='django-insecure-&8$g%t1@gm_k_16zrv%cfl!)m0mrc^a45_h7q-a439_!=y-&27'),
-)
+SECRET_KEY = config('SECRET_KEY', default=config('DJANGO_SECRET_KEY', default=None))
+if not SECRET_KEY:
+    raise RuntimeError(
+        'SECRET_KEY environment variable is not set. '
+        'Set SECRET_KEY (or DJANGO_SECRET_KEY) in your .env file or deployment environment.'
+    )
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = config(
@@ -57,6 +59,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'ubuntu_labs.middleware.SecurityHeadersMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -142,17 +145,26 @@ AUTH_USER_MODEL = 'accounts.User'
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'accounts.authentication.SessionAwareJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',
+        'login': '10/minute',
+        'forgot_password': '5/minute',
+        'two_fa': '5/minute',
+    },
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -160,6 +172,7 @@ SIMPLE_JWT = {
     'USER_ID_FIELD': 'uid',
     'USER_ID_CLAIM': 'user_id',
 }
+
 
 CORS_ALLOWED_ORIGINS = config(
     'CORS_ALLOWED_ORIGINS',
@@ -232,3 +245,32 @@ SANITY_API_TOKEN = config('SANITY_API_TOKEN', default='')
 CLOUDINARY_CLOUD_NAME = config('CLOUDINARY_CLOUD_NAME', default='')
 CLOUDINARY_API_KEY = config('CLOUDINARY_API_KEY', default='')
 CLOUDINARY_API_SECRET = config('CLOUDINARY_API_SECRET', default='')
+
+if CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET:
+    import cloudinary
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True,
+    )
+
+# Security headers — handled by Django's SecurityMiddleware
+# HSTS: tell browsers to always use HTTPS for 1 year, including subdomains
+SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=63072000 if not DEBUG else 0, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+# Secure cookies — only transmitted over HTTPS
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# Force HTTP → HTTPS in production. SECURE_PROXY_SSL_HEADER lets Django detect
+# HTTPS correctly when sitting behind a reverse proxy (nginx/Caddy/load balancer).
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

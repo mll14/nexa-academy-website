@@ -1,13 +1,19 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import * as api from '../lib/api'
-import { tokens, getStoredUser, setStoredUser } from '../lib/auth'
+import { tokens, getStoredUser, setStoredUser, clearStoredUser } from '../lib/auth'
 import type { User } from '../types'
+
+type LoginResponse =
+  | { success: true; user: User; requires_2fa?: false }
+  | { success: false; error: string }
+  | { success: true; requires_2fa: true; temp_token: string }
 
 interface AuthContextValue {
   user: User | null
   loading: boolean
-  login: (email: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>
-  googleLogin: (token: string) => Promise<{ success: boolean; user?: User; error?: string }>
+  login: (email: string, password: string) => Promise<LoginResponse>
+  completeTwoFALogin: (temp_token: string, code: string) => Promise<{ success: boolean; user?: User; error?: string }>
+  googleLogin: (token: string) => Promise<LoginResponse>
   logout: (redirectTo?: string) => Promise<void>
   refreshUser: () => Promise<void>
   isAdmin: () => boolean
@@ -57,63 +63,90 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
-      if (tokens.access) await refreshUser()
+      // If there's a cached user, try to restore their session from the httpOnly
+      // refresh cookie. On page reload the in-memory access token is gone, so
+      // we must exchange the cookie for a fresh access token first.
+      if (getStoredUser()) {
+        const restored = await api.tryRefreshToken()
+        if (restored) {
+          await refreshUser()
+        } else {
+          // Cookie expired or was revoked — clear the stale cached user
+          setUser(null)
+          clearStoredUser()
+        }
+      }
       setLoading(false)
     }
     init()
   }, [refreshUser])
 
-  const login = async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<LoginResponse> => {
     try {
-      const { user } = await api.login(email, password)
+      const result = await api.login(email, password)
+      if ('requires_2fa' in result && result.requires_2fa) {
+        return { success: true, requires_2fa: true, temp_token: result.temp_token }
+      }
+      const { user } = result as { user: User; role: string }
       setUser(user)
       return { success: true, user }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : 'Login failed' }
     }
-  }
+  }, [])
 
-  const googleLogin = async (token: string) => {
+  const completeTwoFALogin = useCallback(async (temp_token: string, code: string) => {
     try {
-      const { user } = await api.googleLogin(token)
+      const { user } = await api.completeTwoFALogin(temp_token, code)
+      setUser(user)
+      return { success: true, user }
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : 'Invalid code. Please try again.' }
+    }
+  }, [])
+
+  const googleLogin = useCallback(async (token: string): Promise<LoginResponse> => {
+    try {
+      const result = await api.googleLogin(token)
+      if ('requires_2fa' in result && result.requires_2fa) {
+        return { success: true, requires_2fa: true, temp_token: result.temp_token }
+      }
+      const { user } = result as { user: User }
       setUser(user)
       return { success: true, user }
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : 'Login failed' }
     }
-  }
+  }, [])
 
-  const logout = async (redirectTo = '/login') => {
+  const logout = useCallback(async (redirectTo = '/login') => {
     try {
       await api.logout()
     } finally {
       setUser(null)
       window.location.href = redirectTo
     }
-  }
+  }, [])
 
-  const isFullAdmin = () => user?.role === 'admin' && !user?.staffRole
-
-  const hasPermission = (codename: string): boolean => {
-    if (!user || user.role !== 'admin') return false
-    // If no effectivePermissions list (legacy session or super admin), allow all
-    if (!user.effectivePermissions) return true
-    return user.effectivePermissions.includes(codename)
-  }
-
-  const value: AuthContextValue = {
+  const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
     login,
+    completeTwoFALogin,
     googleLogin,
     logout,
     refreshUser,
     isAdmin: () => user?.role === 'admin',
     isStudent: () => user?.role === 'student',
     isAuthenticated: Boolean(tokens.access),
-    isFullAdmin,
-    hasPermission,
-  }
+    isFullAdmin: () => user?.role === 'admin' && !user?.staffRole,
+    hasPermission: (codename: string) => {
+      if (!user || user.role !== 'admin') return false
+      // If no effectivePermissions list (legacy session or super admin), allow all
+      if (!user.effectivePermissions) return true
+      return user.effectivePermissions.includes(codename)
+    },
+  }), [user, loading, login, completeTwoFALogin, googleLogin, logout, refreshUser])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

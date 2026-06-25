@@ -1,36 +1,106 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { useAuth } from '../../context/AuthContext'
-import { updateMyProfile, changePassword } from '../../lib/api'
+import { updateMyProfile, uploadPhoto } from '../../lib/api'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { Eye, EyeOff, User, Chrome } from 'lucide-react'
-import { useGoogleLogin } from '@react-oauth/google'
+import { PhoneNumberInput } from '../../components/ui/phone-input'
+import { SettingsCard, SecurityTab, SessionsTab } from '../../components/ProfileSections'
+import { User, Shield, Monitor, Camera } from 'lucide-react'
+import { cn } from '../../lib/utils'
 import toast from 'react-hot-toast'
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
+// ── Sidebar tab nav ───────────────────────────────────────────────────────────
 
-function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+const TABS = [
+  { value: 'profile',  label: 'Profile',  icon: User    },
+  { value: 'security', label: 'Security', icon: Shield  },
+  { value: 'sessions', label: 'Sessions', icon: Monitor },
+] as const
+
+type Tab = typeof TABS[number]['value']
+
+// ── Avatar with change-photo ──────────────────────────────────────────────────
+
+function Avatar() {
+  const { user, refreshUser } = useAuth()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  const initials = (user?.display_name || user?.email || 'A')
+    .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) { toast.error('Please select an image file.'); return }
+    if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5 MB.'); return }
+
+    setUploading(true)
+    try {
+      await uploadPhoto(file)
+      await refreshUser()
+      toast.success('Photo updated.')
+    } catch {
+      toast.error('Failed to upload photo.')
+    } finally {
+      setUploading(false)
+      // Reset input so the same file can be re-selected if needed
+      e.target.value = ''
+    }
+  }
+
   return (
-    <div className="border border-border rounded-2xl overflow-hidden">
-      <div className="px-6 py-4 border-b border-border bg-muted/30">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
-      </div>
-      <div className="px-6 py-5">{children}</div>
+    <div className="relative shrink-0 group">
+      {user?.photo_url ? (
+        <img
+          src={user.photo_url}
+          alt={user?.display_name}
+          className="w-20 h-20 rounded-2xl object-cover border border-border shadow-sm"
+        />
+      ) : (
+        <div className="w-20 h-20 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center">
+          <span className="text-2xl font-bold text-primary">{initials}</span>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        disabled={uploading}
+        className={cn(
+          'absolute inset-0 rounded-2xl flex items-center justify-center',
+          'bg-black/0 group-hover:bg-black/40 transition-colors',
+          'opacity-0 group-hover:opacity-100',
+        )}
+        title="Change photo"
+      >
+        <Camera className="w-5 h-5 text-white drop-shadow" />
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleFile}
+      />
     </div>
   )
 }
 
-function ProfileSection() {
+// ── Profile tab ───────────────────────────────────────────────────────────────
+
+function ProfileTab() {
   const { user, refreshUser } = useAuth()
-  const [name, setName] = useState(user?.display_name ?? '')
+  const [name, setName]   = useState(user?.display_name ?? '')
   const [email, setEmail] = useState(user?.email ?? '')
   const [phone, setPhone] = useState(user?.phone ?? '')
   const [saving, setSaving] = useState(false)
 
-  const isDirty = name !== (user?.display_name ?? '') || email !== (user?.email ?? '') || phone !== (user?.phone ?? '')
+  const isDirty =
+    name  !== (user?.display_name ?? '') ||
+    email !== (user?.email ?? '')        ||
+    phone !== (user?.phone ?? '')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -39,27 +109,52 @@ function ProfileSection() {
       await updateMyProfile({ display_name: name, email, phone })
       await refreshUser()
       toast.success('Profile updated.')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to update profile.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to update profile.')
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Section title="Profile" description="Update your name, email address, and phone number.">
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
+    <SettingsCard
+      title="Personal Information"
+      description="Update your display name, email address, and phone number."
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-1.5">
-          <Label htmlFor="name">Full Name</Label>
-          <Input id="name" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" required />
+          <Label htmlFor="acc-name">Full Name</Label>
+          <Input
+            id="acc-name"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="Your name"
+            required
+          />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="email">Email Address</Label>
-          <Input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required />
+          <Label htmlFor="acc-email">Email Address</Label>
+          <Input
+            id="acc-email"
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+          />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="phone">Phone <span className="text-muted-foreground text-xs">(optional)</span></Label>
-          <Input id="phone" type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+254 7xx xxx xxx" />
+          <Label htmlFor="acc-phone">
+            Phone{' '}
+            <span className="text-muted-foreground font-normal text-xs">(optional)</span>
+          </Label>
+          <PhoneNumberInput
+            id="acc-phone"
+            value={phone}
+            onChange={setPhone}
+            defaultCountry="KE"
+            placeholder="7xx xxx xxx"
+          />
         </div>
         <div className="flex justify-end pt-1">
           <Button type="submit" disabled={saving || !isDirty} size="sm">
@@ -67,195 +162,69 @@ function ProfileSection() {
           </Button>
         </div>
       </form>
-    </Section>
+    </SettingsCard>
   )
 }
 
-function PasswordSection() {
-  const [current, setCurrent] = useState('')
-  const [next, setNext] = useState('')
-  const [confirm, setConfirm] = useState('')
-  const [showCurrent, setShowCurrent] = useState(false)
-  const [showNext, setShowNext] = useState(false)
-  const [saving, setSaving] = useState(false)
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (next !== confirm) { toast.error('Passwords do not match.'); return }
-    if (next.length < 8) { toast.error('Password must be at least 8 characters.'); return }
-    setSaving(true)
-    try {
-      await changePassword(current, next)
-      setCurrent(''); setNext(''); setConfirm('')
-      toast.success('Password updated.')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to update password.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <Section title="Password" description="Change your sign-in password.">
-      <form onSubmit={handleSubmit} className="space-y-4 max-w-md">
-        <div className="space-y-1.5">
-          <Label htmlFor="current">Current Password</Label>
-          <div className="relative">
-            <Input
-              id="current"
-              type={showCurrent ? 'text' : 'password'}
-              value={current}
-              onChange={e => setCurrent(e.target.value)}
-              placeholder="Your current password"
-              required
-              className="pr-10"
-            />
-            <button type="button" tabIndex={-1} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowCurrent(v => !v)}>
-              {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="new-password">New Password</Label>
-          <div className="relative">
-            <Input
-              id="new-password"
-              type={showNext ? 'text' : 'password'}
-              value={next}
-              onChange={e => setNext(e.target.value)}
-              placeholder="Min 8 characters"
-              required
-              minLength={8}
-              className="pr-10"
-            />
-            <button type="button" tabIndex={-1} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowNext(v => !v)}>
-              {showNext ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="confirm-password">Confirm New Password</Label>
-          <Input
-            id="confirm-password"
-            type={showNext ? 'text' : 'password'}
-            value={confirm}
-            onChange={e => setConfirm(e.target.value)}
-            placeholder="Repeat new password"
-            required
-          />
-          {confirm && next !== confirm && <p className="text-xs text-destructive">Passwords do not match.</p>}
-        </div>
-        <div className="flex justify-end pt-1">
-          <Button type="submit" disabled={saving || !current || !next || !confirm} size="sm">
-            {saving ? 'Updating…' : 'Update Password'}
-          </Button>
-        </div>
-      </form>
-    </Section>
-  )
-}
-
-function GoogleSectionContent() {
-  const { user, refreshUser } = useAuth()
-  const [linked, setLinked] = useState(false)
-
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      try {
-        const { updateMyProfile: update } = await import('../../lib/api')
-        // Fetch profile from Google to get photo_url
-        const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-        })
-        const info = await infoRes.json()
-        if (info.email && info.email !== user?.email) {
-          toast.error(`Google account email (${info.email}) doesn't match your portal email (${user?.email}).`)
-          return
-        }
-        if (info.picture) {
-          await update({ photo_url: info.picture })
-          await refreshUser()
-        }
-        setLinked(true)
-        toast.success('Google account connected.')
-      } catch {
-        toast.error('Failed to connect Google account.')
-      }
-    },
-    onError: () => toast.error('Google sign-in was cancelled.'),
-  })
-
-  return (
-    <Section title="Google Sign-In" description="Connect your Google account to sign in with Google on the login page.">
-      <div className="flex items-center gap-4 max-w-md">
-        <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-          <Chrome className="w-5 h-5 text-muted-foreground" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium">Google</p>
-          {linked || user?.photo_url ? (
-            <p className="text-xs text-green-600">Connected — you can sign in with Google at {user?.email}</p>
-          ) : (
-            <p className="text-xs text-muted-foreground">Not connected — click to link your Google account</p>
-          )}
-        </div>
-        {!linked && !user?.photo_url && (
-          <Button variant="outline" size="sm" onClick={() => googleLogin()}>
-            Connect
-          </Button>
-        )}
-        {(linked || user?.photo_url) && (
-          <span className="text-xs font-medium text-green-600 bg-green-50 border border-green-200 rounded-full px-2.5 py-1">Connected</span>
-        )}
-      </div>
-    </Section>
-  )
-}
-
-function GoogleSection() {
-  if (!GOOGLE_CLIENT_ID) {
-    return (
-      <Section
-        title="Google Sign-In"
-        description="Connect your Google account to sign in with Google on the login page."
-      >
-        <div className="flex items-center gap-4 max-w-md">
-          <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-            <Chrome className="w-5 h-5 text-muted-foreground" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium">Google</p>
-            <p className="text-xs text-muted-foreground">
-              Google sign-in is not configured for this environment.
-            </p>
-          </div>
-        </div>
-      </Section>
-    )
-  }
-
-  return <GoogleSectionContent />
-}
+// ── Main ──────────────────────────────────────────────────────────────────────
 
 export function AccountManager() {
   const { user } = useAuth()
+  const [activeTab, setActiveTab] = useState<Tab>('profile')
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            <User className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold">My Account</h1>
-            <p className="text-sm text-muted-foreground">{user?.email}</p>
+      <div className="space-y-8">
+
+        {/* ── Identity header ── */}
+        <div className="flex items-center gap-5 pb-8 border-b border-border">
+          <Avatar />
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold truncate leading-tight">
+              {user?.display_name || 'Admin'}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-0.5 truncate">{user?.email}</p>
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center text-xs font-medium bg-muted text-muted-foreground rounded-full px-2.5 py-1 border border-border">
+                {user?.staffRole ? user.staffRole.name : 'Super Admin'}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Hover the photo to change it</p>
           </div>
         </div>
 
-        <ProfileSection />
-        <PasswordSection />
-        <GoogleSection />
+        {/* ── Two-column layout ── */}
+        <div className="flex flex-col gap-8 lg:flex-row">
+
+          {/* Sidebar nav */}
+          <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible lg:w-44 shrink-0 pb-1 lg:pb-0">
+            {TABS.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                onClick={() => setActiveTab(value)}
+                className={cn(
+                  'flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium',
+                  'transition-colors text-left whitespace-nowrap',
+                  'min-w-[110px] lg:min-w-0 lg:w-full',
+                  activeTab === value
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                )}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Tab content */}
+          <div className="flex-1 min-w-0">
+            {activeTab === 'profile'  && <ProfileTab />}
+            {activeTab === 'security' && <SecurityTab />}
+            {activeTab === 'sessions' && <SessionsTab />}
+          </div>
+        </div>
+
       </div>
     </AdminLayout>
   )
