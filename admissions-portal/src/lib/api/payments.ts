@@ -1,9 +1,20 @@
 import type { Payment, PaymentPlanChangeRequest, FinancialReconciliation, ApiFilters } from "../../types";
 import { req, buildQuery } from "./core";
 
+export interface PaymentStats {
+  total_count: number;
+  completed_count: number;
+  pending_count: number;
+  total_revenue: string | number;
+}
+
 export async function getPayments(filters: ApiFilters = {}): Promise<Payment[]> {
   const res = await req<{ results: Payment[] } | Payment[]>(`/payments/${buildQuery(filters)}`);
   return Array.isArray(res) ? res : (res.results ?? []);
+}
+
+export async function getPaymentStats(): Promise<PaymentStats> {
+  return req<PaymentStats>("/payments/stats/");
 }
 
 export async function getFinancialReconciliation(

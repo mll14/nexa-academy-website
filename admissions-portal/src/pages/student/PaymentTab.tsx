@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import PaystackPop from '@paystack/inline-js'
 import { Card, CardContent } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -225,6 +224,7 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
         return
       }
 
+      const { default: PaystackPop } = await import('@paystack/inline-js')
       const paystack = new PaystackPop()
       try {
         paystack.newTransaction({

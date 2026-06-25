@@ -8,7 +8,6 @@ import {
   Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus,
 } from 'lucide-react'
 import type { Payment } from '../../types/index'
-import PaystackPop from '@paystack/inline-js'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Card, CardContent } from '../../components/ui/card'
 import { Select } from '../../components/ui/select'
@@ -378,6 +377,7 @@ export function ApplicationDetail() {
         programId: app.program,
       })
 
+      const { default: PaystackPop } = await import('@paystack/inline-js')
       const popup = new PaystackPop()
       try {
         popup.newTransaction({

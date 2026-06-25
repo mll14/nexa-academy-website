@@ -15,7 +15,6 @@ import {
   Video,
   Wallet,
 } from 'lucide-react'
-import PaystackPop from '@paystack/inline-js'
 import { StudentLayout } from '../../components/StudentLayout'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -368,6 +367,7 @@ function QuickPayCard({
         return
       }
 
+      const { default: PaystackPop } = await import('@paystack/inline-js')
       const paystack = new PaystackPop()
       try {
         paystack.newTransaction({
