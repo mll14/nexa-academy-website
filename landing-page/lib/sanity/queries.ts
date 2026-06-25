@@ -120,6 +120,21 @@ const legalSectionFragment = groq`
   tabs[] { _key, label, "content": coalesce(content[]{ ..., _type == "image" => { ..., asset-> } }, content) }
 `
 
+const gallerySectionFragment = groq`
+  _type, _key, ${sectionBaseFragment},
+  badge, headline, subheadline,
+  photos[] { _key, image { ..., asset-> }, caption },
+  layout, columns
+`
+
+const appointmentFormSectionFragment = groq`
+  _type, _key, ${sectionBaseFragment},
+  badge, headline, subheadline,
+  sidebarItems[] { _key, title, description },
+  nextSteps,
+  officeAddress, officeMapUrl
+`
+
 const allSectionsFragment = groq`
   sections[] {
     _type == "heroSection" => { ${heroSectionFragment} },
@@ -139,12 +154,21 @@ const allSectionsFragment = groq`
     _type == "financeCalculatorSection" => { ${financeCalculatorSectionFragment} },
     _type == "applicationSection" => { ${applicationSectionFragment} },
     _type == "legalSection" => { ${legalSectionFragment} },
+    _type == "gallerySection" => { ${gallerySectionFragment} },
+    _type == "appointmentFormSection" => { ${appointmentFormSectionFragment} },
   }
 `
 
 // Top-level queries
 export const homePageQuery = groq`
   *[_type == "homePage"][0] {
+    ${seoFragment},
+    ${allSectionsFragment}
+  }
+`
+
+export const appointmentsPageQuery = groq`
+  *[_type == "appointmentsPage"][0] {
     ${seoFragment},
     ${allSectionsFragment}
   }
