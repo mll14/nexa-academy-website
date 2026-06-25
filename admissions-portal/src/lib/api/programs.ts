@@ -147,6 +147,20 @@ export async function notifyProgramInterests(data: {
   });
 }
 
+export async function submitComingSoonInterest(data: {
+  name: string;
+  email: string;
+  phone?: string;
+  program_slug: string;
+  program_name: string;
+  message?: string;
+}): Promise<ProgramInterest> {
+  return req<ProgramInterest>("/programs/interest/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function deleteProgramInterestLead(id: string): Promise<void> {
   await req(`/programs/program-interests/${id}/`, { method: "DELETE" });
 }
@@ -157,6 +171,18 @@ export async function getHelpMeLeads(filters: ApiFilters = {}) {
 
 export async function getHelpMeLead(id: string) {
   return req<HelpMeLead>(`/programs/help-me/${id}/`);
+}
+
+export async function submitHelpMeLead(data: {
+  name: string;
+  email: string;
+  phone?: string;
+  message?: string;
+}): Promise<HelpMeLead> {
+  return req<HelpMeLead>("/programs/help-me/", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function convertHelpMeToPipeline(

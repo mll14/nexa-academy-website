@@ -20,6 +20,7 @@ import { cn } from '../lib/utils'
 interface Props {
   children: React.ReactNode
   unreadCount?: number
+  contentClassName?: string
 }
 
 const STUDENT_NAV = [
@@ -381,12 +382,12 @@ function StudentFooter() {
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
-export function StudentLayout({ children, unreadCount }: Props) {
+export function StudentLayout({ children, unreadCount, contentClassName = 'max-w-5xl' }: Props) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <StudentHeader unreadCount={unreadCount} />
       <main className="flex-1 w-full px-4 sm:px-6 lg:px-10 xl:px-16 py-8">
-        <div className="max-w-5xl mx-auto w-full">
+        <div className={`${contentClassName} mx-auto w-full`}>
           {children}
         </div>
       </main>
