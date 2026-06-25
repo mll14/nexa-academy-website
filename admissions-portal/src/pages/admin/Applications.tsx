@@ -7,11 +7,9 @@ import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 
 import { UnderlineTabs } from '../../components/ui/tabs'
-import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate } from '../../lib/utils'
 import type { Application } from '../../types'
-import toast from 'react-hot-toast'
 import { Pagination } from '../../components/ui/pagination'
 
 const STATUS_OPTIONS = [

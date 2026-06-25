@@ -20,7 +20,7 @@ import { sanityFetch } from '@/lib/sanity/client'
 import { siteSettingsQuery } from '@/lib/sanity/queries'
 import { buildMetadata, serializeJsonLd } from '@/lib/seo'
 import type { Metadata } from 'next'
-import { getIntakesForProgram } from '@/lib/api/intakes'
+import { getIntakesForName, getIntakesForProgram } from '@/lib/api/intakes'
 import type { ApiIntake, SanityProgram, ApiProgram, TestimonialDoc, SiteSettings } from '@/types'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ export default async function ProgramDetailPage(
   const apiP = getProgramBySlug(slug)
   // Start intakes fetch as soon as the API program resolves — no need to wait for Sanity.
   // If the API program is missing, fall back to a name-based lookup after Sanity resolves.
-  const intakesP = apiP.then(api => api ? getIntakesForProgram(api.id) : [])
+  const intakesP = apiP.then(api => api ? getIntakesForProgram(api.program_id) : [])
 
   const [sanity, api] = await Promise.all([sanityP, apiP])
   if (!sanity) notFound()

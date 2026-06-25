@@ -88,7 +88,7 @@ export function Unsubscribe() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-2">
-                <Link to="/login" className="flex-1">
+                <Link to="/login" search={{ redirect: undefined }} className="flex-1">
                   <Button variant="outline" className="w-full">
                     <ArrowLeft className="w-4 h-4" /> Admissions Portal
                   </Button>

@@ -1163,7 +1163,6 @@ export function ApplicationPageClient({
                           )}
                       </div>
                     </div>
-                  </div>
                 )}
 
                 {/* ── Step 3: Review & Submit ── */}

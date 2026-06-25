@@ -72,7 +72,7 @@ export function ResetPassword() {
                     Your password has been changed. You can now sign in with your new password.
                   </p>
                 </div>
-                <Link to="/login">
+                <Link to="/login" search={{ redirect: undefined }}>
                   <Button className="w-full mt-2">Go to Login</Button>
                 </Link>
               </div>

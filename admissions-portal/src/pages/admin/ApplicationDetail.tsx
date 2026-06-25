@@ -21,7 +21,6 @@ import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
 import { EmailEditor } from '../../components/admin/EmailEditor'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate, formatFullDateTime } from '../../lib/utils'
-import { useAuth } from '../../context/AuthContext'
 import toast from 'react-hot-toast'
 import type { AvailableSlot, Intake } from '../../types/index'
 
@@ -270,7 +269,6 @@ export function ApplicationDetail() {
   const { id } = useParams({ from: '/admin/applications/$id' })
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { hasPermission } = useAuth()
   const [newStatus, setNewStatus] = useState('')
   const [showSlotPicker, setShowSlotPicker] = useState(false)
   const [slotsData, setSlotsData] = useState<AvailableSlot[]>([])

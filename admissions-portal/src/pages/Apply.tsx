@@ -249,7 +249,7 @@ export function Apply() {
   }
 
   if (showSuccess) {
-    return <SuccessScreen data={form} onLogin={() => navigate({ to: '/login' })} />
+    return <SuccessScreen data={form} onLogin={() => navigate({ to: '/login', search: { redirect: undefined } })} />
   }
 
   const prog = programs.find((p) => p.slug === form.program)

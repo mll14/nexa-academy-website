@@ -3,10 +3,8 @@ import { navigationQuery, footerQuery, siteSettingsQuery } from '@/lib/sanity/qu
 import { getAllSanityPrograms } from '@/lib/sanity/programs'
 import { Header } from '@/components/layout/Header'
 import { Footer } from '@/components/layout/Footer'
-import dynamic from 'next/dynamic'
+import { ChatWidgetClient } from '@/components/chatbot/ChatWidgetClient'
 import type { Navigation, Footer as FooterType, SiteSettings } from '@/types'
-
-const ChatWidget = dynamic(() => import('@/components/chatbot/ChatWidget').then(m => ({ default: m.ChatWidget })), { ssr: false })
 
 export default async function SiteLayout({ children }: { children: React.ReactNode }) {
   const [navigation, footer, settings, allPrograms] = await Promise.all([
@@ -23,7 +21,7 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
       <Header navigation={navigation} settings={settings} />
       <main className="flex-1">{children}</main>
       <Footer footer={footer} settings={settings} programs={programs} />
-      <ChatWidget />
+      <ChatWidgetClient />
     </div>
   )
 }

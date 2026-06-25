@@ -35,6 +35,7 @@ import {
   XCircle,
   FileText,
   ArrowLeftRight,
+  ChevronDown,
 } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -45,7 +46,6 @@ import { Select } from '../../components/ui/select'
 import { UnderlineTabs } from '../../components/ui/tabs'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import { formatPermissionResource, groupPermissionsByResource } from './role-utils'
 import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 import { Pagination } from '../../components/ui/pagination'
 
@@ -524,8 +524,6 @@ function RoleCard({
   onEdit: () => void
   onDelete: () => void
 }) {
-  const permissionGroups = groupPermissionsByResource(role.permissions)
-
   return (
     <div className="rounded-2xl border bg-card p-5 shadow-sm">
       <div className="flex items-start justify-between gap-4">

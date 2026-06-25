@@ -90,7 +90,7 @@ export function ForgotPassword() {
         </Card>
 
         <p className="text-center text-sm text-muted-foreground">
-          <Link to="/login" className="inline-flex items-center gap-1 text-primary hover:underline">
+          <Link to="/login" search={{ redirect: undefined }} className="inline-flex items-center gap-1 text-primary hover:underline">
             <ArrowLeft className="w-3.5 h-3.5" /> Back to login
           </Link>
         </p>

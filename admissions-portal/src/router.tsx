@@ -84,7 +84,7 @@ const indexRoute = createRoute({
   path: "/",
   beforeLoad: () => {
     const user = getStoredUser();
-    if (!user) throw redirect({ to: "/login" });
+    if (!user) throw redirect({ to: "/login", search: { redirect: undefined } });
     if (user.role === "admin") throw redirect({ to: "/admin" });
     throw redirect({ to: "/student/dashboard" });
   },
@@ -202,7 +202,7 @@ const adminLayoutRoute = createRoute({
   beforeLoad: ({ location }) => {
     if (!tokens.access) throw redirect({ to: "/login", search: { redirect: location.href } });
     const user = getStoredUser();
-    if (user && user.role !== "admin") throw redirect({ to: "/login" });
+    if (user && user.role !== "admin") throw redirect({ to: "/login", search: { redirect: undefined } });
   },
   component: () => <Outlet />,
 });
