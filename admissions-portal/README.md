@@ -108,6 +108,7 @@ Copy `.env.local.example` to `.env` and fill in:
 ```env
 VITE_API_BASE_URL=http://localhost:8000
 VITE_GOOGLE_CLIENT_ID=your-google-oauth-client-id
+VITE_RECAPTCHA_SITE_KEY=your-recaptcha-v3-site-key
 ```
 
 ### Development
