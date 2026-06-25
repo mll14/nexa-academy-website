@@ -159,6 +159,57 @@ def _verify_recaptcha(token: str, remote_ip: str = "", expected_action: str = ""
         return False, {}, str(exc)
 
 
+_RECAPTCHA_BODY_KEYS = (
+    "recaptcha_token",
+    "recaptchaToken",
+    "g-recaptcha-response",
+    "g_recaptcha_response",
+    "captcha_token",
+    "captchaToken",
+)
+_RECAPTCHA_HEADER_KEYS = (
+    "X-Recaptcha-Token",
+    "X-ReCAPTCHA-Token",
+    "X-G-Recaptcha-Response",
+)
+_EMPTY_RECAPTCHA_VALUES = {"", "none", "null", "undefined"}
+
+
+def _clean_recaptcha_token(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        for item in value:
+            token = _clean_recaptcha_token(item)
+            if token:
+                return token
+        return ""
+    token = str(value).strip()
+    if token.lower() in _EMPTY_RECAPTCHA_VALUES:
+        return ""
+    return token
+
+
+def _extract_recaptcha_token(request) -> str:
+    for key in _RECAPTCHA_BODY_KEYS:
+        token = _clean_recaptcha_token(request.data.get(key))
+        if token:
+            return token
+
+    recaptcha_payload = request.data.get("recaptcha")
+    if isinstance(recaptcha_payload, dict):
+        token = _clean_recaptcha_token(recaptcha_payload.get("token"))
+        if token:
+            return token
+
+    for key in _RECAPTCHA_HEADER_KEYS:
+        token = _clean_recaptcha_token(request.headers.get(key))
+        if token:
+            return token
+
+    return ""
+
+
 class ApplicationViewSet(viewsets.ModelViewSet):
     queryset = Application.objects.all()
     serializer_class = ApplicationSerializer
@@ -226,11 +277,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         # Verify reCAPTCHA token if secret is configured
         recaptcha_verified = True
-        recaptcha_token = str(
-            request.data.get("recaptcha_token")
-            or request.data.get("recaptchaToken")
-            or ""
-        ).strip()
+        recaptcha_token = _extract_recaptcha_token(request)
         recaptcha_enforce = getattr(
             settings,
             "RECAPTCHA_ENFORCE",
