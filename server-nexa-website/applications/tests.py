@@ -326,6 +326,8 @@ CALENDAR_FAKE_SETTINGS = {
 
 class CalendarEventsViewTest(TestCase):
     def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
         self.client = APIClient()
         self.admin = User.objects.create_user(
             email='admin_cal@test.com', password='testpass', role='admin',
@@ -422,3 +424,27 @@ class CalendarEventsViewTest(TestCase):
         self.assertEqual(res.status_code, 200)
         external = [e for e in res.data['events'] if e['type'] == 'external']
         self.assertEqual(len(external), 0)
+
+    @patch('applications.calendar_views.gcal_service._get_calendar_service')
+    @override_settings(**CALENDAR_FAKE_SETTINGS)
+    def test_external_all_day_events_use_inclusive_end_date(self, mock_get_svc):
+        event_date = self.now.date()
+        mock_svc = MagicMock()
+        mock_svc.events.return_value.list.return_value.execute.return_value = {
+            'items': [{
+                'id': 'external_all_day',
+                'summary': 'Blocked',
+                'start': {'date': event_date.isoformat()},
+                'end': {'date': (event_date + timedelta(days=1)).isoformat()},
+            }]
+        }
+        mock_get_svc.return_value = mock_svc
+
+        res = self.client.get(self.base_url, {'start': self.start, 'end': self.end})
+
+        self.assertEqual(res.status_code, 200)
+        external = [e for e in res.data['events'] if e['type'] == 'external']
+        self.assertEqual(len(external), 1)
+        self.assertTrue(external[0]['all_day'])
+        self.assertEqual(external[0]['start'], event_date.isoformat())
+        self.assertEqual(external[0]['end'], event_date.isoformat())
