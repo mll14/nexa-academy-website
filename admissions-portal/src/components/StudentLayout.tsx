@@ -333,7 +333,7 @@ function StudentFooter() {
                 <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
                   <Phone className="w-3.5 h-3.5 text-primary" />
                 </div>
-                <span className="text-sm text-white/70">+254 700 000 000</span>
+                <span className="text-sm text-white/70">+254 713 067 311</span>
               </li>
               <li className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center shrink-0">
