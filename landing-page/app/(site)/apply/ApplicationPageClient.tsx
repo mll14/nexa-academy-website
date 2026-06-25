@@ -592,6 +592,10 @@ export function ApplicationPageClient({
           // non-fatal — server is fail-open in dev
         }
       }
+      if (!recaptchaToken) {
+        toast.error("reCAPTCHA could not be verified. Refresh the page and try again.");
+        return;
+      }
       const result = await submitApplication({
         full_name: form.fullName.trim(),
         email: form.email.trim().toLowerCase(),
