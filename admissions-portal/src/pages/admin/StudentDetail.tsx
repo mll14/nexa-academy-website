@@ -152,9 +152,20 @@ export function StudentDetail() {
           {/* Enrollment */}
           <Card>
             <CardContent className="p-5 space-y-3">
-              <div className="flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-primary" />
-                <h2 className="font-semibold text-sm">Enrollment</h2>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-primary" />
+                  <h2 className="font-semibold text-sm">Enrollment</h2>
+                </div>
+                {enrollment && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate({ to: '/admin/enrolled/$enrollmentId', params: { enrollmentId: enrollment.enrollment_id } })}
+                  >
+                    View detail
+                  </Button>
+                )}
               </div>
               <Separator />
               {enrollment ? (
@@ -163,12 +174,13 @@ export function StudentDetail() {
                     { label: 'Program', value: enrollment.program_name },
                     { label: 'Enrolled', value: formatDate(enrollment.enrollment_date) },
                     { label: 'Status', value: enrollment.status },
-                  ].map(({ label, value }) => (
+                    { label: 'Payment Plan', value: enrollment.payment_plan || null },
+                  ].map(({ label, value }) => value ? (
                     <div key={label} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{label}</span>
-                      <span className="font-medium">{value ?? '—'}</span>
+                      <span className="font-medium">{value}</span>
                     </div>
-                  ))}
+                  ) : null)}
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">Not yet enrolled.</p>
