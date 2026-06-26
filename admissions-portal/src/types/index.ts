@@ -319,6 +319,7 @@ export interface ProgramInterest {
   email: string
   phone?: string
   message?: string
+  lead_status: LeadStatus
   follow_up_completed: boolean
   follow_up_completed_at?: string | null
   created_at: string
@@ -330,6 +331,7 @@ export interface HelpMeLead {
   email: string
   phone?: string
   message?: string
+  lead_status: LeadStatus
   follow_up_completed: boolean
   follow_up_completed_at?: string | null
   assigned_program_slug: string
@@ -347,11 +349,14 @@ export interface IncompleteApplication {
   program_slug: string
   program_name: string
   step_reached: number
+  lead_status: LeadStatus
   follow_up_completed: boolean
   follow_up_completed_at?: string | null
   created_at: string
   updated_at: string
 }
+
+export type LeadStatus = 'new' | 'contacted' | 'not_reached' | 'completed'
 
 export interface Notification {
   id: string

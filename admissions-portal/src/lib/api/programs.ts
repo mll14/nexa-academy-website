@@ -7,6 +7,7 @@ import type {
   ProgramInterest,
   HelpMeLead,
   IncompleteApplication,
+  LeadStatus,
   AdminNote,
 } from "../../types";
 import { req, buildQuery } from "./core";
@@ -104,6 +105,7 @@ export interface ManualEnrollResult {
   student_uid: string;
   student_email: string;
   application_id: string;
+  enrollment_id?: string;
   is_new_account: boolean;
   payment_id?: string;
   reference?: string;
@@ -261,6 +263,23 @@ export async function revertLeadCompleted(
         ? `/programs/help-me/${id}/`
         : `/programs/incomplete/${id}/`;
   return req(path, { method: "PATCH", body: JSON.stringify({ action: "revert" }) });
+}
+
+export async function updateLeadStatus(
+  leadType: "interests" | "help-me" | "incomplete",
+  id: string,
+  leadStatus: LeadStatus,
+): Promise<ProgramInterest | HelpMeLead | IncompleteApplication> {
+  const path =
+    leadType === "interests"
+      ? `/programs/program-interests/${id}/`
+      : leadType === "help-me"
+        ? `/programs/help-me/${id}/`
+        : `/programs/incomplete/${id}/`;
+  return req(path, {
+    method: "PATCH",
+    body: JSON.stringify({ action: "set_status", lead_status: leadStatus }),
+  });
 }
 
 // ── Lead notes ────────────────────────────────────────────────────────────────

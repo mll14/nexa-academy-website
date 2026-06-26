@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Flame, HelpCircle, FileWarning, Search,
   Mail, Phone, ChevronRight, Bell,
-  CheckCircle2, RotateCcw, Clock, Trash2, Send,
+  CheckCircle2, Clock, Trash2, Send, Tag, PhoneOff,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Input } from '../../components/ui/input'
@@ -15,14 +15,36 @@ import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import type { ProgramInterest, HelpMeLead, IncompleteApplication } from '../../types'
+import type { ProgramInterest, HelpMeLead, IncompleteApplication, LeadStatus } from '../../types'
 import { DeleteConfirmDialog } from '../../components/ui/delete-confirm-dialog'
 import { Pagination } from '../../components/ui/pagination'
 
 const PAGE_SIZE = 10
 
 type Tab = 'interests' | 'help_me' | 'incomplete'
-type FollowUpFilter = 'pending' | 'done'
+type LeadStatusFilter = 'all' | LeadStatus
+
+const LEAD_STATUS_OPTIONS: {
+  value: LeadStatus
+  label: string
+  icon: React.ElementType
+  className: string
+}[] = [
+  { value: 'new', label: 'New', icon: Clock, className: 'bg-muted text-muted-foreground border-border' },
+  { value: 'contacted', label: 'Contacted', icon: Phone, className: 'bg-primary/10 text-primary border-primary/20' },
+  { value: 'not_reached', label: 'Not Reached', icon: PhoneOff, className: 'bg-warning/10 text-warning border-warning/20' },
+  { value: 'completed', label: 'Completed', icon: CheckCircle2, className: 'bg-success/10 text-success border-success/20' },
+]
+
+const LEAD_STATUS_SELECT_OPTIONS = LEAD_STATUS_OPTIONS.map(({ value, label }) => ({ value, label }))
+
+function leadStatus(item: { lead_status?: LeadStatus; follow_up_completed: boolean }): LeadStatus {
+  return item.lead_status ?? (item.follow_up_completed ? 'completed' : 'new')
+}
+
+function leadStatusMeta(status: LeadStatus) {
+  return LEAD_STATUS_OPTIONS.find((option) => option.value === status) ?? LEAD_STATUS_OPTIONS[0]
+}
 
 function Avatar({ name, email }: { name?: string; email: string }) {
   const initials = (name || email).charAt(0).toUpperCase()
@@ -33,20 +55,20 @@ function Avatar({ name, email }: { name?: string; email: string }) {
   )
 }
 
-// ─── Follow-up status sub-tabs ────────────────────────────────────────────────
+// ─── Lead status tags ─────────────────────────────────────────────────────────
 
-function FollowUpTabs({ value, onChange, pendingCount, doneCount }: {
-  value: FollowUpFilter
-  onChange: (v: FollowUpFilter) => void
-  pendingCount?: number
-  doneCount?: number
+function LeadStatusTabs({ value, onChange }: {
+  value: LeadStatusFilter
+  onChange: (v: LeadStatusFilter) => void
 }) {
+  const tabs = [
+    { id: 'all' as LeadStatusFilter, label: 'All', icon: Tag },
+    ...LEAD_STATUS_OPTIONS.map((option) => ({ id: option.value as LeadStatusFilter, label: option.label, icon: option.icon })),
+  ]
+
   return (
-    <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
-      {([
-        { id: 'pending' as FollowUpFilter, label: 'Needs Follow-up', icon: Clock, count: pendingCount },
-        { id: 'done'    as FollowUpFilter, label: 'Completed',        icon: CheckCircle2, count: doneCount },
-      ]).map(({ id, label, icon: Icon, count }) => (
+    <div className="flex flex-wrap gap-1 p-1 bg-muted rounded-xl w-fit">
+      {tabs.map(({ id, label, icon: Icon }) => (
         <button
           key={id}
           onClick={() => onChange(id)}
@@ -58,50 +80,43 @@ function FollowUpTabs({ value, onChange, pendingCount, doneCount }: {
         >
           <Icon className="w-3.5 h-3.5" />
           {label}
-          {count !== undefined && (
-            <span className={`ml-0.5 min-w-[1.25rem] px-1 rounded-full text-xs font-bold tabular-nums ${
-              value === id ? 'bg-primary/10 text-primary' : 'bg-muted-foreground/10 text-muted-foreground'
-            }`}>
-              {count}
-            </span>
-          )}
         </button>
       ))}
     </div>
   )
 }
 
-// ─── Mark / revert button ─────────────────────────────────────────────────────
-
-function FollowUpBtn({ completed, onMark, onRevert, loading }: {
-  completed: boolean
-  onMark: () => void
-  onRevert: () => void
-  loading: boolean
-}) {
-  if (completed) {
-    return (
-      <button
-        disabled={loading}
-        onClick={(e) => { e.stopPropagation(); onRevert() }}
-        title="Undo — mark as needing follow-up"
-        className="flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-xs text-muted-foreground hover:border-warning hover:text-warning transition-colors disabled:opacity-40 shrink-0"
-      >
-        <RotateCcw className="w-3 h-3" />
-        Undo
-      </button>
-    )
-  }
+function LeadStatusBadge({ status }: { status: LeadStatus }) {
+  const meta = leadStatusMeta(status)
+  const Icon = meta.icon
   return (
-    <button
-      disabled={loading}
-      onClick={(e) => { e.stopPropagation(); onMark() }}
-      title="Mark follow-up as completed"
-      className="flex items-center gap-1 px-2 py-1 rounded-lg border border-border text-xs text-muted-foreground hover:border-success hover:text-success transition-colors disabled:opacity-40 shrink-0"
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs font-semibold ${meta.className}`}>
+      <Icon className="w-3 h-3" />
+      {meta.label}
+    </span>
+  )
+}
+
+function LeadStatusSelect({ value, loading, onChange }: {
+  value: LeadStatus
+  loading: boolean
+  onChange: (status: LeadStatus) => void
+}) {
+  return (
+    <div
+      className="w-36 shrink-0"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
-      <CheckCircle2 className="w-3 h-3" />
-      Done
-    </button>
+      <Select
+        value={value}
+        onChange={(next) => onChange(next as LeadStatus)}
+        options={LEAD_STATUS_SELECT_OPTIONS}
+        disabled={loading}
+        icon={<Tag className="w-3.5 h-3.5" />}
+        className="h-8 rounded-lg text-xs"
+      />
+    </div>
   )
 }
 
@@ -162,7 +177,7 @@ function InterestsTab() {
   const qc = useQueryClient()
   const { isFullAdmin } = useAuth()
   const canDelete = isFullAdmin()
-  const [followUp, setFollowUp] = useState<FollowUpFilter>('pending')
+  const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [search, setSearch] = useState('')
   const [programSlug, setProgramSlug] = useState('')
   const [ordering, setOrdering] = useState('-created_at')
@@ -174,7 +189,7 @@ function InterestsTab() {
   const params = {
     search: search || undefined,
     program_slug: programSlug || undefined,
-    follow_up_completed: followUp === 'done' ? 'true' : 'false',
+    lead_status: statusFilter === 'all' ? undefined : statusFilter,
     ordering,
     page,
     page_size: PAGE_SIZE,
@@ -197,11 +212,11 @@ function InterestsTab() {
     ...programCounts.map((p) => ({ value: p.program_slug, label: `${p.program_name || p.program_slug} (${p.count})` })),
   ]
 
-  const markMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'complete' | 'revert' }) =>
-      action === 'complete' ? api.markLeadCompleted('interests', id) : api.revertLeadCompleted('interests', id),
-    onSuccess: (_, { action }) => {
-      toast.success(action === 'complete' ? 'Marked as completed' : 'Reverted to needs follow-up')
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: LeadStatus }) =>
+      api.updateLeadStatus('interests', id, status),
+    onSuccess: (_, { status }) => {
+      toast.success(`Lead tagged as ${leadStatusMeta(status).label}`)
       qc.invalidateQueries({ queryKey: ['admin', 'interests'] })
     },
     onError: () => toast.error('Could not update status'),
@@ -209,7 +224,7 @@ function InterestsTab() {
 
   return (
     <>
-      <FollowUpTabs value={followUp} onChange={(v) => { setFollowUp(v); setPage(1) }} />
+      <LeadStatusTabs value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1) }} />
 
       <div className="flex flex-col sm:flex-row gap-2.5">
         <div className="relative flex-1">
@@ -227,7 +242,7 @@ function InterestsTab() {
             { value: 'name',        label: 'Name A–Z' },
           ]} />
         </div>
-        {programSlug && total > 0 && followUp === 'pending' && (
+        {programSlug && total > 0 && statusFilter !== 'completed' && (
           <Button size="sm" variant="outline" onClick={() => setShowBulkNotify((v) => !v)}>
             <Bell className="w-3.5 h-3.5 mr-1.5" /> Notify {total} interested
           </Button>
@@ -247,7 +262,7 @@ function InterestsTab() {
         <div className="mt-4 py-16 text-center border border-dashed border-border rounded-2xl">
           <Flame className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">
-            {followUp === 'done' ? 'No completed follow-ups yet.' : 'No interest submissions yet.'}
+            {statusFilter === 'all' ? 'No interest submissions yet.' : `No ${leadStatusMeta(statusFilter).label.toLowerCase()} interest submissions yet.`}
           </p>
         </div>
       ) : (
@@ -264,13 +279,13 @@ function InterestsTab() {
                   {item.program_name}
                 </p>
               </div>
+              <LeadStatusBadge status={leadStatus(item)} />
               {item.phone && <Phone className="w-3.5 h-3.5 text-muted-foreground hidden sm:block shrink-0" />}
               <p className="text-xs text-muted-foreground hidden sm:block shrink-0">{formatDate(item.created_at)}</p>
-              <FollowUpBtn
-                completed={item.follow_up_completed}
-                loading={markMutation.isPending}
-                onMark={() => markMutation.mutate({ id: item.id, action: 'complete' })}
-                onRevert={() => markMutation.mutate({ id: item.id, action: 'revert' })}
+              <LeadStatusSelect
+                value={leadStatus(item)}
+                loading={statusMutation.isPending}
+                onChange={(status) => statusMutation.mutate({ id: item.id, status })}
               />
               {canDelete && (
                 <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(item) }} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -323,7 +338,7 @@ function HelpMeTab() {
   const qc = useQueryClient()
   const { isFullAdmin } = useAuth()
   const canDelete = isFullAdmin()
-  const [followUp, setFollowUp] = useState<FollowUpFilter>('pending')
+  const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<HelpMeLead | null>(null)
@@ -333,7 +348,7 @@ function HelpMeTab() {
 
   const params = {
     search: search || undefined,
-    follow_up_completed: followUp === 'done' ? 'true' : 'false',
+    lead_status: statusFilter === 'all' ? undefined : statusFilter,
     page,
     page_size: PAGE_SIZE,
   }
@@ -354,11 +369,11 @@ function HelpMeTab() {
   const total = data?.count ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
-  const markMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'complete' | 'revert' }) =>
-      action === 'complete' ? api.markLeadCompleted('help-me', id) : api.revertLeadCompleted('help-me', id),
-    onSuccess: (_, { action }) => {
-      toast.success(action === 'complete' ? 'Marked as completed' : 'Reverted to needs follow-up')
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: LeadStatus }) =>
+      api.updateLeadStatus('help-me', id, status),
+    onSuccess: (_, { status }) => {
+      toast.success(`Lead tagged as ${leadStatusMeta(status).label}`)
       qc.invalidateQueries({ queryKey: ['admin', 'help-me'] })
     },
     onError: () => toast.error('Could not update status'),
@@ -391,7 +406,7 @@ function HelpMeTab() {
 
   return (
     <>
-      <FollowUpTabs value={followUp} onChange={(v) => { setFollowUp(v); setPage(1) }} />
+      <LeadStatusTabs value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1) }} />
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -407,7 +422,7 @@ function HelpMeTab() {
         <div className="mt-4 py-16 text-center border border-dashed border-border rounded-2xl">
           <HelpCircle className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">
-            {followUp === 'done' ? 'No completed follow-ups yet.' : 'No guidance requests yet.'}
+            {statusFilter === 'all' ? 'No guidance requests yet.' : `No ${leadStatusMeta(statusFilter).label.toLowerCase()} guidance requests yet.`}
           </p>
         </div>
       ) : (
@@ -434,6 +449,7 @@ function HelpMeTab() {
                       In Pipeline · {item.assigned_program_name}
                     </span>
                   )}
+                  <LeadStatusBadge status={leadStatus(item)} />
                 </div>
                 <button
                   onClick={(e) => openPipelinePanel(e, item.id, item.assigned_program_slug)}
@@ -447,11 +463,10 @@ function HelpMeTab() {
                   <Send className="w-3 h-3" />
                   {item.converted_to_pipeline ? 'Reassign' : 'Pipeline'}
                 </button>
-                <FollowUpBtn
-                  completed={item.follow_up_completed}
-                  loading={markMutation.isPending}
-                  onMark={() => markMutation.mutate({ id: item.id, action: 'complete' })}
-                  onRevert={() => markMutation.mutate({ id: item.id, action: 'revert' })}
+                <LeadStatusSelect
+                  value={leadStatus(item)}
+                  loading={statusMutation.isPending}
+                  onChange={(status) => statusMutation.mutate({ id: item.id, status })}
                 />
                 {canDelete && (
                   <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(item) }} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -552,14 +567,14 @@ function IncompleteTab() {
   const canDelete = isFullAdmin()
   const [deleteTarget, setDeleteTarget] = useState<IncompleteApplication | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [followUp, setFollowUp] = useState<FollowUpFilter>('pending')
+  const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [search, setSearch] = useState('')
   const [ordering, setOrdering] = useState('-updated_at')
   const [page, setPage] = useState(1)
 
   const params = {
     search: search || undefined,
-    follow_up_completed: followUp === 'done' ? 'true' : 'false',
+    lead_status: statusFilter === 'all' ? undefined : statusFilter,
     ordering,
     page,
     page_size: PAGE_SIZE,
@@ -575,11 +590,11 @@ function IncompleteTab() {
   const total = data?.count ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
 
-  const markMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: 'complete' | 'revert' }) =>
-      action === 'complete' ? api.markLeadCompleted('incomplete', id) : api.revertLeadCompleted('incomplete', id),
-    onSuccess: (_, { action }) => {
-      toast.success(action === 'complete' ? 'Marked as completed' : 'Reverted to needs follow-up')
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: LeadStatus }) =>
+      api.updateLeadStatus('incomplete', id, status),
+    onSuccess: (_, { status }) => {
+      toast.success(`Lead tagged as ${leadStatusMeta(status).label}`)
       qc.invalidateQueries({ queryKey: ['admin', 'incomplete'] })
     },
     onError: () => toast.error('Could not update status'),
@@ -587,7 +602,7 @@ function IncompleteTab() {
 
   return (
     <>
-      <FollowUpTabs value={followUp} onChange={(v) => { setFollowUp(v); setPage(1) }} />
+      <LeadStatusTabs value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1) }} />
 
       <div className="flex flex-col sm:flex-row gap-2.5">
         <div className="relative flex-1">
@@ -612,7 +627,7 @@ function IncompleteTab() {
         <div className="mt-4 py-16 text-center border border-dashed border-border rounded-2xl">
           <FileWarning className="w-8 h-8 text-muted-foreground/40 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">
-            {followUp === 'done' ? 'No completed follow-ups yet.' : 'No incomplete applications yet.'}
+            {statusFilter === 'all' ? 'No incomplete applications yet.' : `No ${leadStatusMeta(statusFilter).label.toLowerCase()} incomplete applications yet.`}
           </p>
         </div>
       ) : (
@@ -634,12 +649,12 @@ function IncompleteTab() {
                   Stopped at: {STEP_LABELS[item.step_reached] ?? `Step ${item.step_reached}`}
                 </span>
               </div>
+              <LeadStatusBadge status={leadStatus(item)} />
               <p className="text-xs text-muted-foreground hidden lg:block shrink-0">{formatDate(item.updated_at)}</p>
-              <FollowUpBtn
-                completed={item.follow_up_completed}
-                loading={markMutation.isPending}
-                onMark={() => markMutation.mutate({ id: item.id, action: 'complete' })}
-                onRevert={() => markMutation.mutate({ id: item.id, action: 'revert' })}
+              <LeadStatusSelect
+                value={leadStatus(item)}
+                loading={statusMutation.isPending}
+                onChange={(status) => statusMutation.mutate({ id: item.id, status })}
               />
               {canDelete && (
                 <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(item) }} className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors opacity-0 group-hover:opacity-100 shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
