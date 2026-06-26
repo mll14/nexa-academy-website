@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import type { Payment } from '../../types/index'
 import { AdminLayout } from '../../components/AdminLayout'
+import { ApplicationEditForm } from '../../components/ApplicationEditForm'
 import { Card, CardContent } from '../../components/ui/card'
 import { Select } from '../../components/ui/select'
 import { Button } from '../../components/ui/button'
@@ -307,10 +308,15 @@ export function ApplicationDetail() {
 
   const notifyMutation = useMutation({
     mutationFn: () => api.notifyIntake(id, { intake_id: selectedIntakeId || undefined }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result.application) {
+        qc.setQueryData(['admin', 'application', id], result.application)
+      }
+      qc.invalidateQueries({ queryKey: ['admin', 'application', id] })
+      qc.invalidateQueries({ queryKey: ['admin', 'applications'] })
       setShowNotifyDialog(false)
       setSelectedIntakeId('')
-      toast.success(`Notification sent to ${app?.email}`)
+      toast.success(`Intake assigned and email sent to ${app?.email}`)
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -577,7 +583,7 @@ export function ApplicationDetail() {
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-amber-800">Inquiry of Interest — No intake selected</p>
               <p className="text-xs text-amber-700 mt-0.5">
-                This applicant applied without choosing a start date. Notify them when an intake opens for{' '}
+                This applicant applied without choosing a start date. Assign an open intake for{' '}
                 <span className="font-medium">{app.program_name}</span>.
               </p>
             </div>
@@ -585,7 +591,7 @@ export function ApplicationDetail() {
               onClick={() => setShowNotifyDialog(true)}
               className="flex items-center gap-2 shrink-0 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold transition-colors"
             >
-              <Send className="w-3.5 h-3.5" /> Notify of Intake Opening
+              <Send className="w-3.5 h-3.5" /> Assign Intake & Send Email
             </button>
           </div>
         )}
@@ -688,6 +694,17 @@ export function ApplicationDetail() {
             )}
 
             {leftTab === 'details' && <>
+
+            <SectionCard title="Edit Application Details" icon={<User className="w-4 h-4" />}>
+              <ApplicationEditForm
+                application={app}
+                showHeader={false}
+                onSaved={(updated) => {
+                  qc.setQueryData(['admin', 'application', id], updated)
+                  qc.invalidateQueries({ queryKey: ['admin', 'applications'] })
+                }}
+              />
+            </SectionCard>
 
             {/* Applicant info */}
             <SectionCard title="Applicant Details" icon={<User className="w-4 h-4" />}>
@@ -1090,8 +1107,8 @@ export function ApplicationDetail() {
       <Dialog
         open={showNotifyDialog}
         onClose={() => { setShowNotifyDialog(false); setSelectedIntakeId('') }}
-        title="Notify About Next Intake"
-        description={`Send an email to ${app.full_name} with the next available cohort details.`}
+        title="Assign Intake and Notify"
+        description={`Assign an intake to ${app.full_name} and email the cohort details.`}
         className="max-w-md"
       >
         <div className="space-y-4 pt-1">
@@ -1122,7 +1139,7 @@ export function ApplicationDetail() {
                 </div>
               </div>
               <div className="bg-muted/50 rounded-xl px-4 py-3 text-xs text-muted-foreground">
-                An email will be sent to <span className="font-medium text-foreground">{app.email}</span> with the selected cohort start date and a link to apply.
+                The selected cohort date will be saved on this application, then emailed to <span className="font-medium text-foreground">{app.email}</span>.
               </div>
               <div className="flex gap-3 pt-1">
                 <Button
@@ -1130,7 +1147,7 @@ export function ApplicationDetail() {
                   disabled={!selectedIntakeId || notifyMutation.isPending}
                   onClick={() => notifyMutation.mutate()}
                 >
-                  {notifyMutation.isPending ? 'Sending…' : <><Send className="w-4 h-4 mr-1.5" /> Send Notification</>}
+                  {notifyMutation.isPending ? 'Sending…' : <><Send className="w-4 h-4 mr-1.5" /> Assign & Send Email</>}
                 </Button>
                 <Button variant="outline" onClick={() => { setShowNotifyDialog(false); setSelectedIntakeId('') }}>
                   Cancel

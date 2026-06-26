@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   MessageSquare, Search, Mail, Phone,
   CheckCircle2, Circle, RefreshCw,
-  AtSign, Smartphone, Clock, RotateCcw,
+  AtSign, Smartphone, Clock, RotateCcw, CalendarPlus,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
-import { FollowUpForm } from '../../components/FollowUpForm'
+import { EmailEditor } from '../../components/admin/EmailEditor'
+import { CreateAppointmentDialog } from './Appointments'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Dialog } from '../../components/ui/dialog'
@@ -58,6 +59,15 @@ function FollowUpTabs({ value, onChange }: {
   )
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 // ─── Detail dialog ────────────────────────────────────────────────────────────
 
 function MessageDetailDialog({ msg, onClose, onMarkRead, onMarkCompleted, onRevertCompleted }: {
@@ -67,99 +77,192 @@ function MessageDetailDialog({ msg, onClose, onMarkRead, onMarkCompleted, onReve
   onMarkCompleted: (id: string) => void
   onRevertCompleted: (id: string) => void
 }) {
-  const [showFollowUp, setShowFollowUp] = useState(false)
+  const [subject, setSubject] = useState(`Re: ${msg.subject ?? ''}`.trim())
+  const [body, setBody] = useState('')
+  const [showAppointment, setShowAppointment] = useState(false)
+  const [replying, setReplying] = useState(false)
   const preferredIcon = msg.preferred_contact === 'phone'
     ? <Smartphone className="w-3.5 h-3.5" />
     : <Mail className="w-3.5 h-3.5" />
 
-  return (
-    <Dialog open onClose={onClose} title={msg.subject || '(No subject)'} className="max-w-lg">
-      <div className="space-y-5">
+  useEffect(() => {
+    const safeName = escapeHtml(msg.name)
+    const safeSubject = escapeHtml(msg.subject ?? '')
+    const escapedMessage = escapeHtml(msg.message)
+    setSubject(`Re: ${msg.subject ?? ''}`.trim())
+    setBody([
+      `<p>Hi ${safeName},</p>`,
+      `<p>Thanks for reaching out${msg.subject ? ` about <strong>${safeSubject}</strong>` : ''}. I reviewed your message and wanted to follow up.</p>`,
+      `<p>Message received:</p>`,
+      `<blockquote>${escapedMessage.replace(/\n/g, '<br/>')}</blockquote>`,
+      `<p>Best regards,<br/>Admissions Team</p>`,
+    ].join(''))
+  }, [msg])
 
-        {/* Sender info */}
-        <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2.5">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-              <span className="text-sm font-bold text-primary">{msg.name.charAt(0).toUpperCase()}</span>
+  const sendMutation = useMutation({
+    mutationFn: () => api.sendFollowUp({
+      to: msg.email,
+      name: msg.name,
+      subject,
+      message: body,
+    }),
+    onSuccess: () => {
+      toast.success('Email sent')
+      setReplying(false)
+    },
+    onError: (e: Error) => {
+      setReplying(false)
+      toast.error(e.message ?? 'Failed to send email')
+    },
+    onSettled: () => setReplying(false),
+  })
+
+  return (
+    <>
+      <Dialog open onClose={onClose} title={msg.subject || '(No subject)'} className="max-w-3xl">
+        <div className="space-y-5">
+
+          {/* Sender info */}
+          <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="text-sm font-bold text-primary">{msg.name.charAt(0).toUpperCase()}</span>
+              </div>
+              <div>
+                <p className="text-sm font-semibold">{msg.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(msg.created_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })}
+                </p>
+              </div>
+              <div className="ml-auto flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${
+                  msg.is_read
+                    ? 'bg-muted text-muted-foreground border-border'
+                    : 'bg-primary/10 text-primary border-primary/20'
+                }`}>
+                  {msg.is_read ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+                  {msg.is_read ? 'Read' : 'Unread'}
+                </span>
+                {msg.follow_up_completed && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border bg-success/10 text-success border-success/20">
+                    <CheckCircle2 className="w-3 h-3" /> Done
+                  </span>
+                )}
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold">{msg.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {new Date(msg.created_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })}
-              </p>
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${
-                msg.is_read
-                  ? 'bg-muted text-muted-foreground border-border'
-                  : 'bg-primary/10 text-primary border-primary/20'
-              }`}>
-                {msg.is_read ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
-                {msg.is_read ? 'Read' : 'Unread'}
+            <Separator />
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <AtSign className="w-3.5 h-3.5 shrink-0" /> {msg.email}
               </span>
-              {msg.follow_up_completed && (
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border bg-success/10 text-success border-success/20">
-                  <CheckCircle2 className="w-3 h-3" /> Done
+              {msg.phone && (
+                <a href={`tel:${msg.phone}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors">
+                  <Phone className="w-3.5 h-3.5 shrink-0" /> {msg.phone}
+                </a>
+              )}
+              {msg.preferred_contact && (
+                <span className="flex items-center gap-1.5 text-muted-foreground col-span-2">
+                  {preferredIcon} Prefers contact by {msg.preferred_contact}
                 </span>
               )}
             </div>
           </div>
-          <Separator />
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <button onClick={() => setShowFollowUp(true)} className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors">
-              <AtSign className="w-3.5 h-3.5 shrink-0" /> {msg.email}
-            </button>
-            {msg.phone && (
-              <a href={`tel:${msg.phone}`} className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors">
-                <Phone className="w-3.5 h-3.5 shrink-0" /> {msg.phone}
-              </a>
+
+          {/* Message body */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Message</p>
+            <div className="rounded-xl border border-border bg-background p-4 text-sm leading-relaxed whitespace-pre-wrap">
+              {msg.message}
+            </div>
+          </div>
+
+          {/* Follow-up composer */}
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-primary uppercase tracking-wide">
+                <Mail className="w-3.5 h-3.5" /> Follow up
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setShowAppointment(true)}
+              >
+                <CalendarPlus className="w-3.5 h-3.5" />
+                Set Appointment
+              </Button>
+            </div>
+            <div className="space-y-1.5 text-xs text-muted-foreground">
+              <p>To: {msg.name} &lt;{msg.email}&gt;</p>
+              {msg.phone && <p>Phone: {msg.phone}</p>}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Subject</label>
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Email subject" />
+            </div>
+            <div style={{ minHeight: 420 }}>
+              <EmailEditor
+                value={body}
+                onChange={setBody}
+                previewSubject={subject}
+                previewText={msg.subject ?? ''}
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <Button variant="outline" className="flex-1" onClick={onClose}>
+                Close
+              </Button>
+              <Button
+                className="flex-1 gap-1.5"
+                disabled={!subject.trim() || !body.trim() || sendMutation.isPending}
+                onClick={() => {
+                  setReplying(true)
+                  sendMutation.mutate()
+                }}
+              >
+                <Mail className="w-4 h-4" />
+                {sendMutation.isPending ? 'Sending…' : replying ? 'Sending…' : 'Send Email'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex flex-col sm:flex-row gap-2 pt-1">
+            {!msg.is_read && (
+              <Button className="flex-1 gap-1.5 min-w-0" onClick={() => { onMarkRead(msg.id); onClose() }}>
+                <CheckCircle2 className="w-4 h-4" /> Mark as Read
+              </Button>
             )}
-            {msg.preferred_contact && (
-              <span className="flex items-center gap-1.5 text-muted-foreground col-span-2">
-                {preferredIcon} Prefers contact by {msg.preferred_contact}
-              </span>
+            {!msg.follow_up_completed ? (
+              <Button variant="outline" className="flex-1 gap-1.5 min-w-0"
+                onClick={() => { onMarkCompleted(msg.id); onClose() }}>
+                <CheckCircle2 className="w-4 h-4 text-success" /> Mark Follow-up Done
+              </Button>
+            ) : (
+              <Button variant="outline" className="flex-1 gap-1.5 min-w-0"
+                onClick={() => { onRevertCompleted(msg.id); onClose() }}>
+                <RotateCcw className="w-4 h-4 text-warning" /> Undo Completed
+              </Button>
             )}
           </div>
         </div>
+      </Dialog>
 
-        {/* Message body */}
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Message</p>
-          <div className="rounded-xl border border-border bg-background p-4 text-sm leading-relaxed whitespace-pre-wrap">
-            {msg.message}
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex gap-2 pt-1 flex-wrap">
-          {!msg.is_read && (
-            <Button className="flex-1 gap-1.5 min-w-[120px]" onClick={() => { onMarkRead(msg.id); onClose() }}>
-              <CheckCircle2 className="w-4 h-4" /> Mark as Read
-            </Button>
-          )}
-          <button onClick={() => setShowFollowUp((v) => !v)}
-            className="flex-1 min-w-[120px] inline-flex items-center justify-center gap-1.5 h-9 rounded-lg border border-border hover:border-primary hover:text-primary text-sm font-medium transition-colors">
-            <Mail className="w-4 h-4" /> Reply by Email
-          </button>
-          {!msg.follow_up_completed ? (
-            <Button variant="outline" className="flex-1 gap-1.5 min-w-[120px]"
-              onClick={() => { onMarkCompleted(msg.id); onClose() }}>
-              <CheckCircle2 className="w-4 h-4 text-success" /> Mark Follow-up Done
-            </Button>
-          ) : (
-            <Button variant="outline" className="flex-1 gap-1.5 min-w-[120px]"
-              onClick={() => { onRevertCompleted(msg.id); onClose() }}>
-              <RotateCcw className="w-4 h-4 text-warning" /> Undo Completed
-            </Button>
-          )}
-        </div>
-
-        {showFollowUp && (
-          <FollowUpForm to={msg.email} name={msg.name}
-            defaultSubject={`Re: ${msg.subject ?? ''}`} onDone={() => setShowFollowUp(false)} />
-        )}
-      </div>
-    </Dialog>
+      <CreateAppointmentDialog
+        open={showAppointment}
+        onClose={() => setShowAppointment(false)}
+        prefill={{
+          name: msg.name,
+          email: msg.email,
+          phone: msg.phone || undefined,
+          reason: [
+            `Contact follow-up: ${msg.subject || 'No subject'}`,
+            msg.preferred_contact ? `Preferred contact: ${msg.preferred_contact}` : '',
+            `Message: ${msg.message}`,
+          ].filter(Boolean).join('\n'),
+        }}
+      />
+    </>
   )
 }
 

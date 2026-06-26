@@ -372,6 +372,7 @@ export function ApplicationPageClient({
   const { executeRecaptcha } = useGoogleReCaptcha();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [successData, setSuccessData] = useState<SuccessData | null>(null);
 
@@ -1291,7 +1292,7 @@ export function ApplicationPageClient({
                   ) : (
                     <button
                       type="submit"
-                      disabled={loading}
+                      disabled={loading || !termsAccepted}
                       className="flex-1 h-11 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {loading ? (
@@ -1309,22 +1310,28 @@ export function ApplicationPageClient({
                 </div>
 
                 {step === 3 && (
-                  <p className="text-center text-xs text-muted-foreground -mt-4">
-                    By submitting, you agree to our{" "}
-                    <Link
-                      href="/legal"
-                      className="text-primary hover:underline"
-                    >
-                      Terms
-                    </Link>{" "}
-                    and{" "}
-                    <Link
-                      href="/legal"
-                      className="text-primary hover:underline"
-                    >
-                      Privacy Policy
-                    </Link>
-                  </p>
+                  <label className="flex items-start gap-3 cursor-pointer -mt-2">
+                    <input
+                      type="checkbox"
+                      checked={termsAccepted}
+                      onChange={(e) => setTermsAccepted(e.target.checked)}
+                      disabled={loading}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary cursor-pointer"
+                    />
+                    <span className="text-xs text-muted-foreground leading-relaxed">
+                      I have read and agree to Nexa Academy&apos;s{" "}
+                      <Link
+                        href="/legal"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline font-medium"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        Terms & Conditions and Privacy Policy
+                      </Link>
+                      .
+                    </span>
+                  </label>
                 )}
               </form>
             </CardContent>

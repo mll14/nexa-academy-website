@@ -61,6 +61,24 @@ export async function updateApplicationStatus(
   });
 }
 
+export async function updateApplicationDetails(
+  id: string,
+  data: {
+    full_name: string
+    email: string
+    phone: string
+    program: string
+    program_name: string
+    payment_plan: string
+    start_date: string | null
+  },
+): Promise<Application> {
+  return req<Application>(`/applications/${id}/update_details/`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function getApplicationStats(): Promise<ApplicationStats> {
   return req<ApplicationStats>("/applications/stats/");
 }
@@ -95,7 +113,7 @@ export async function deleteApplication(id: string): Promise<void> {
 export async function notifyIntake(
   applicationId: string,
   payload: { intake_id?: string; start_date?: string; deadline?: string },
-): Promise<{ sent: boolean }> {
+): Promise<{ sent: boolean; application?: Application }> {
   return req(`/applications/${applicationId}/notify_intake/`, {
     method: "POST",
     body: JSON.stringify(payload),

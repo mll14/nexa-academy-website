@@ -115,8 +115,8 @@ export function Applications() {
               }}
             />
           </div>
-          <div className="flex gap-2.5">
-            <div className="w-52">
+          <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="w-full sm:w-52">
               <Select
                 value={status}
                 onChange={(v) => { setStatus(v); setPage(1) }}
@@ -128,7 +128,7 @@ export function Applications() {
                 }
               />
             </div>
-            <div className="w-44">
+            <div className="w-full sm:w-44">
               <Select
                 value={ordering}
                 onChange={setOrdering}

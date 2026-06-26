@@ -90,8 +90,12 @@ export function formatFullDateTime(iso: string | undefined): string {
 
 export function calcFee(base: number, plan: string): number {
   if (!base) return 0;
-  if (plan === "full") return base;
-  if (plan === "installment3")
+  const normalized = (plan || "").toLowerCase();
+  if (!normalized || normalized === "full" || normalized.includes("one-time"))
+    return base;
+  if (normalized === "installment3" || normalized.includes("3"))
     return Math.round((base * 1.2) / 3 / 500) * 500 * 3;
-  return Math.round((base * 1.1) / 2 / 500) * 500 * 2;
+  if (normalized === "installment2" || normalized.includes("2"))
+    return Math.round((base * 1.1) / 2 / 500) * 500 * 2;
+  return base;
 }

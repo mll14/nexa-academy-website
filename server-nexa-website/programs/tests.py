@@ -1,4 +1,5 @@
 from django.test import TestCase
+from decimal import Decimal
 import hashlib
 import hmac as _hmac
 import json
@@ -6,6 +7,7 @@ import time
 
 from rest_framework.test import APIClient as _APIClient
 from django.test import override_settings
+from unittest.mock import patch
 
 _WEBHOOK_SECRET = 'test-sanity-secret-xyz'
 _SANITY_SETTINGS = {
@@ -14,6 +16,55 @@ _SANITY_SETTINGS = {
     'SANITY_DATASET': 'test',
     'SANITY_API_TOKEN': 'test-token',
 }
+
+
+class ManualEnrollFeeStructureTest(TestCase):
+    def setUp(self):
+        from accounts.models import User
+        from programs.models import Program
+
+        self.client = _APIClient()
+        self.admin = User.objects.create_user(
+            email='manual-admin@test.com',
+            password='pass',
+            display_name='Manual Admin',
+            role='admin',
+        )
+        self.program = Program.objects.create(
+            slug='data-science',
+            name='Data Science',
+            price=Decimal('100000.00'),
+            status='active',
+        )
+        self.client.force_authenticate(user=self.admin)
+
+    @patch('programs.views.send_html_email')
+    def test_manual_enroll_uses_installment_surcharge_fee_structure(self, _mock_email):
+        from applications.models import Application
+        from programs.models import Enrollment
+
+        response = self.client.post(
+            '/api/enrollments/manual_enroll/',
+            {
+                'student_name': 'Fee Student',
+                'student_email': 'fee-student@test.com',
+                'phone': '0700000041',
+                'program_id': str(self.program.program_id),
+                'payment_plan': '3 Installments',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        enrollment = Enrollment.objects.get(enrollment_id=response.data['enrollment_id'])
+        self.assertEqual(enrollment.amount, Decimal('120000.00'))
+        self.assertEqual(enrollment.installment_amount, Decimal('40000.00'))
+        self.assertEqual(enrollment.balance, Decimal('120000.00'))
+        self.assertEqual(enrollment.payment_plan, '3 Installments')
+
+        application = Application.objects.get(id=response.data['application_id'])
+        self.assertEqual(application.estimated_fees, Decimal('120000.00'))
+        self.assertEqual(application.payment_plan, '3 Installments')
 
 
 def _make_sig(body: str, secret: str = _WEBHOOK_SECRET, ts: int = None):

@@ -9,7 +9,7 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from django.core.cache import cache
 from .models import Application, ApplicationAdminNote, ApplicationLog, DraftApplication, InterviewBlackout, CustomCalendarEvent
-from .serializers import ApplicationAdminNoteSerializer, ApplicationSerializer, ApplicationCreateSerializer, InterviewSlotSerializer, InterviewBlackoutSerializer, CustomCalendarEventSerializer
+from .serializers import ApplicationAdminNoteSerializer, ApplicationSerializer, ApplicationCreateSerializer, ApplicationUpdateSerializer, InterviewSlotSerializer, InterviewBlackoutSerializer, CustomCalendarEventSerializer
 from .models import InterviewSlot
 from accounts.permissions import IsAdminUser, HasAppPermission, IsSuperAdmin
 from accounts.utils import create_audit_log
@@ -460,6 +460,28 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 logger.error('account_setup email failed for %s: %s', email, exc)
 
         return Response(ApplicationSerializer(application).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
+    def update_details(self, request, pk=None):
+        application = self.get_object()
+        user = request.user
+
+        is_admin = getattr(user, 'role', None) == 'admin'
+        owns_application = (
+            application.user_id == getattr(user, 'uid', None)
+            or application.email.lower() == getattr(user, 'email', '').lower()
+        )
+        if not is_admin and not owns_application:
+            return Response({'error': 'You can only update your own application.'}, status=status.HTTP_403_FORBIDDEN)
+
+        if not application.user_id and not is_admin and owns_application:
+            application.user = user
+
+        serializer = ApplicationUpdateSerializer(application, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        application = serializer.save()
+
+        return Response(ApplicationSerializer(application).data)
     
     @action(detail=True, methods=['patch'], permission_classes=[HasAppPermission('applications.manage')])
     def update_status(self, request, pk=None):
@@ -1221,11 +1243,19 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         intake_id = request.data.get('intake_id')
         start_date = request.data.get('start_date', '').strip()
         deadline = request.data.get('deadline', '').strip()
+        assigned_start_date = None
 
         if intake_id:
             try:
                 from programs.models import ProgramIntake
-                intake = ProgramIntake.objects.get(id=intake_id)
+                intake = ProgramIntake.objects.select_related('program').get(id=intake_id)
+                app_program = (application.program or '').strip().lower()
+                app_program_name = (application.program_name or '').strip().lower()
+                if app_program and intake.program.slug.lower() != app_program:
+                    return Response({'error': 'Intake does not match application program'}, status=status.HTTP_400_BAD_REQUEST)
+                if not app_program and app_program_name and intake.program.name.strip().lower() != app_program_name:
+                    return Response({'error': 'Intake does not match application program'}, status=status.HTTP_400_BAD_REQUEST)
+                assigned_start_date = intake.start_date
                 start_date = intake.start_date.strftime('%B %d, %Y')
                 deadline = (
                     intake.application_deadline.strftime('%B %d, %Y')
@@ -1258,7 +1288,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             logger.error('notify_intake failed for %s: %s', application.email, exc)
             return Response({'error': 'Failed to send email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        return Response({'sent': True})
+        if assigned_start_date and application.start_date != assigned_start_date:
+            application.start_date = assigned_start_date
+            application.save(update_fields=['start_date', 'updated_at'])
+
+        return Response({'sent': True, 'application': ApplicationSerializer(application).data})
 
 
 class ApplicationAdminNoteViewSet(viewsets.ModelViewSet):

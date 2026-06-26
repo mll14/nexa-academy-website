@@ -131,14 +131,14 @@ function InviteDialog({
         </div>
         <div className="space-y-1.5">
           <Label>Role <span className="text-muted-foreground text-xs">(optional — leave blank for super admin)</span></Label>
-          <select
+          <Select
             value={form.staff_role_id}
-            onChange={e => setForm(f => ({ ...f, staff_role_id: e.target.value }))}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <option value="">Super Admin (no restriction)</option>
-            {roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
-          </select>
+            onChange={(value) => setForm(f => ({ ...f, staff_role_id: value }))}
+            options={[
+              { value: '', label: 'Super Admin (no restriction)' },
+              ...roles.map(role => ({ value: String(role.id), label: role.name })),
+            ]}
+          />
         </div>
         <p className="text-xs text-muted-foreground">An invitation email will be sent so they can set their own password.</p>
         <div className="flex justify-end gap-2 pt-2">
@@ -199,14 +199,14 @@ function EditDialog({
       <form onSubmit={handle} className="space-y-4">
         <div className="space-y-1.5">
           <Label>Role</Label>
-          <select
+          <Select
             value={roleId}
-            onChange={e => setRoleId(e.target.value)}
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <option value="">Super Admin (no restriction)</option>
-            {roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
-          </select>
+            onChange={setRoleId}
+            options={[
+              { value: '', label: 'Super Admin (no restriction)' },
+              ...roles.map(role => ({ value: String(role.id), label: role.name })),
+            ]}
+          />
         </div>
 
         <div className="space-y-2">

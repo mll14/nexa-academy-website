@@ -17,7 +17,7 @@ from .serializers import (
     ProgramProgressSerializer, CertificateSerializer, SimpleProgramProgressSerializer,
     EnrollStudentSerializer, ProgramInterestSerializer, ProgramIntakeSerializer,
     HelpMeLeadSerializer, IncompleteApplicationSerializer, LeadAdminNoteSerializer, PaymentPlanChangeRequestSerializer,
-    normalize_payment_plan,
+    calculate_fee_structure, normalize_payment_plan,
 )
 from accounts.permissions import IsAdminUser, HasAppPermission, IsSuperAdmin
 from accounts.utils import create_audit_log
@@ -230,6 +230,8 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             program_name__iexact=program.name,
             status__in=['interview_completed', 'enrolled'],
         ).first()
+        effective_plan = normalized_plan or (existing_app.payment_plan if existing_app else '')
+        fee_amount, installment_amount = calculate_fee_structure(program.price, effective_plan)
 
         with transaction.atomic():
             if existing_app is None:
@@ -240,7 +242,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                     phone=phone or getattr(student, 'phone', '') or '',
                     program=program.slug,
                     program_name=program.name,
-                    estimated_fees=program.price,
+                    estimated_fees=fee_amount,
                     payment_plan=normalized_plan,
                     start_date=start_date,
                     status='interview_completed',
@@ -259,10 +261,10 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             else:
                 application = existing_app
                 update_fields = []
-                if application.estimated_fees is None:
-                    application.estimated_fees = program.price
+                if application.estimated_fees != fee_amount:
+                    application.estimated_fees = fee_amount
                     update_fields.append('estimated_fees')
-                if not application.payment_plan and normalized_plan:
+                if normalized_plan and application.payment_plan != normalized_plan:
                     application.payment_plan = normalized_plan
                     update_fields.append('payment_plan')
                 if start_date and not application.start_date:
@@ -277,24 +279,39 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                 defaults={
                     'student_name': student.display_name,
                     'program_name': program.name,
-                    'amount': program.price,
+                    'amount': fee_amount,
                     'amount_paid': Decimal('0.00'),
-                    'balance': program.price,
+                    'balance': fee_amount,
                     'status': 'active',
                     'payment_plan': normalized_plan,
+                    'installment_amount': installment_amount,
                 }
             )
+            effective_plan = normalized_plan or enrollment.payment_plan or application.payment_plan or ''
+            fee_amount, installment_amount = calculate_fee_structure(program.price, effective_plan)
             enrollment_update_fields = []
-            if enrollment.amount != program.price:
-                enrollment.amount = program.price
+            application_update_fields = []
+            if effective_plan and application.payment_plan != effective_plan:
+                application.payment_plan = effective_plan
+                application_update_fields.append('payment_plan')
+            if application.estimated_fees != fee_amount:
+                application.estimated_fees = fee_amount
+                application_update_fields.append('estimated_fees')
+            if application_update_fields:
+                application.save(update_fields=list(dict.fromkeys(application_update_fields)))
+            if enrollment.amount != fee_amount:
+                enrollment.amount = fee_amount
                 enrollment.balance = Decimal(enrollment.amount or 0) - Decimal(enrollment.amount_paid or 0)
                 enrollment_update_fields.extend(['amount', 'balance'])
             if enrollment.program_name != program.name:
                 enrollment.program_name = program.name
                 enrollment_update_fields.append('program_name')
-            if normalized_plan and not enrollment.payment_plan:
-                enrollment.payment_plan = normalized_plan
+            if effective_plan and enrollment.payment_plan != effective_plan:
+                enrollment.payment_plan = effective_plan
                 enrollment_update_fields.append('payment_plan')
+            if enrollment.installment_amount != installment_amount:
+                enrollment.installment_amount = installment_amount
+                enrollment_update_fields.append('installment_amount')
             if start_date and not enrollment.start_date:
                 enrollment.start_date = start_date
                 enrollment_update_fields.append('start_date')
@@ -330,8 +347,8 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                     context={
                         'display_name': student.display_name,
                         'program_name': program.name,
-                        'payment_plan': normalized_plan,
-                        'total_fee': f"{float(program.price):,.0f}",
+                        'payment_plan': effective_plan,
+                        'total_fee': f"{float(fee_amount):,.0f}",
                         'setup_url': setup_url,
                     },
                     recipient_email=student.email,
@@ -403,8 +420,8 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                 context={
                     'display_name': student.display_name,
                     'program_name': program.name,
-                    'payment_plan': normalized_plan,
-                    'total_fee': f"{float(program.price):,.0f}",
+                    'payment_plan': effective_plan,
+                    'total_fee': f"{float(fee_amount):,.0f}",
                     'setup_url': setup_url,
                 },
                 recipient_email=student.email,

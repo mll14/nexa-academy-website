@@ -384,9 +384,9 @@ function StudentFooter() {
 
 export function StudentLayout({ children, unreadCount, contentClassName = 'max-w-5xl' }: Props) {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background overflow-x-hidden">
       <StudentHeader unreadCount={unreadCount} />
-      <main className="flex-1 w-full px-4 sm:px-6 lg:px-10 xl:px-16 py-8">
+      <main className="flex-1 w-full px-4 sm:px-6 lg:px-10 xl:px-16 py-6 sm:py-8 overflow-x-hidden">
         <div className={`${contentClassName} mx-auto w-full`}>
           {children}
         </div>

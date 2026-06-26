@@ -151,6 +151,8 @@ export function AdminLayout({ children }: Props) {
   const { data: notificationsData } = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: () => getNotifications(50),
+    enabled: Boolean(user),
+    retry: false,
     refetchInterval: 30_000,
     staleTime: 15_000,
   })
@@ -182,7 +184,7 @@ export function AdminLayout({ children }: Props) {
   )
 
   return (
-    <div className="min-h-screen flex bg-background">
+    <div className="min-h-screen flex bg-background overflow-x-hidden">
       {/* Sidebar */}
       <aside
         className={cn(
@@ -377,7 +379,7 @@ export function AdminLayout({ children }: Props) {
           />
         </header>
 
-        <main className="flex-1 overflow-auto p-6 pt-20 lg:p-8">
+        <main className="flex-1 overflow-auto overflow-x-hidden p-4 sm:p-6 pt-20 lg:p-8">
           <div className="max-w-5xl mx-auto w-full">
             {children}
           </div>

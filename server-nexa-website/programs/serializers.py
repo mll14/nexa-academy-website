@@ -1,3 +1,5 @@
+from decimal import Decimal, ROUND_HALF_UP
+
 from rest_framework import serializers
 from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, LeadAdminNote, PaymentPlanChangeRequest
 from accounts.serializers import UserSerializer
@@ -20,6 +22,33 @@ PAYMENT_PLAN_LABELS = {
 def normalize_payment_plan(value):
     key = (value or '').strip().lower()
     return PAYMENT_PLAN_LABELS.get(key)
+
+
+def payment_plan_key(value):
+    normalized = (value or '').strip().lower()
+    if normalized in ('', 'full', 'one-time payment', 'full payment'):
+        return 'full'
+    if '3' in normalized:
+        return 'installment3'
+    if '2' in normalized:
+        return 'installment2'
+    return 'full'
+
+
+def _round_to_nearest_500(value):
+    return (Decimal(value) / Decimal('500')).quantize(Decimal('1'), rounding=ROUND_HALF_UP) * Decimal('500')
+
+
+def calculate_fee_structure(base_amount, payment_plan):
+    base = Decimal(str(base_amount or 0))
+    plan = payment_plan_key(payment_plan)
+    if plan == 'installment3':
+        installment = _round_to_nearest_500((base * Decimal('1.20')) / Decimal('3'))
+        return installment * Decimal('3'), installment
+    if plan == 'installment2':
+        installment = _round_to_nearest_500((base * Decimal('1.10')) / Decimal('2'))
+        return installment * Decimal('2'), installment
+    return base, None
 
 
 class ProgramSerializer(serializers.ModelSerializer):

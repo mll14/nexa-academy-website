@@ -326,6 +326,27 @@ interface CreateForm {
   attendees: string[]
 }
 
+export interface CreateAppointmentPrefill {
+  name?: string
+  email?: string
+  phone?: string
+  reason?: string
+}
+
+function initialCreateForm(prefill?: CreateAppointmentPrefill): CreateForm {
+  return {
+    appointmentType: '',
+    host: '',
+    chosenTime: '',
+    manualTime: '',
+    name: prefill?.name ?? '',
+    email: prefill?.email ?? '',
+    phone: prefill?.phone ?? '',
+    reason: prefill?.reason ?? '',
+    attendees: [],
+  }
+}
+
 function groupSlotsByDate(slots: AvailableSlot[]): Map<string, AvailableSlot[]> {
   const map = new Map<string, AvailableSlot[]>()
   for (const slot of slots) {
@@ -377,12 +398,18 @@ function CreateStepIndicator({ current }: { current: number }) {
   )
 }
 
-function CreateAppointmentDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CreateAppointmentDialog({
+  open,
+  onClose,
+  prefill,
+}: {
+  open: boolean
+  onClose: () => void
+  prefill?: CreateAppointmentPrefill
+}) {
   const qc = useQueryClient()
   const [step, setStep] = useState(0)
-  const [form, setForm] = useState<CreateForm>({
-    appointmentType: '', host: '', chosenTime: '', manualTime: '', name: '', email: '', phone: '', reason: '', attendees: [],
-  })
+  const [form, setForm] = useState<CreateForm>(() => initialCreateForm(prefill))
   const [attendeeInput, setAttendeeInput] = useState('')
   const [useManualTime, setUseManualTime] = useState(false)
   const [slots, setSlots] = useState<AvailableSlot[]>([])
@@ -400,13 +427,13 @@ function CreateAppointmentDialog({ open, onClose }: { open: boolean; onClose: ()
   useEffect(() => {
     if (!open) return
     setStep(0)
-    setForm({ appointmentType: '', host: '', chosenTime: '', manualTime: '', name: '', email: '', phone: '', reason: '', attendees: [] })
+    setForm(initialCreateForm(prefill))
     setAttendeeInput('')
     setUseManualTime(false)
     setSlots([])
     setSelectedDate('')
     setErrors({})
-  }, [open])
+  }, [open, prefill?.name, prefill?.email, prefill?.phone, prefill?.reason])
 
   useEffect(() => {
     if (step !== 1) return
@@ -897,8 +924,8 @@ export function Appointments() {
         />
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2">
-          <div className="relative flex-1 min-w-[200px]">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               className="pl-9"
@@ -911,24 +938,24 @@ export function Appointments() {
             value={apptType}
             onChange={(value) => { setApptType(value); setPage(1) }}
             options={TYPE_OPTIONS}
-            className="w-40"
+            className="w-full sm:w-40"
           />
           <Select
             value={host}
             onChange={(value) => { setHost(value); setPage(1) }}
             options={HOST_OPTIONS}
-            className="w-52"
+            className="w-full sm:w-52"
           />
           <Select
             value={ordering}
             onChange={(value) => setOrdering(value)}
             options={SORT_OPTIONS}
-            className="w-44"
+            className="w-full sm:w-44"
           />
         </div>
 
         {/* Table */}
-        <div className="border rounded-lg overflow-hidden">
+        <div className="border rounded-lg overflow-hidden overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-muted/50 border-b">
               <tr>

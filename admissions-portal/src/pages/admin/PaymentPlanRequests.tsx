@@ -98,7 +98,7 @@ export function PaymentPlanRequests() {
               {isLoading ? 'Loading...' : `${filtered.length} request${filtered.length !== 1 ? 's' : ''}`}
             </p>
           </div>
-          <div className="w-44">
+          <div className="w-full sm:w-44">
             <Select value={status} onChange={setStatus} options={STATUS_OPTIONS} />
           </div>
         </div>

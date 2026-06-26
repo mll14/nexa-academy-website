@@ -16,6 +16,7 @@ import {
   Wallet,
 } from 'lucide-react'
 import { StudentLayout } from '../../components/StudentLayout'
+import { ApplicationEditForm } from '../../components/ApplicationEditForm'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Separator } from '../../components/ui/separator'
@@ -721,6 +722,14 @@ function StudentPage({ section }: { section: StudentSection }) {
                 <p className="text-sm font-semibold">Interview scheduled</p>
                 <p className="text-xs text-muted-foreground mt-0.5">{interviewDate} EAT</p>
               </div>
+            </div>
+          )}
+          {application && (
+            <div className="rounded-2xl border border-border bg-card p-6">
+              <ApplicationEditForm
+                application={application}
+                onSaved={(updated) => setApplication(updated)}
+              />
             </div>
           )}
           <div className="rounded-2xl border border-border bg-card p-6 space-y-5">

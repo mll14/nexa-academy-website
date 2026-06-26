@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
@@ -15,12 +15,14 @@ import { Label } from '../../components/ui/label'
 import { Dialog } from '../../components/ui/dialog'
 import { Separator } from '../../components/ui/separator'
 import { Badge } from '../../components/ui/badge'
+import { PhoneNumberInput } from '../../components/ui/phone-input'
 import * as api from '../../lib/api'
 import type { EnrollmentFilters } from '../../lib/api/programs'
-import { formatDate } from '../../lib/utils'
+import { calcFee, formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
 import type { Enrollment, Program } from '../../types'
 import { Pagination } from '../../components/ui/pagination'
+import { isValidPhoneNumber } from 'react-phone-number-input'
 
 function fmtKSh(n: number): string {
   if (n >= 1_000_000) return `KSh ${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
@@ -96,23 +98,48 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
   const [name, setName]                   = useState('')
   const [email, setEmail]                 = useState('')
   const [phone, setPhone]                 = useState('')
-  const [startDate, setStartDate]         = useState('')
   const [programId, setProgramId]         = useState('')
+  const [intakeId, setIntakeId]           = useState('')
   const [paymentPlan, setPaymentPlan]     = useState('')
   const [collectPayment, setCollectPayment] = useState<boolean | null>(null)
   const [depositAmount, setDepositAmount] = useState('10000')
 
   const selectedProgram = programs.find((p) => p.program_id === programId) ?? null
-  const canGoNext = !!(name.trim() && email.trim() && phone.trim() && programId)
+  const selectedBaseFee = Number(selectedProgram?.price ?? 0)
+  const selectedTotalFee = calcFee(selectedBaseFee, paymentPlan)
+  const selectedInstallmentCount = paymentPlan.includes('3') ? 3 : paymentPlan.includes('2') ? 2 : 0
+  const selectedInstallmentAmount = selectedInstallmentCount ? selectedTotalFee / selectedInstallmentCount : null
+  const { data: intakes = [], isLoading: intakesLoading } = useQuery({
+    queryKey: ['admin', 'manual-enroll-intakes', selectedProgram?.slug],
+    queryFn: () => api.getIntakes({ program_slug: selectedProgram?.slug, ordering: 'start_date' }),
+    enabled: open && !!selectedProgram?.slug,
+  })
+  const selectableIntakes = useMemo(
+    () => intakes.filter((intake) => intake.status !== 'closed'),
+    [intakes],
+  )
+  const selectedIntake = selectableIntakes.find((intake) => intake.id === intakeId) ?? null
+  const canGoNext = !!(name.trim() && email.trim() && phone.trim() && programId && intakeId && isValidPhoneNumber(phone))
   const depositNum = Number(depositAmount)
   const canSubmit = collectPayment === false || (collectPayment === true && depositNum > 0)
+
+  useEffect(() => {
+    setIntakeId('')
+  }, [programId])
+
+  useEffect(() => {
+    if (!intakeId) return
+    if (!selectableIntakes.some((intake) => intake.id === intakeId)) {
+      setIntakeId('')
+    }
+  }, [intakeId, selectableIntakes])
 
   const mutation = useMutation({
     mutationFn: () => api.manualEnroll({
       studentName:   name.trim(),
       studentEmail:  email.trim(),
       phone:         phone.trim(),
-      startDate:     startDate || undefined,
+      startDate:     selectedIntake?.start_date || undefined,
       programId,
       paymentPlan:   paymentPlan || undefined,
       depositAmount: collectPayment ? depositNum : undefined,
@@ -166,8 +193,8 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
 
   const handleClose = () => {
     setStep('details')
-    setName(''); setEmail(''); setPhone(''); setStartDate('')
-    setProgramId(''); setPaymentPlan('')
+    setName(''); setEmail(''); setPhone('')
+    setProgramId(''); setIntakeId(''); setPaymentPlan('')
     setCollectPayment(null); setDepositAmount('10000')
     onClose()
   }
@@ -205,12 +232,11 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
 
         <div className="space-y-1.5">
           <Label htmlFor="enroll-phone">Phone Number *</Label>
-          <Input
+          <PhoneNumberInput
             id="enroll-phone"
-            type="tel"
-            placeholder="e.g. 0712 345 678"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={setPhone}
+            placeholder="e.g. +254 712 345 678"
           />
         </div>
 
@@ -226,7 +252,7 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
               </p>
               {selectedProgram.price != null && (
                 <p className="text-xs font-medium text-foreground">
-                  KSh {Number(selectedProgram.price).toLocaleString('en-KE')}
+                  Base KSh {Number(selectedProgram.price).toLocaleString('en-KE')}
                 </p>
               )}
             </div>
@@ -234,20 +260,45 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="enroll-intake">Intake Date</Label>
-          <Input
-            id="enroll-intake"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+          <Label>Intake Date *</Label>
+          <Select
+            value={intakeId}
+            onChange={setIntakeId}
+            disabled={intakesLoading || !selectedProgram || selectableIntakes.length === 0}
+            placeholder={intakesLoading ? 'Loading intakes...' : 'Select an intake…'}
+            options={selectableIntakes.map((intake) => {
+              const deadline = intake.application_deadline ? formatDate(intake.application_deadline) : ''
+              return {
+                value: intake.id,
+                label: `${formatDate(intake.start_date)}${deadline ? ` · Apply by ${deadline}` : ''}`,
+              }
+            })}
           />
-          <p className="text-xs text-muted-foreground">Optional — the cohort start date for this student.</p>
+          {selectedIntake ? (
+            <p className="text-xs text-muted-foreground">
+              Selected cohort starts {formatDate(selectedIntake.start_date)}
+              {selectedIntake.seats_remaining != null ? ` · ${selectedIntake.seats_remaining} seats remaining` : ''}
+            </p>
+          ) : selectableIntakes.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No backend intakes found for this program.</p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Select an intake created in the backend for this program.</p>
+          )}
         </div>
 
         <div className="space-y-1.5">
           <Label>Installment Plan</Label>
           <Select value={paymentPlan} onChange={setPaymentPlan} options={PAYMENT_PLAN_OPTIONS} />
-          <p className="text-xs text-muted-foreground">Optional — the student can change this later from their dashboard.</p>
+          {selectedProgram && selectedTotalFee > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Total fee will be KSh {selectedTotalFee.toLocaleString('en-KE')}
+              {selectedInstallmentAmount
+                ? ` · KSh ${selectedInstallmentAmount.toLocaleString('en-KE')} x ${selectedInstallmentCount}`
+                : ' · no surcharge'}
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">Optional — the student can change this later from their dashboard.</p>
+          )}
         </div>
 
         <Separator />
@@ -446,14 +497,14 @@ export function EnrolledStudents() {
               onChange={(e) => { setSearch(e.target.value); setPage(1) }}
             />
           </div>
-          <div className="flex flex-wrap gap-2">
-            <div className="w-full xs:w-auto sm:w-40">
+        <div className="flex flex-col sm:flex-row gap-2">
+            <div className="w-full sm:w-40">
               <Select value={status} onChange={(v) => { setStatus(v); setPage(1) }} options={STATUS_OPTIONS} />
             </div>
-            <div className="w-full xs:w-auto sm:w-52">
+            <div className="w-full sm:w-52">
               <Select value={programId} onChange={(v) => { setProgramId(v); setPage(1) }} options={programOptions} />
             </div>
-            <div className="w-full xs:w-auto sm:w-40">
+            <div className="w-full sm:w-40">
               <Select value={ordering} onChange={setOrdering} options={SORT_OPTIONS} icon={<ArrowUpDown className="w-3.5 h-3.5" />} />
             </div>
           </div>

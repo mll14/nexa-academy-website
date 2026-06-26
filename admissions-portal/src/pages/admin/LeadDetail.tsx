@@ -4,11 +4,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Bell, BookOpen, Calendar, ChevronRight, FileWarning,
   Flame, HelpCircle, Mail, MessageSquare, Phone, PhoneCall, Send, User,
-  CheckCircle2, Clock, Tag, PhoneOff,
+  CheckCircle2, Clock, Tag, PhoneOff, CalendarPlus,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { FollowUpForm } from '../../components/FollowUpForm'
 import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
+import { CreateAppointmentDialog } from './Appointments'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent } from '../../components/ui/card'
 import { Dialog } from '../../components/ui/dialog'
@@ -19,6 +20,7 @@ import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
 import type { HelpMeLead, IncompleteApplication, LeadStatus, ProgramInterest } from '../../types'
 import toast from 'react-hot-toast'
+import { useAuth } from '../../context/AuthContext'
 
 type LeadRouteType = 'interests' | 'help-me' | 'incomplete'
 type LeadRecord = ProgramInterest | HelpMeLead | IncompleteApplication
@@ -132,7 +134,7 @@ function NotifyForm({
       <p className="flex items-center gap-1.5 text-xs font-semibold text-primary uppercase tracking-wide">
         <Bell className="w-3.5 h-3.5" /> Notify of Intake Opening
       </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label className="text-xs">Cohort start date *</Label>
           <input
@@ -206,9 +208,11 @@ export function LeadDetail() {
   const { leadType, id } = useParams({ from: '/admin/leads/$leadType/$id' })
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { hasPermission } = useAuth()
   const [tab, setTab] = useState<LeadTab>('details')
   const [showFollowUp, setShowFollowUp] = useState(false)
   const [showNotify, setShowNotify] = useState(false)
+  const [showAppointment, setShowAppointment] = useState(false)
   const [pipelineProgramSlug, setPipelineProgramSlug] = useState('')
 
   const validType = isLeadRouteType(leadType) ? leadType : null
@@ -285,7 +289,13 @@ export function LeadDetail() {
   const updatedAt = 'updated_at' in lead ? lead.updated_at : ''
   const currentLeadStatus = leadStatus(lead)
   const helpMeLead = validType === 'help-me' ? lead as HelpMeLead : null
+  const canCreateAppointment = hasPermission('appointments.manage')
   const selectedPipelineProgramSlug = pipelineProgramSlug || helpMeLead?.assigned_program_slug || ''
+  const appointmentReason = [
+    `Lead follow-up: ${meta.badge}`,
+    programName || programSlug ? `Program: ${programName || programSlug}` : '',
+    message ? `Notes: ${message}` : '',
+  ].filter(Boolean).join('\n')
   const programOptions = [
     { value: '', label: 'Select a program...' },
     ...programs
@@ -435,7 +445,7 @@ export function LeadDetail() {
 
             <SectionCard title="Reach Out" icon={<Mail className="w-4 h-4" />}>
               <div className="pt-4 space-y-3">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     onClick={() => setShowFollowUp(true)}
                     className="flex flex-col items-center gap-1.5 rounded-xl border border-border py-3 px-2 text-xs font-medium hover:bg-primary/5 hover:border-primary/30 transition-colors text-center"
@@ -472,6 +482,15 @@ export function LeadDetail() {
                       <Send className="w-5 h-5 text-muted-foreground" />
                       WhatsApp
                     </div>
+                  )}
+                  {canCreateAppointment && (
+                    <button
+                      onClick={() => setShowAppointment(true)}
+                      className="flex flex-col items-center gap-1.5 rounded-xl border border-border py-3 px-2 text-xs font-medium hover:bg-primary/5 hover:border-primary/30 transition-colors text-center"
+                    >
+                      <CalendarPlus className="w-5 h-5 text-primary" />
+                      Appointment
+                    </button>
                   )}
                 </div>
               </div>
@@ -531,6 +550,17 @@ export function LeadDetail() {
             onDone={() => setShowFollowUp(false)}
           />
         </Dialog>
+
+        <CreateAppointmentDialog
+          open={showAppointment}
+          onClose={() => setShowAppointment(false)}
+          prefill={{
+            name: lead.name,
+            email: lead.email,
+            phone,
+            reason: appointmentReason,
+          }}
+        />
       </div>
     </AdminLayout>
   )
