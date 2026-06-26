@@ -59,8 +59,10 @@ function RouteSpinner() {
 
 function requirePermission(codename: string) {
   const user = getStoredUser()
-  if (!user?.effectivePermissions) return  // super admin — no restrictions
-  if (!user.effectivePermissions.includes(codename)) {
+  if (!user) return
+  // staffRole === null/undefined means super admin — unrestricted access
+  if (!user.staffRole) return
+  if (!user.effectivePermissions?.includes(codename)) {
     throw redirect({ to: '/admin' })
   }
 }

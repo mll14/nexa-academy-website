@@ -25,7 +25,7 @@ from django.conf import settings
 from ubuntu_labs.email_utils import send_html_email
 from ubuntu_labs.html_utils import clean_admin_note_html as _clean_admin_note_html
 from accounts.models import User
-from applications.models import Application
+from applications.models import Application, ApplicationLog
 from notifications.models import Notification
 
 logger = logging.getLogger(__name__)
@@ -129,19 +129,28 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], permission_classes=[HasAppPermission('students.manage')])
     def manual_enroll(self, request):
         """
-        Manually enroll a student. Accepts student_id (existing user) or
-        student_name + student_email (creates an account if none exists).
-        Amount is taken from program.price — the admin does not enter fees here.
+        Manually add a student to the pipeline.
+
+        Creates a user account (if none exists), an Application at
+        interview_completed status, and initialises a Paystack deposit payment.
+        Returns Paystack credentials so the admin can pay inline; if they skip
+        the student stays at interview_completed and can pay the deposit from
+        their own dashboard.  A password-setup email is sent in both cases.
         """
+        import uuid as _uuid
         from django.contrib.auth.tokens import PasswordResetTokenGenerator
         from urllib.parse import urlencode
-        from programs.serializers import normalize_payment_plan
+        from django.utils.dateparse import parse_date
+        from payments.models import Payment
+        from payments.paystack import PaystackProvider
 
         student_id = request.data.get('student_id')
         student_name = request.data.get('student_name', '').strip()
         student_email = request.data.get('student_email', '').strip().lower()
+        phone = request.data.get('phone', '').strip()
         program_id = request.data.get('program_id')
         payment_plan_raw = request.data.get('payment_plan', '').strip()
+        start_date_raw = request.data.get('start_date', '').strip()
 
         if not program_id:
             return Response({'error': 'program_id is required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -149,8 +158,11 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         if not student_id and not (student_name and student_email):
             return Response(
                 {'error': 'Provide either student_id or both student_name and student_email'},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if not student_id and not phone:
+            return Response({'error': 'phone is required'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             program = Program.objects.get(program_id=program_id)
@@ -160,10 +172,8 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         if program.price is None:
             return Response(
                 {'error': 'This program has no price set. Please update the program before enrolling.'},
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_400_BAD_REQUEST,
             )
-
-        amount = program.price
 
         normalized_plan = ''
         if payment_plan_raw:
@@ -171,10 +181,12 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             if not normalized_plan:
                 return Response(
                     {'error': 'Invalid payment plan. Use One-time Payment, 2 Installments, or 3 Installments.'},
-                    status=status.HTTP_400_BAD_REQUEST
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        # Resolve or create student account
+        start_date = parse_date(start_date_raw) if start_date_raw else None
+
+        # 1. Resolve or create student account
         is_new_account = False
         if student_id:
             try:
@@ -192,74 +204,123 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                 )
                 is_new_account = True
 
-        if Enrollment.objects.filter(student=student, program=program).exists():
-            return Response(
-                {'error': 'Student is already enrolled in this program'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # 2. Create (or reuse) application at interview_completed
+        existing_app = Application.objects.filter(
+            Q(user=student) | Q(email__iexact=student.email),
+            program_name__iexact=program.name,
+            status__in=['interview_completed', 'enrolled'],
+        ).first()
 
         with transaction.atomic():
-            enrollment = Enrollment.objects.create(
-                student=student,
-                program=program,
-                student_name=student.display_name,
-                program_name=program.name,
-                amount=amount,
-                amount_paid=0,
-                balance=float(amount),
-                payment_plan=normalized_plan,
-                status='active',
-            )
-            StudentProgramEnrolled.objects.create(
-                student=student,
-                program=program,
-                program_name=program.name,
-                enrollment_date=enrollment.enrollment_date,
-                status='active',
-            )
-            ProgramProgress.objects.create(
-                student=student,
-                program=program,
-                program_name=program.name,
-                enrollment_date=enrollment.enrollment_date,
-                lessons_total=0,
-            )
-
-        # Send email — invite to create password for new accounts, confirmation for existing
-        try:
-            admissions_url = getattr(settings, 'ADMISSIONS_PORTAL_URL', 'https://admissions.nexaacademy.co.ke')
-            if is_new_account:
-                token = PasswordResetTokenGenerator().make_token(student)
-                qs = urlencode({'uid': str(student.uid), 'token': token, 'name': student.display_name})
-                setup_url = f"{admissions_url}/accept-invite?{qs}"
-                send_html_email(
-                    subject=f"You've been enrolled in {program.name} — Nexa Academy",
-                    template_name='enrolled_account_setup.html',
-                    context={
-                        'display_name': student.display_name,
-                        'program_name': program.name,
-                        'payment_plan': normalized_plan,
-                        'total_fee': f"{float(amount):,.0f}",
-                        'setup_url': setup_url,
-                    },
-                    recipient_email=student.email,
+            if existing_app is None:
+                application = Application.objects.create(
+                    user=student,
+                    full_name=student.display_name,
+                    email=student.email,
+                    phone=phone or getattr(student, 'phone', '') or '',
+                    program=program.slug,
+                    program_name=program.name,
+                    payment_plan=normalized_plan,
+                    start_date=start_date,
+                    status='interview_completed',
+                    status_updated_at=timezone.now(),
+                    source='admin_manual',
+                )
+                ApplicationLog.objects.create(
+                    application=application,
+                    previous_status='',
+                    new_status='interview_completed',
+                    changed_by=str(request.user.uid),
+                    notes='Manually added by admin via enrollment form',
+                    applicant_email=student.email,
+                    applicant_name=student.display_name,
                 )
             else:
-                send_html_email(
-                    subject=f"Enrollment Confirmed — {program.name}",
-                    template_name='enrolled.html',
-                    context={
-                        'full_name': student.display_name,
-                        'program_name': program.name,
-                        'admissions_url': admissions_url,
-                        'frontend_url': getattr(settings, 'FRONTEND_URL', ''),
-                    },
-                    recipient_email=student.email,
-                )
-        except Exception:
-            logger.exception('Failed to send enrollment email to %s', student.email)
+                application = existing_app
 
-        return Response(EnrollmentSerializer(enrollment).data, status=status.HTTP_201_CREATED)
+        # 3. Initialise Paystack deposit transaction
+        # Admin can pay any amount; KSh 10,000+ is the threshold that triggers auto-enrollment.
+        raw_deposit = request.data.get('deposit_amount', 10000)
+        try:
+            DEPOSIT_AMOUNT = Decimal(str(raw_deposit))
+            if DEPOSIT_AMOUNT <= 0:
+                raise ValueError
+        except (ValueError, Exception):
+            return Response({'error': 'deposit_amount must be a positive number'}, status=status.HTTP_400_BAD_REQUEST)
+        reference = f"NEXA-{_uuid.uuid4().hex[:10].upper()}"
+        admissions_base = getattr(settings, 'ADMISSIONS_PORTAL_URL', settings.FRONTEND_URL).rstrip('/')
+
+        payment_init_data: dict = {}
+        try:
+            paystack = PaystackProvider()
+            ps_response = paystack.initialize_transaction(
+                email=student.email,
+                amount=DEPOSIT_AMOUNT,
+                reference=reference,
+                callback_url=f"{admissions_base}/admin/enrolled",
+                metadata={
+                    'admin_initiated': True,
+                    'admin_uid': str(request.user.uid),
+                    'program_id': str(program_id),
+                    'payment_type': 'deposit',
+                },
+            )
+            if ps_response.get('status'):
+                ps_data = ps_response.get('data') or {}
+                payment_record = Payment.objects.create(
+                    student=student,
+                    student_name=student.display_name,
+                    student_email=student.email,
+                    amount=DEPOSIT_AMOUNT,
+                    payment_method='Card',
+                    payment_reference=reference,
+                    status='pending',
+                    description=f'Deposit for {program.name}',
+                    program=program,
+                    program_name=program.name,
+                )
+                payment_init_data = {
+                    'payment_id': str(payment_record.payment_id),
+                    'reference': reference,
+                    'access_code': ps_data.get('access_code', ''),
+                    'authorization_url': ps_data.get('authorization_url', ''),
+                    'public_key': getattr(settings, 'PAYSTACK_PUBLIC_KEY', ''),
+                    'student_email': student.email,
+                    'amount': str(DEPOSIT_AMOUNT),
+                }
+            else:
+                logger.warning('Paystack init failed during manual_enroll for %s: %s', student.email, ps_response)
+        except Exception:
+            logger.exception('Paystack init exception during manual_enroll for %s', student.email)
+
+        # 4. Send password-setup email (always, both new and existing accounts)
+        try:
+            admissions_url = getattr(settings, 'ADMISSIONS_PORTAL_URL', 'https://admissions.nexaacademy.co.ke')
+            token = PasswordResetTokenGenerator().make_token(student)
+            qs = urlencode({'uid': str(student.uid), 'token': token, 'name': student.display_name})
+            setup_url = f"{admissions_url}/accept-invite?{qs}"
+            send_html_email(
+                subject=f"You've been added to {program.name} — Nexa Academy",
+                template_name='enrolled_account_setup.html',
+                context={
+                    'display_name': student.display_name,
+                    'program_name': program.name,
+                    'payment_plan': normalized_plan,
+                    'total_fee': f"{float(program.price):,.0f}",
+                    'setup_url': setup_url,
+                },
+                recipient_email=student.email,
+            )
+        except Exception:
+            logger.exception('Failed to send setup email to %s', student.email)
+
+        return Response({
+            'student_uid': str(student.uid),
+            'student_email': student.email,
+            'application_id': str(application.id),
+            'is_new_account': is_new_account,
+            **payment_init_data,
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def enroll(self, request):

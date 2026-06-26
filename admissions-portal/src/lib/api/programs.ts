@@ -100,21 +100,40 @@ export async function updateEnrollment(
   return req<Enrollment>(`/enrollments/${id}/`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
+export interface ManualEnrollResult {
+  student_uid: string;
+  student_email: string;
+  application_id: string;
+  is_new_account: boolean;
+  payment_id?: string;
+  reference?: string;
+  access_code?: string;
+  authorization_url?: string;
+  public_key?: string;
+  amount?: string;
+}
+
 export async function manualEnroll(data: {
   studentId?: string;
   studentName?: string;
   studentEmail?: string;
+  phone?: string;
+  startDate?: string;
   programId: string;
   paymentPlan?: string;
-}): Promise<unknown> {
-  return req("/enrollments/manual_enroll/", {
+  depositAmount?: number;
+}): Promise<ManualEnrollResult> {
+  return req<ManualEnrollResult>("/enrollments/manual_enroll/", {
     method: "POST",
     body: JSON.stringify({
       student_id: data.studentId || undefined,
       student_name: data.studentName,
       student_email: data.studentEmail,
+      phone: data.phone || undefined,
+      start_date: data.startDate || undefined,
       program_id: data.programId,
       payment_plan: data.paymentPlan || undefined,
+      deposit_amount: data.depositAmount ?? 10000,
     }),
   });
 }
