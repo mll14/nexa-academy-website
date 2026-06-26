@@ -61,6 +61,15 @@ function IntakeNotifyPanel({ intake, programSlug, onClose }: {
   )
 }
 
+const MODE_OPTIONS = [
+  { value: 'full_time_hybrid', label: 'Full-time Hybrid' },
+  { value: 'full_time_remote', label: 'Full-time Remote' },
+  { value: 'part_time_hybrid', label: 'Part-time Hybrid' },
+  { value: 'part_time_remote', label: 'Part-time Remote' },
+] as const
+
+type IntakeMode = typeof MODE_OPTIONS[number]['value']
+
 interface IntakeForm {
   program: string
   start_date: string
@@ -68,10 +77,11 @@ interface IntakeForm {
   application_deadline: string
   max_seats: string
   status: 'open' | 'closed' | 'draft'
+  mode: IntakeMode
   notes: string
 }
 
-const EMPTY: IntakeForm = { program: '', start_date: '', end_date: '', application_deadline: '', max_seats: '', status: 'open', notes: '' }
+const EMPTY: IntakeForm = { program: '', start_date: '', end_date: '', application_deadline: '', max_seats: '', status: 'open', mode: 'full_time_hybrid', notes: '' }
 
 export function Intakes() {
   const qc = useQueryClient()
@@ -120,12 +130,13 @@ export function Intakes() {
     application_deadline: f.application_deadline || undefined,
     max_seats: f.max_seats ? parseInt(f.max_seats) : undefined,
     status: f.status,
+    mode: f.mode,
     notes: f.notes || undefined,
   })
 
   const openEdit = (intake: Intake) => {
     setEditing(intake)
-    setForm({ program: intake.program, start_date: intake.start_date, end_date: intake.end_date ?? '', application_deadline: intake.application_deadline ?? '', max_seats: intake.max_seats != null ? String(intake.max_seats) : '', status: intake.status, notes: intake.notes ?? '' })
+    setForm({ program: intake.program, start_date: intake.start_date, end_date: intake.end_date ?? '', application_deadline: intake.application_deadline ?? '', max_seats: intake.max_seats != null ? String(intake.max_seats) : '', status: intake.status, mode: (intake.mode as IntakeMode) ?? 'full_time_hybrid', notes: intake.notes ?? '' })
   }
 
   const statusClass = (s: string) =>
@@ -160,6 +171,14 @@ export function Intakes() {
         <div className="space-y-1.5">
           <Label>Max Seats</Label>
           <Input type="number" value={form.max_seats} onChange={set('max_seats')} placeholder="Leave blank for unlimited" min="1" />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Mode *</Label>
+          <Select
+            value={form.mode}
+            onChange={(v) => setForm((p) => ({ ...p, mode: v as IntakeMode }))}
+            options={MODE_OPTIONS.map((m) => ({ value: m.value, label: m.label }))}
+          />
         </div>
         <div className="space-y-1.5">
           <Label>Status</Label>
@@ -237,6 +256,7 @@ export function Intakes() {
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">
                           Starts {formatDate(intake.start_date)}
+                          {intake.mode ? ` · ${MODE_OPTIONS.find((m) => m.value === intake.mode)?.label ?? intake.mode}` : ''}
                           {intake.application_deadline ? ` · Deadline ${formatDate(intake.application_deadline)}` : ''}
                           {intake.seats_remaining != null ? ` · ${intake.seats_remaining} seats left` : intake.max_seats ? ` · ${intake.max_seats} seats` : ''}
                         </p>

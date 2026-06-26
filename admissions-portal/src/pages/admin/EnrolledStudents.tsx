@@ -124,11 +124,10 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
           const popup = new PaystackPop()
           popup.newTransaction({
             key: res.public_key,
-            email: res.student_email,
-            amount: depositNum * 100,
-            currency: 'KES',
-            ref: res.reference,
-            access_code: res.access_code,
+            ...(res.access_code
+              ? { access_code: res.access_code }
+              : { email: res.student_email, amount: depositNum * 100, currency: 'KES', ref: res.reference }
+            ),
             onSuccess: async (tx: { reference: string }) => {
               toast.loading('Verifying payment…')
               try {
@@ -157,7 +156,7 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
           handleClose()
         }
       } else {
-        toast.success(`${name.trim()} added to Applications at Interview Completed`)
+        toast.success(`${name.trim()} enrolled — payment balance pending`)
         onSuccess()
         handleClose()
       }
@@ -329,7 +328,6 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
         </div>
       </div>
       )}
-      </div>
     </Dialog>
   )
 }
