@@ -92,37 +92,86 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
   programs: Program[]
   onSuccess: () => void
 }) {
-  const [name, setName]           = useState('')
-  const [email, setEmail]         = useState('')
-  const [programId, setProgramId] = useState('')
-  const [paymentPlan, setPaymentPlan] = useState('')
+  const [name, setName]                   = useState('')
+  const [email, setEmail]                 = useState('')
+  const [phone, setPhone]                 = useState('')
+  const [startDate, setStartDate]         = useState('')
+  const [programId, setProgramId]         = useState('')
+  const [paymentPlan, setPaymentPlan]     = useState('')
+  const [depositAmount, setDepositAmount] = useState('10000')
 
   const selectedProgram = programs.find((p) => p.program_id === programId) ?? null
-  const canSubmit = !!(name.trim() && email.trim() && programId)
+  const depositNum = Number(depositAmount)
+  const canSubmit = !!(name.trim() && email.trim() && phone.trim() && programId && depositNum > 0)
 
   const mutation = useMutation({
     mutationFn: () => api.manualEnroll({
-      studentName:  name.trim(),
-      studentEmail: email.trim(),
+      studentName:   name.trim(),
+      studentEmail:  email.trim(),
+      phone:         phone.trim(),
+      startDate:     startDate || undefined,
       programId,
-      paymentPlan:  paymentPlan || undefined,
+      paymentPlan:   paymentPlan || undefined,
+      depositAmount: depositNum,
     }),
-    onSuccess: () => {
-      toast.success(`${name.trim()} enrolled successfully`)
-      onSuccess()
-      handleClose()
+    onSuccess: async (res) => {
+      // Always send the password-setup email (done server-side).
+      // Try to open Paystack inline for the KSh 10,000 deposit.
+      if (res.reference && res.public_key) {
+        try {
+          const { default: PaystackPop } = await import('@paystack/inline-js')
+          const popup = new PaystackPop()
+          popup.newTransaction({
+            key: res.public_key,
+            email: res.student_email,
+            amount: depositNum * 100, // kobo
+            currency: 'KES',
+            ref: res.reference,
+            access_code: res.access_code,
+            onSuccess: async (tx: { reference: string }) => {
+              toast.loading('Verifying payment…')
+              try {
+                await api.verifyPayment(tx.reference)
+                toast.dismiss()
+                toast.success(`${name.trim()} enrolled — deposit received`)
+                onSuccess()
+                handleClose()
+              } catch {
+                toast.dismiss()
+                toast.error('Payment received but verification failed — check Transactions')
+                onSuccess()
+                handleClose()
+              }
+            },
+            onCancel: () => {
+              toast(`${name.trim()} added to Applications at Interview Completed — they can pay the deposit from their dashboard`)
+              onSuccess()
+              handleClose()
+            },
+          })
+        } catch {
+          if (res.authorization_url) window.open(res.authorization_url, '_blank')
+          toast(`${name.trim()} added to Applications at Interview Completed stage`)
+          onSuccess()
+          handleClose()
+        }
+      } else {
+        toast(`${name.trim()} added to Applications at Interview Completed stage`)
+        onSuccess()
+        handleClose()
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   })
 
   const handleClose = () => {
-    setName(''); setEmail(''); setProgramId(''); setPaymentPlan('')
+    setName(''); setEmail(''); setPhone(''); setStartDate(''); setProgramId(''); setPaymentPlan(''); setDepositAmount('10000')
     onClose()
   }
 
   return (
-    <Dialog open={open} onClose={handleClose} title="Enroll a Student"
-      description="Enter the student's details. A student account will be created if one doesn't exist yet."
+    <Dialog open={open} onClose={handleClose} title="Add a Student"
+      description="Enter the student's details. A Paystack deposit prompt will open — skip it to add them to the applications pipeline instead."
       className="max-w-lg"
     >
       <div className="space-y-5">
@@ -151,6 +200,17 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
         </div>
 
         <div className="space-y-1.5">
+          <Label htmlFor="enroll-phone">Phone Number *</Label>
+          <Input
+            id="enroll-phone"
+            type="tel"
+            placeholder="e.g. 0712 345 678"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-1.5">
           <Label>Program *</Label>
           <Select value={programId} onChange={setProgramId} placeholder="Select a program…"
             options={programs.map((p) => ({ value: p.program_id, label: p.name }))}
@@ -170,14 +230,41 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
         </div>
 
         <div className="space-y-1.5">
+          <Label htmlFor="enroll-intake">Intake Date</Label>
+          <Input
+            id="enroll-intake"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">Optional — the cohort start date for this student.</p>
+        </div>
+
+        <div className="space-y-1.5">
           <Label>Installment Plan</Label>
           <Select value={paymentPlan} onChange={setPaymentPlan} options={PAYMENT_PLAN_OPTIONS} />
           <p className="text-xs text-muted-foreground">Optional — the student can request a change later from their dashboard.</p>
         </div>
 
-        <div className="bg-muted/40 border border-border rounded-xl px-4 py-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="enroll-deposit">Deposit Amount (KSh) *</Label>
+          <Input
+            id="enroll-deposit"
+            type="number"
+            min={1}
+            placeholder="e.g. 10000"
+            value={depositAmount}
+            onChange={(e) => setDepositAmount(e.target.value)}
+          />
           <p className="text-xs text-muted-foreground">
-            New students will receive an email to create their password and access their dashboard. Payment is made separately via Paystack or recorded by an admin.
+            Any amount is accepted. KSh 10,000+ triggers automatic enrollment after payment.
+          </p>
+        </div>
+
+        <div className="bg-muted/40 border border-border rounded-xl px-4 py-3 space-y-1">
+          <p className="text-xs font-medium text-foreground">What happens next</p>
+          <p className="text-xs text-muted-foreground">
+            A Paystack deposit prompt will open for the amount above. If paid and the total reaches KSh 10,000, the student is fully enrolled. If skipped, they appear in Applications at <span className="font-medium text-foreground">Interview Completed</span> and can pay from their dashboard. Either way, they receive a password-setup email.
           </p>
         </div>
 
@@ -186,7 +273,7 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
         <div className="flex gap-3">
           <Button className="flex-1" disabled={!canSubmit || mutation.isPending} onClick={() => mutation.mutate()}>
             <UserPlus className="w-4 h-4 mr-2" />
-            {mutation.isPending ? 'Enrolling…' : 'Enroll Student'}
+            {mutation.isPending ? 'Setting up…' : 'Continue to Payment'}
           </Button>
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
         </div>
@@ -440,7 +527,10 @@ export function EnrolledStudents() {
         open={showEnroll}
         onClose={() => setShowEnroll(false)}
         programs={programs as Program[]}
-        onSuccess={() => qc.invalidateQueries({ queryKey: ['admin', 'enrollments'] })}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ['admin', 'enrollments'] })
+          qc.invalidateQueries({ queryKey: ['admin', 'applications'] })
+        }}
       />
     </AdminLayout>
   )

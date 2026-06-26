@@ -155,7 +155,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isFullAdmin: () => user?.role === 'admin' && !user?.staffRole,
     hasPermission: (codename: string) => {
       if (!user || user.role !== 'admin') return false
-      // If no effectivePermissions list (legacy session or super admin), allow all
+      // staffRole === null/undefined means super admin — unrestricted access
+      if (!user.staffRole) return true
+      // Fallback for legacy sessions that pre-date the permissions system
       if (!user.effectivePermissions) return true
       return user.effectivePermissions.includes(codename)
     },

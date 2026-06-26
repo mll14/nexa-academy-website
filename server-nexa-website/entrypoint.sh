@@ -4,6 +4,9 @@ set -e
 echo "==> Running migrations..."
 python manage.py migrate --noinput
 
+echo "==> Seeding default roles and permissions..."
+python manage.py seed_permissions || echo "Warning: seed_permissions failed (non-fatal)"
+
 echo "==> Syncing content from Sanity..."
 python manage.py sync_content_from_sanity || echo "Warning: Sanity sync failed (non-fatal)"
 
