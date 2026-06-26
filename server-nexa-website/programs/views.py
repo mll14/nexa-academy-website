@@ -238,15 +238,45 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             else:
                 application = existing_app
 
-        # 3. Initialise Paystack deposit transaction
-        # Admin can pay any amount; KSh 10,000+ is the threshold that triggers auto-enrollment.
-        raw_deposit = request.data.get('deposit_amount', 10000)
-        try:
-            DEPOSIT_AMOUNT = Decimal(str(raw_deposit))
-            if DEPOSIT_AMOUNT <= 0:
-                raise ValueError
-        except (ValueError, Exception):
-            return Response({'error': 'deposit_amount must be a positive number'}, status=status.HTTP_400_BAD_REQUEST)
+        # 3. Optionally initialise Paystack deposit transaction
+        # deposit_amount is optional — if omitted the student stays at interview_completed
+        # and can pay from their own dashboard.
+        raw_deposit = request.data.get('deposit_amount')
+        skip_payment = raw_deposit is None or str(raw_deposit).strip() == '' or str(raw_deposit).strip() == '0'
+        if not skip_payment:
+            try:
+                DEPOSIT_AMOUNT = Decimal(str(raw_deposit))
+                if DEPOSIT_AMOUNT <= 0:
+                    raise ValueError
+            except (ValueError, Exception):
+                return Response({'error': 'deposit_amount must be a positive number'}, status=status.HTTP_400_BAD_REQUEST)
+        if skip_payment:
+            # No payment requested — send email then return early
+            try:
+                admissions_url = getattr(settings, 'ADMISSIONS_PORTAL_URL', 'https://admissions.nexaacademy.co.ke')
+                token = PasswordResetTokenGenerator().make_token(student)
+                qs = urlencode({'uid': str(student.uid), 'token': token, 'name': student.display_name})
+                setup_url = f"{admissions_url}/accept-invite?{qs}"
+                send_html_email(
+                    subject=f"You've been added to {program.name} — Nexa Academy",
+                    template_name='enrolled_account_setup.html',
+                    context={
+                        'display_name': student.display_name,
+                        'program_name': program.name,
+                        'payment_plan': normalized_plan,
+                        'total_fee': f"{float(program.price):,.0f}",
+                        'setup_url': setup_url,
+                    },
+                    recipient_email=student.email,
+                )
+            except Exception:
+                logger.exception('Failed to send setup email to %s', student.email)
+            return Response({
+                'student_uid': str(student.uid),
+                'student_email': student.email,
+                'application_id': str(application.id),
+                'is_new_account': is_new_account,
+            }, status=status.HTTP_201_CREATED)
         reference = f"NEXA-{_uuid.uuid4().hex[:10].upper()}"
         admissions_base = getattr(settings, 'ADMISSIONS_PORTAL_URL', settings.FRONTEND_URL).rstrip('/')
 

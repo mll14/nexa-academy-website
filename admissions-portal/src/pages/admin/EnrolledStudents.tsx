@@ -92,17 +92,20 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
   programs: Program[]
   onSuccess: () => void
 }) {
+  const [step, setStep]                   = useState<'details' | 'payment'>('details')
   const [name, setName]                   = useState('')
   const [email, setEmail]                 = useState('')
   const [phone, setPhone]                 = useState('')
   const [startDate, setStartDate]         = useState('')
   const [programId, setProgramId]         = useState('')
   const [paymentPlan, setPaymentPlan]     = useState('')
+  const [collectPayment, setCollectPayment] = useState<boolean | null>(null)
   const [depositAmount, setDepositAmount] = useState('10000')
 
   const selectedProgram = programs.find((p) => p.program_id === programId) ?? null
+  const canGoNext = !!(name.trim() && email.trim() && phone.trim() && programId)
   const depositNum = Number(depositAmount)
-  const canSubmit = !!(name.trim() && email.trim() && phone.trim() && programId && depositNum > 0)
+  const canSubmit = collectPayment === false || (collectPayment === true && depositNum > 0)
 
   const mutation = useMutation({
     mutationFn: () => api.manualEnroll({
@@ -112,19 +115,17 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
       startDate:     startDate || undefined,
       programId,
       paymentPlan:   paymentPlan || undefined,
-      depositAmount: depositNum,
+      depositAmount: collectPayment ? depositNum : undefined,
     }),
     onSuccess: async (res) => {
-      // Always send the password-setup email (done server-side).
-      // Try to open Paystack inline for the KSh 10,000 deposit.
-      if (res.reference && res.public_key) {
+      if (collectPayment && res.reference && res.public_key) {
         try {
           const { default: PaystackPop } = await import('@paystack/inline-js')
           const popup = new PaystackPop()
           popup.newTransaction({
             key: res.public_key,
             email: res.student_email,
-            amount: depositNum * 100, // kobo
+            amount: depositNum * 100,
             currency: 'KES',
             ref: res.reference,
             access_code: res.access_code,
@@ -144,19 +145,19 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
               }
             },
             onCancel: () => {
-              toast(`${name.trim()} added to Applications at Interview Completed — they can pay the deposit from their dashboard`)
+              toast(`${name.trim()} added — they can pay from their dashboard`)
               onSuccess()
               handleClose()
             },
           })
         } catch {
           if (res.authorization_url) window.open(res.authorization_url, '_blank')
-          toast(`${name.trim()} added to Applications at Interview Completed stage`)
+          toast(`${name.trim()} added to Applications at Interview Completed`)
           onSuccess()
           handleClose()
         }
       } else {
-        toast(`${name.trim()} added to Applications at Interview Completed stage`)
+        toast.success(`${name.trim()} added to Applications at Interview Completed`)
         onSuccess()
         handleClose()
       }
@@ -165,15 +166,19 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
   })
 
   const handleClose = () => {
-    setName(''); setEmail(''); setPhone(''); setStartDate(''); setProgramId(''); setPaymentPlan(''); setDepositAmount('10000')
+    setStep('details')
+    setName(''); setEmail(''); setPhone(''); setStartDate('')
+    setProgramId(''); setPaymentPlan('')
+    setCollectPayment(null); setDepositAmount('10000')
     onClose()
   }
 
   return (
     <Dialog open={open} onClose={handleClose} title="Add a Student"
-      description="Enter the student's details. A Paystack deposit prompt will open — skip it to add them to the applications pipeline instead."
+      description={step === 'details' ? 'Enter the student\'s details.' : 'Choose whether to collect a payment now.'}
       className="max-w-lg"
     >
+      {step === 'details' ? (
       <div className="space-y-5">
 
         <div className="space-y-1.5">
@@ -243,40 +248,87 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
         <div className="space-y-1.5">
           <Label>Installment Plan</Label>
           <Select value={paymentPlan} onChange={setPaymentPlan} options={PAYMENT_PLAN_OPTIONS} />
-          <p className="text-xs text-muted-foreground">Optional — the student can request a change later from their dashboard.</p>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="enroll-deposit">Deposit Amount (KSh) *</Label>
-          <Input
-            id="enroll-deposit"
-            type="number"
-            min={1}
-            placeholder="e.g. 10000"
-            value={depositAmount}
-            onChange={(e) => setDepositAmount(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">
-            Any amount is accepted. KSh 10,000+ triggers automatic enrollment after payment.
-          </p>
-        </div>
-
-        <div className="bg-muted/40 border border-border rounded-xl px-4 py-3 space-y-1">
-          <p className="text-xs font-medium text-foreground">What happens next</p>
-          <p className="text-xs text-muted-foreground">
-            A Paystack deposit prompt will open for the amount above. If paid and the total reaches KSh 10,000, the student is fully enrolled. If skipped, they appear in Applications at <span className="font-medium text-foreground">Interview Completed</span> and can pay from their dashboard. Either way, they receive a password-setup email.
-          </p>
+          <p className="text-xs text-muted-foreground">Optional — the student can change this later from their dashboard.</p>
         </div>
 
         <Separator />
 
         <div className="flex gap-3">
-          <Button className="flex-1" disabled={!canSubmit || mutation.isPending} onClick={() => mutation.mutate()}>
-            <UserPlus className="w-4 h-4 mr-2" />
-            {mutation.isPending ? 'Setting up…' : 'Continue to Payment'}
+          <Button className="flex-1" disabled={!canGoNext} onClick={() => setStep('payment')}>
+            Next
           </Button>
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
         </div>
+      </div>
+      ) : (
+      <div className="space-y-5">
+
+        <p className="text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{name.trim()}</span> will be added at <span className="font-medium text-foreground">Interview Completed</span>. Would you like to collect a payment now?
+        </p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => setCollectPayment(true)}
+            className={`rounded-xl border px-4 py-3 text-sm font-medium text-left transition-colors ${
+              collectPayment === true
+                ? 'border-primary bg-primary/5 text-primary'
+                : 'border-border hover:border-primary/40 hover:bg-muted'
+            }`}
+          >
+            <div className="font-semibold mb-0.5">Yes, collect payment</div>
+            <div className="text-xs text-muted-foreground font-normal">Open Paystack for a deposit now</div>
+          </button>
+          <button
+            onClick={() => setCollectPayment(false)}
+            className={`rounded-xl border px-4 py-3 text-sm font-medium text-left transition-colors ${
+              collectPayment === false
+                ? 'border-primary bg-primary/5 text-primary'
+                : 'border-border hover:border-primary/40 hover:bg-muted'
+            }`}
+          >
+            <div className="font-semibold mb-0.5">No, skip for now</div>
+            <div className="text-xs text-muted-foreground font-normal">Student pays from their dashboard</div>
+          </button>
+        </div>
+
+        {collectPayment === true && (
+          <div className="space-y-1.5">
+            <Label htmlFor="enroll-deposit">Deposit Amount (KSh)</Label>
+            <Input
+              id="enroll-deposit"
+              type="number"
+              min={1}
+              placeholder="e.g. 10000"
+              value={depositAmount}
+              onChange={(e) => setDepositAmount(e.target.value)}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              KSh 10,000+ triggers automatic enrollment after payment.
+            </p>
+          </div>
+        )}
+
+        <Separator />
+
+        <div className="flex gap-3">
+          <Button
+            className="flex-1"
+            disabled={!canSubmit || mutation.isPending}
+            onClick={() => mutation.mutate()}
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            {mutation.isPending
+              ? 'Setting up…'
+              : collectPayment
+              ? 'Add Student & Collect Payment'
+              : 'Add Student'}
+          </Button>
+          <Button variant="outline" onClick={() => setStep('details')}>Back</Button>
+        </div>
+      </div>
+      )}
       </div>
     </Dialog>
   )
