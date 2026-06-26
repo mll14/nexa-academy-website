@@ -26,7 +26,18 @@ import { useAuth } from '../context/AuthContext'
 import { getNotifications } from '../lib/api'
 import { cn } from '../lib/utils'
 
-const PRIMARY_NAV = [
+type NavItem = {
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+  exact?: boolean
+  permission?: string
+  anyPermissions?: string[]
+} & (
+  | { to: string; href?: never }
+  | { href: string; to?: never }
+)
+
+const PRIMARY_NAV: NavItem[] = [
   { to: '/admin',              label: 'Dashboard',         icon: LayoutDashboard, exact: true },
   { to: '/admin/applications', label: 'Applications',      icon: Users,           permission: 'applications.view' },
   { to: '/admin/interviews',   label: 'Interviews',        icon: Calendar,        permission: 'interviews.view' },
@@ -34,7 +45,7 @@ const PRIMARY_NAV = [
   { to: '/admin/enrolled',     label: 'Enrolled Students', icon: GraduationCap,   permission: 'students.view' },
 ]
 
-const MORE_NAV = [
+const MORE_NAV: NavItem[] = [
   { to: '/admin/programs',   label: 'Programs & Intakes', icon: BookOpen,      permission: 'programs.view' },
   { to: '/admin/payments',   label: 'Payments',           icon: CreditCard,    permission: 'transactions.view' },
   { to: '/admin/leads',      label: 'Leads',              icon: Flame,         permission: 'leads.view' },
@@ -43,16 +54,6 @@ const MORE_NAV = [
   { to: '/admin/users',      label: 'Staff Access',       icon: UserCog,       anyPermissions: ['users.view', 'roles.view', 'roles.manage'] },
   { href: 'https://nexaacademy.sanity.studio/', label: 'Sanity Studio', icon: ExternalLink },
 ]
-
-interface NavItem {
-  to?: string
-  href?: string
-  label: string
-  icon: React.ComponentType<{ className?: string }>
-  exact?: boolean
-  permission?: string
-  anyPermissions?: string[]
-}
 
 function MoreSection({
   items,
@@ -234,27 +235,48 @@ export function AdminLayout({ children }: Props) {
           )}
           {/* Primary items */}
           <div className="space-y-1">
-            {visiblePrimary.map(({ to, label, icon: Icon, exact }) => (
-              <Link
-                key={to}
-                to={to}
-                onClick={() => setSidebarOpen(false)}
-                title={sidebarCollapsed ? label : undefined}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
-                  sidebarCollapsed && 'lg:justify-center lg:px-0 lg:py-2.5',
-                  isActive(to, exact)
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span className={cn(sidebarCollapsed && 'lg:hidden')}>{label}</span>
-                {isActive(to, exact) && !sidebarCollapsed && (
-                  <ChevronRight className="w-3.5 h-3.5 ml-auto opacity-60" />
-                )}
-              </Link>
-            ))}
+            {visiblePrimary.map(({ to, href, label, icon: Icon, exact }) => {
+              const active = to ? isActive(to, exact) : false
+              const className = cn(
+                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors',
+                sidebarCollapsed && 'lg:justify-center lg:px-0 lg:py-2.5',
+                active
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+              )
+              const content = (
+                <>
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className={cn(sidebarCollapsed && 'lg:hidden')}>{label}</span>
+                  {active && !sidebarCollapsed && (
+                    <ChevronRight className="w-3.5 h-3.5 ml-auto opacity-60" />
+                  )}
+                </>
+              )
+
+              return href ? (
+                <a
+                  key={href}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={sidebarCollapsed ? label : undefined}
+                  className={className}
+                >
+                  {content}
+                </a>
+              ) : (
+                <Link
+                  key={to}
+                  to={to}
+                  onClick={() => setSidebarOpen(false)}
+                  title={sidebarCollapsed ? label : undefined}
+                  className={className}
+                >
+                  {content}
+                </Link>
+              )
+            })}
           </div>
 
           {/* More section */}
