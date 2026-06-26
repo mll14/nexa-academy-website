@@ -27,7 +27,7 @@ def backfill_enrollment_payment_plan(apps, schema_editor):
                 program_name__iexact=enrollment.program_name,
             )
             .exclude(payment_plan='')
-            .order_by('-created_at')
+            .order_by('-applied_at')
             .first()
         )
 
