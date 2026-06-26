@@ -183,7 +183,7 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
           handleClose()
         }
       } else {
-        toast.success(`${name.trim()} enrolled — payment balance pending`)
+        toast.success(`${name.trim()} enrolled — deposit can be collected from their profile`)
         onSuccess()
         handleClose()
       }
@@ -314,7 +314,7 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
       <div className="space-y-5">
 
         <p className="text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{name.trim()}</span> will be added at <span className="font-medium text-foreground">Interview Completed</span>. Would you like to collect a payment now?
+          <span className="font-medium text-foreground">{name.trim()}</span> will be <span className="font-medium text-foreground">enrolled immediately</span>. Would you like to collect a deposit payment now?
         </p>
 
         <div className="grid grid-cols-2 gap-3">

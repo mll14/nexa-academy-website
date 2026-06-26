@@ -318,8 +318,25 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             if enrollment_update_fields:
                 enrollment.save(update_fields=list(dict.fromkeys(enrollment_update_fields)))
 
+            # Mark application as enrolled — the admin is making an explicit
+            # enrollment decision regardless of whether a deposit is paid now.
+            if application.status != 'enrolled':
+                prev_status = application.status
+                application.status = 'enrolled'
+                application.status_updated_at = timezone.now()
+                application.save(update_fields=['status', 'status_updated_at'])
+                ApplicationLog.objects.create(
+                    application=application,
+                    previous_status=prev_status,
+                    new_status='enrolled',
+                    changed_by=str(request.user.uid),
+                    notes='Enrolled by admin via manual enrollment form',
+                    applicant_email=student.email,
+                    applicant_name=student.display_name,
+                )
+
         # 3. Optionally initialise Paystack deposit transaction
-        # deposit_amount is optional — if omitted the student stays at interview_completed
+        # deposit_amount is optional — if omitted the student is still enrolled
         # and can pay from their own dashboard.
         raw_deposit = request.data.get('deposit_amount')
         skip_payment = raw_deposit is None or str(raw_deposit).strip() == '' or str(raw_deposit).strip() == '0'
