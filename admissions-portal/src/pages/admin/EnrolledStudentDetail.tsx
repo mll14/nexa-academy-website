@@ -583,23 +583,25 @@ export function EnrolledStudentDetail() {
           <div className="lg:col-span-2 space-y-5">
 
             {/* Tab bar */}
-            <div className="flex border-b border-border overflow-x-auto">
-              {([
-                { id: 'details', label: 'Details',         icon: User },
-                { id: 'finance', label: `Finance`,         icon: CreditCard },
-                { id: 'notes',   label: 'Notes',           icon: MessageSquare },
-                { id: 'email',   label: 'Email',           icon: Mail },
-              ] as { id: 'details' | 'finance' | 'notes' | 'email'; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setLeftTab(id)}
-                  className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
-                    leftTab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />{label}
-                </button>
-              ))}
+            <div className="border-b border-border">
+              <div className="flex overflow-x-auto">
+                {([
+                  { id: 'details', label: 'Details',  icon: User },
+                  { id: 'finance', label: 'Finance',  icon: CreditCard },
+                  { id: 'notes',   label: 'Notes',    icon: MessageSquare },
+                  { id: 'email',   label: 'Email',    icon: Mail },
+                ] as { id: 'details' | 'finance' | 'notes' | 'email'; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setLeftTab(id)}
+                    className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
+                      leftTab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4" />{label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Details tab */}
