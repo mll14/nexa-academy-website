@@ -133,7 +133,7 @@ export async function manualEnroll(data: {
       start_date: data.startDate || undefined,
       program_id: data.programId,
       payment_plan: data.paymentPlan || undefined,
-      deposit_amount: data.depositAmount ?? 10000,
+      deposit_amount: data.depositAmount || undefined,
     }),
   });
 }
