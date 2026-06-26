@@ -328,6 +328,17 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         prog = payment.program or resolve_program(program_id)
                         enrollment = None
                         if prog:
+                            sim_student = payment.student
+                            sim_app_payment_plan = (
+                                Application.objects.filter(
+                                    Q(user=sim_student) | Q(email__iexact=sim_student.email),
+                                    program_name__iexact=prog.name,
+                                )
+                                .exclude(payment_plan='')
+                                .order_by('-created_at')
+                                .values_list('payment_plan', flat=True)
+                                .first() or ''
+                            )
                             enrollment, _ = Enrollment.objects.get_or_create(
                                 student=request.user,
                                 program=prog,
@@ -338,11 +349,14 @@ class PaymentViewSet(viewsets.ModelViewSet):
                                     'amount_paid': Decimal('0.00'),
                                     'balance': prog.price,
                                     'status': 'active',
+                                    'payment_plan': sim_app_payment_plan,
                                 }
                             )
                             if enrollment.amount != prog.price:
                                 enrollment.amount = prog.price
                                 enrollment.program_name = prog.program_name
+                            if not enrollment.payment_plan and sim_app_payment_plan:
+                                enrollment.payment_plan = sim_app_payment_plan
                             enrollment.amount_paid = Decimal(enrollment.amount_paid or 0) + Decimal(str(amount))
                             enrollment.balance = enrollment.amount - enrollment.amount_paid
                             enrollment.save()
@@ -565,6 +579,16 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 payment.save(update_fields=['program', 'program_name'])
 
             if program:
+                app_payment_plan = (
+                    Application.objects.filter(
+                        Q(user=student) | Q(email__iexact=student.email),
+                        program_name__iexact=program.name,
+                    )
+                    .exclude(payment_plan='')
+                    .order_by('-created_at')
+                    .values_list('payment_plan', flat=True)
+                    .first() or ''
+                )
                 enrollment, _ = Enrollment.objects.get_or_create(
                     student=student,
                     program=program,
@@ -575,11 +599,14 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         'amount_paid': Decimal('0.00'),
                         'balance': program.price,
                         'status': 'active',
+                        'payment_plan': app_payment_plan,
                     }
                 )
                 if enrollment.amount != program.price:
                     enrollment.amount = program.price
                     enrollment.program_name = program.name
+                if not enrollment.payment_plan and app_payment_plan:
+                    enrollment.payment_plan = app_payment_plan
                 enrollment.amount_paid = Decimal(enrollment.amount_paid or 0) + amount
                 enrollment.balance = enrollment.amount - enrollment.amount_paid
                 enrollment.save()
