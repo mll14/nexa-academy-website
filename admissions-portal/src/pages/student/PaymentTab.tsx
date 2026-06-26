@@ -208,57 +208,60 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
         paymentType: 'installment',
         email: user?.email,
       })
-      setLoading(false)
 
       if (data.simulated) {
         toast.success('Payment recorded (simulated)')
         onPaymentDone()
+        setLoading(false)
         return
       }
 
       const publicKey = data.public_key ?? await api.getPaystackPublicKey()
-      const reference = data.reference ?? data.data?.reference ?? data.access_code
 
-      if (!publicKey || !reference) {
-        toast.error('Missing Paystack credentials — check VITE_PAYSTACK_PUBLIC_KEY')
+      if (!publicKey) {
+        toast.error('Payment configuration missing — contact admissions')
+        setLoading(false)
         return
       }
 
+      setLoading(false)
+
       const { default: PaystackPop } = await import('@paystack/inline-js')
       const paystack = new PaystackPop()
-      try {
-        paystack.newTransaction({
-          key: publicKey,
-          email: user?.email ?? '',
-          amount: entered * 100,
-          currency: 'KES',
-          ref: reference,
-          access_code: data.access_code,
-          onSuccess: async (transaction: { reference: string }) => {
-            toast.loading('Verifying payment…')
+      paystack.newTransaction({
+        key: publicKey,
+        ...(data.access_code
+          ? { access_code: data.access_code }
+          : {
+              email: user?.email ?? '',
+              amount: entered * 100,
+              currency: 'KES',
+              ref: data.reference ?? data.data?.reference,
+            }
+        ),
+        onSuccess: async (transaction: { reference: string }) => {
+          const toastId = toast.loading('Verifying payment…')
+          try {
             const verify = await api.verifyPayment(transaction.reference)
-            toast.dismiss()
+            toast.dismiss(toastId)
             if (verify.status === 'success' || verify.payment?.status === 'completed') {
-              toast.success('Payment successful! 🎉')
+              toast.success('Payment successful!')
               setAmount('')
               setVerifyError(null)
               onPaymentDone()
             } else {
-              toast.dismiss()
               setVerifyError(transaction.reference)
             }
-          },
-          onCancel: () => toast('Payment cancelled'),
-        })
-      } catch {
-        const authUrl = data.authorization_url ?? data.data?.authorization_url
-        if (authUrl) {
-          window.open(authUrl, '_blank')
-          toast('Opened Paystack checkout in a new tab')
-        } else {
-          toast.error('Failed to open Paystack checkout')
-        }
-      }
+          } catch {
+            toast.dismiss(toastId)
+            setVerifyError(transaction.reference)
+          }
+        },
+        onCancel: () => toast('Payment cancelled'),
+        onError: (error: { message?: string }) => {
+          toast.error(error?.message ?? 'Payment failed. Please try again.')
+        },
+      })
     } catch (e) {
       setLoading(false)
       toast.error(e instanceof Error ? e.message : 'Could not initialize payment')

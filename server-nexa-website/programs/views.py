@@ -250,8 +250,26 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                     raise ValueError
             except (ValueError, Exception):
                 return Response({'error': 'deposit_amount must be a positive number'}, status=status.HTTP_400_BAD_REQUEST)
+        # Save phone to User model if provided and not already set
+        if phone and not getattr(student, 'phone', ''):
+            student.phone = phone
+            student.save(update_fields=['phone'])
+
         if skip_payment:
-            # No payment requested — send email then return early
+            # No payment requested — create enrollment then send email
+            enrollment, _ = Enrollment.objects.get_or_create(
+                student=student,
+                program=program,
+                defaults={
+                    'student_name': student.display_name,
+                    'program_name': program.name,
+                    'amount': program.price,
+                    'amount_paid': Decimal('0.00'),
+                    'balance': program.price,
+                    'status': 'active',
+                    'payment_plan': normalized_plan,
+                }
+            )
             try:
                 admissions_url = getattr(settings, 'ADMISSIONS_PORTAL_URL', 'https://admissions.nexaacademy.co.ke')
                 token = PasswordResetTokenGenerator().make_token(student)
@@ -275,6 +293,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                 'student_uid': str(student.uid),
                 'student_email': student.email,
                 'application_id': str(application.id),
+                'enrollment_id': str(enrollment.enrollment_id),
                 'is_new_account': is_new_account,
             }, status=status.HTTP_201_CREATED)
         reference = f"NEXA-{_uuid.uuid4().hex[:10].upper()}"

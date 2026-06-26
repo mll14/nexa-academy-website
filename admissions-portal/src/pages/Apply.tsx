@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, type ChangeEvent, type FormE
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { isValidPhoneNumber } from 'react-phone-number-input'
 import {
-  User, Mail, Phone, BookOpen, CalendarDays, Wallet,
+  User, Mail, BookOpen, CalendarDays, Wallet,
   ChevronRight, ChevronLeft, Check, CheckCircle2, ClipboardList, PenLine, AlertCircle,
 } from 'lucide-react'
 import { StudentLayout } from '../components/StudentLayout'
@@ -508,20 +508,16 @@ export function Apply() {
                         </Field>
 
                         <Field label="Phone Number" required error={errors.phone}>
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
-                            <PhoneNumberInput
-                              value={form.phone}
-                              onChange={(value) => {
-                                setForm((p) => ({ ...p, phone: value }))
-                                setErrors((p) => ({ ...p, phone: '' }))
-                              }}
-                              defaultCountry="KE"
-                              placeholder="Enter phone number"
-                              className="pl-9"
-                              disabled={loading}
-                            />
-                          </div>
+                          <PhoneNumberInput
+                            value={form.phone}
+                            onChange={(value) => {
+                              setForm((p) => ({ ...p, phone: value }))
+                              setErrors((p) => ({ ...p, phone: '' }))
+                            }}
+                            defaultCountry="KE"
+                            placeholder="Enter phone number"
+                            disabled={loading}
+                          />
                         </Field>
                       </div>
                     </div>
