@@ -335,7 +335,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                                     program_name__iexact=prog.name,
                                 )
                                 .exclude(payment_plan='')
-                                .order_by('-created_at')
+                                .order_by('-applied_at')
                                 .values_list('payment_plan', flat=True)
                                 .first() or ''
                             )
@@ -344,7 +344,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                                 program=prog,
                                 defaults={
                                     'student_name': request.user.display_name,
-                                    'program_name': prog.program_name,
+                                    'program_name': prog.name,
                                     'amount': prog.price,
                                     'amount_paid': Decimal('0.00'),
                                     'balance': prog.price,
@@ -354,7 +354,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                             )
                             if enrollment.amount != prog.price:
                                 enrollment.amount = prog.price
-                                enrollment.program_name = prog.program_name
+                                enrollment.program_name = prog.name
                             if not enrollment.payment_plan and sim_app_payment_plan:
                                 enrollment.payment_plan = sim_app_payment_plan
                             enrollment.amount_paid = Decimal(enrollment.amount_paid or 0) + Decimal(str(amount))
@@ -585,7 +585,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         program_name__iexact=program.name,
                     )
                     .exclude(payment_plan='')
-                    .order_by('-created_at')
+                    .order_by('-applied_at')
                     .values_list('payment_plan', flat=True)
                     .first() or ''
                 )
@@ -772,7 +772,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                     program=prog,
                     defaults={
                         'student_name': student.display_name,
-                        'program_name': prog.program_name,
+                        'program_name': prog.name,
                         'amount': prog.price,
                         'amount_paid': Decimal('0.00'),
                         'balance': prog.price,
@@ -781,7 +781,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 )
                 if enrollment.amount != prog.price:
                     enrollment.amount = prog.price
-                    enrollment.program_name = prog.program_name
+                    enrollment.program_name = prog.name
                 enrollment.amount_paid = Decimal(enrollment.amount_paid or 0) + payment.amount
                 enrollment.balance = enrollment.amount - enrollment.amount_paid
                 enrollment.save()

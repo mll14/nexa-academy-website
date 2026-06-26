@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Q, Sum, Count, Exists, OuterRef
 from django.shortcuts import get_object_or_404
-from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, LeadAdminNote, PaymentPlanChangeRequest
+from .models import Program, Enrollment, StudentProgramEnrolled, ProgramProgress, Certificate, ProgramInterest, ProgramIntake, HelpMeLead, IncompleteApplication, LeadAdminNote, PaymentPlanChangeRequest, LEAD_STATUS_CHOICES
 from .serializers import (
     ProgramSerializer, EnrollmentSerializer, StudentProgramEnrolledSerializer,
     ProgramProgressSerializer, CertificateSerializer, SimpleProgramProgressSerializer,
@@ -51,6 +51,26 @@ def _admin_email_recipients():
 
 def _money(value):
     return f"KSh {Decimal(str(value or 0)):,.2f}"
+
+
+LEAD_STATUS_VALUES = {value for value, _ in LEAD_STATUS_CHOICES}
+
+
+def _set_lead_status(lead, lead_status):
+    if lead_status not in LEAD_STATUS_VALUES:
+        raise ValueError('Invalid lead_status')
+    lead.lead_status = lead_status
+    lead.follow_up_completed = lead_status == 'completed'
+    lead.follow_up_completed_at = timezone.now() if lead.follow_up_completed else None
+
+
+def _filter_lead_status(qs, request):
+    lead_status = request.query_params.get('lead_status')
+    if lead_status:
+        if lead_status not in LEAD_STATUS_VALUES:
+            return qs.none()
+        return qs.filter(lead_status=lead_status)
+    return qs
 
 
 
@@ -220,6 +240,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                     phone=phone or getattr(student, 'phone', '') or '',
                     program=program.slug,
                     program_name=program.name,
+                    estimated_fees=program.price,
                     payment_plan=normalized_plan,
                     start_date=start_date,
                     status='interview_completed',
@@ -237,6 +258,48 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                 )
             else:
                 application = existing_app
+                update_fields = []
+                if application.estimated_fees is None:
+                    application.estimated_fees = program.price
+                    update_fields.append('estimated_fees')
+                if not application.payment_plan and normalized_plan:
+                    application.payment_plan = normalized_plan
+                    update_fields.append('payment_plan')
+                if start_date and not application.start_date:
+                    application.start_date = start_date
+                    update_fields.append('start_date')
+                if update_fields:
+                    application.save(update_fields=update_fields)
+
+            enrollment, _ = Enrollment.objects.get_or_create(
+                student=student,
+                program=program,
+                defaults={
+                    'student_name': student.display_name,
+                    'program_name': program.name,
+                    'amount': program.price,
+                    'amount_paid': Decimal('0.00'),
+                    'balance': program.price,
+                    'status': 'active',
+                    'payment_plan': normalized_plan,
+                }
+            )
+            enrollment_update_fields = []
+            if enrollment.amount != program.price:
+                enrollment.amount = program.price
+                enrollment.balance = Decimal(enrollment.amount or 0) - Decimal(enrollment.amount_paid or 0)
+                enrollment_update_fields.extend(['amount', 'balance'])
+            if enrollment.program_name != program.name:
+                enrollment.program_name = program.name
+                enrollment_update_fields.append('program_name')
+            if normalized_plan and not enrollment.payment_plan:
+                enrollment.payment_plan = normalized_plan
+                enrollment_update_fields.append('payment_plan')
+            if start_date and not enrollment.start_date:
+                enrollment.start_date = start_date
+                enrollment_update_fields.append('start_date')
+            if enrollment_update_fields:
+                enrollment.save(update_fields=list(dict.fromkeys(enrollment_update_fields)))
 
         # 3. Optionally initialise Paystack deposit transaction
         # deposit_amount is optional — if omitted the student stays at interview_completed
@@ -256,20 +319,6 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             student.save(update_fields=['phone'])
 
         if skip_payment:
-            # No payment requested — create enrollment then send email
-            enrollment, _ = Enrollment.objects.get_or_create(
-                student=student,
-                program=program,
-                defaults={
-                    'student_name': student.display_name,
-                    'program_name': program.name,
-                    'amount': program.price,
-                    'amount_paid': Decimal('0.00'),
-                    'balance': program.price,
-                    'status': 'active',
-                    'payment_plan': normalized_plan,
-                }
-            )
             try:
                 admissions_url = getattr(settings, 'ADMISSIONS_PORTAL_URL', 'https://admissions.nexaacademy.co.ke')
                 token = PasswordResetTokenGenerator().make_token(student)
@@ -367,6 +416,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             'student_uid': str(student.uid),
             'student_email': student.email,
             'application_id': str(application.id),
+            'enrollment_id': str(enrollment.enrollment_id),
             'is_new_account': is_new_account,
             **payment_init_data,
         }, status=status.HTTP_201_CREATED)
@@ -994,6 +1044,8 @@ class ProgramInterestListView(APIView):
         if program_slug:
             qs = qs.filter(program_slug=program_slug)
 
+        qs = _filter_lead_status(qs, request)
+
         follow_up_completed = request.query_params.get('follow_up_completed')
         if follow_up_completed is not None:
             qs = qs.filter(follow_up_completed=follow_up_completed.lower() in ('true', '1'))
@@ -1047,14 +1099,17 @@ class ProgramInterestDetailView(APIView):
         interest = get_object_or_404(ProgramInterest, pk=pk)
         action = request.data.get('action')
         if action == 'complete':
-            interest.follow_up_completed = True
-            interest.follow_up_completed_at = timezone.now()
+            _set_lead_status(interest, 'completed')
         elif action == 'revert':
-            interest.follow_up_completed = False
-            interest.follow_up_completed_at = None
+            _set_lead_status(interest, 'new')
+        elif action == 'set_status':
+            try:
+                _set_lead_status(interest, request.data.get('lead_status'))
+            except ValueError:
+                return Response({'error': 'Invalid lead_status'}, status=400)
         else:
-            return Response({'error': 'action must be "complete" or "revert"'}, status=400)
-        interest.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+            return Response({'error': 'action must be "complete", "revert", or "set_status"'}, status=400)
+        interest.save(update_fields=['lead_status', 'follow_up_completed', 'follow_up_completed_at'])
         return Response(ProgramInterestSerializer(interest).data)
 
     def delete(self, request, pk):
@@ -1146,6 +1201,7 @@ class HelpMeLeadView(APIView):
         if not (request.user and request.user.is_authenticated and request.user.role == 'admin'):
             return Response({'error': 'Forbidden'}, status=status.HTTP_403_FORBIDDEN)
         qs = HelpMeLead.objects.all()
+        qs = _filter_lead_status(qs, request)
         follow_up_completed = request.query_params.get('follow_up_completed')
         if follow_up_completed is not None:
             qs = qs.filter(follow_up_completed=follow_up_completed.lower() in ('true', '1'))
@@ -1173,13 +1229,17 @@ class HelpMeLeadDetailView(APIView):
         lead = get_object_or_404(HelpMeLead, pk=pk)
         action = request.data.get('action')
         if action == 'complete':
-            lead.follow_up_completed = True
-            lead.follow_up_completed_at = timezone.now()
-            lead.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+            _set_lead_status(lead, 'completed')
+            lead.save(update_fields=['lead_status', 'follow_up_completed', 'follow_up_completed_at'])
         elif action == 'revert':
-            lead.follow_up_completed = False
-            lead.follow_up_completed_at = None
-            lead.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+            _set_lead_status(lead, 'new')
+            lead.save(update_fields=['lead_status', 'follow_up_completed', 'follow_up_completed_at'])
+        elif action == 'set_status':
+            try:
+                _set_lead_status(lead, request.data.get('lead_status'))
+            except ValueError:
+                return Response({'error': 'Invalid lead_status'}, status=400)
+            lead.save(update_fields=['lead_status', 'follow_up_completed', 'follow_up_completed_at'])
         elif action == 'convert_to_pipeline':
             program_slug = request.data.get('program_slug', '').strip()
             program_name = request.data.get('program_name', '').strip()
@@ -1189,13 +1249,11 @@ class HelpMeLeadDetailView(APIView):
             lead.assigned_program_name = program_name
             lead.converted_to_pipeline = True
             lead.converted_at = timezone.now()
-            lead.follow_up_completed = True
-            if not lead.follow_up_completed_at:
-                lead.follow_up_completed_at = timezone.now()
+            _set_lead_status(lead, 'completed')
             lead.save(update_fields=[
                 'assigned_program_slug', 'assigned_program_name',
                 'converted_to_pipeline', 'converted_at',
-                'follow_up_completed', 'follow_up_completed_at',
+                'lead_status', 'follow_up_completed', 'follow_up_completed_at',
             ])
             apply_url = f"{getattr(settings, 'FRONTEND_URL', '')}/apply?program={program_slug}"
             try:
@@ -1266,6 +1324,8 @@ class IncompleteApplicationView(APIView):
             )
         ).filter(has_submitted=False)
 
+        qs = _filter_lead_status(qs, request)
+
         follow_up_completed = request.query_params.get('follow_up_completed')
         if follow_up_completed is not None:
             qs = qs.filter(follow_up_completed=follow_up_completed.lower() in ('true', '1'))
@@ -1308,14 +1368,17 @@ class IncompleteApplicationDetailView(APIView):
         incomplete = get_object_or_404(IncompleteApplication, pk=pk)
         action = request.data.get('action')
         if action == 'complete':
-            incomplete.follow_up_completed = True
-            incomplete.follow_up_completed_at = timezone.now()
+            _set_lead_status(incomplete, 'completed')
         elif action == 'revert':
-            incomplete.follow_up_completed = False
-            incomplete.follow_up_completed_at = None
+            _set_lead_status(incomplete, 'new')
+        elif action == 'set_status':
+            try:
+                _set_lead_status(incomplete, request.data.get('lead_status'))
+            except ValueError:
+                return Response({'error': 'Invalid lead_status'}, status=400)
         else:
-            return Response({'error': 'action must be "complete" or "revert"'}, status=400)
-        incomplete.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+            return Response({'error': 'action must be "complete", "revert", or "set_status"'}, status=400)
+        incomplete.save(update_fields=['lead_status', 'follow_up_completed', 'follow_up_completed_at'])
         return Response(IncompleteApplicationSerializer(incomplete).data)
 
     def delete(self, request, pk):

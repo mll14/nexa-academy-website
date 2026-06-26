@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Bell, BookOpen, Calendar, ChevronRight, FileWarning,
   Flame, HelpCircle, Mail, MessageSquare, Phone, PhoneCall, Send, User,
-  CheckCircle2, RotateCcw, Clock,
+  CheckCircle2, Clock, Tag, PhoneOff,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { FollowUpForm } from '../../components/FollowUpForm'
@@ -13,10 +13,11 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent } from '../../components/ui/card'
 import { Dialog } from '../../components/ui/dialog'
 import { Label } from '../../components/ui/label'
+import { Select } from '../../components/ui/select'
 import { Separator } from '../../components/ui/separator'
 import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
-import type { HelpMeLead, IncompleteApplication, ProgramInterest } from '../../types'
+import type { HelpMeLead, IncompleteApplication, LeadStatus, ProgramInterest } from '../../types'
 import toast from 'react-hot-toast'
 
 type LeadRouteType = 'interests' | 'help-me' | 'incomplete'
@@ -24,6 +25,39 @@ type LeadRecord = ProgramInterest | HelpMeLead | IncompleteApplication
 type LeadTab = 'details' | 'notes'
 
 const STEP_LABELS: Record<number, string> = { 1: 'About You', 2: 'Program & Plan', 3: 'Review' }
+
+const LEAD_STATUS_OPTIONS: {
+  value: LeadStatus
+  label: string
+  icon: React.ElementType
+  className: string
+}[] = [
+  { value: 'new', label: 'New', icon: Clock, className: 'bg-muted text-muted-foreground border-border' },
+  { value: 'contacted', label: 'Contacted', icon: Phone, className: 'bg-primary/10 text-primary border-primary/20' },
+  { value: 'not_reached', label: 'Not Reached', icon: PhoneOff, className: 'bg-warning/10 text-warning border-warning/20' },
+  { value: 'completed', label: 'Completed', icon: CheckCircle2, className: 'bg-success/10 text-success border-success/20' },
+]
+
+const LEAD_STATUS_SELECT_OPTIONS = LEAD_STATUS_OPTIONS.map(({ value, label }) => ({ value, label }))
+
+function leadStatus(item: { lead_status?: LeadStatus; follow_up_completed: boolean }): LeadStatus {
+  return item.lead_status ?? (item.follow_up_completed ? 'completed' : 'new')
+}
+
+function leadStatusMeta(status: LeadStatus) {
+  return LEAD_STATUS_OPTIONS.find((option) => option.value === status) ?? LEAD_STATUS_OPTIONS[0]
+}
+
+function LeadStatusBadge({ status }: { status: LeadStatus }) {
+  const meta = leadStatusMeta(status)
+  const Icon = meta.icon
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-sm font-semibold ${meta.className}`}>
+      <Icon className="w-3.5 h-3.5" />
+      {meta.label}
+    </span>
+  )
+}
 
 function isLeadRouteType(value: string): value is LeadRouteType {
   return value === 'interests' || value === 'help-me' || value === 'incomplete'
@@ -175,6 +209,7 @@ export function LeadDetail() {
   const [tab, setTab] = useState<LeadTab>('details')
   const [showFollowUp, setShowFollowUp] = useState(false)
   const [showNotify, setShowNotify] = useState(false)
+  const [pipelineProgramSlug, setPipelineProgramSlug] = useState('')
 
   const validType = isLeadRouteType(leadType) ? leadType : null
   const { data: lead, isLoading, error } = useQuery({
@@ -188,17 +223,33 @@ export function LeadDetail() {
     },
   })
 
-  const followUpMutation = useMutation({
-    mutationFn: (action: 'complete' | 'revert') =>
-      action === 'complete'
-        ? api.markLeadCompleted(validType!, id)
-        : api.revertLeadCompleted(validType!, id),
-    onSuccess: (_, action) => {
-      toast.success(action === 'complete' ? 'Marked as follow-up completed' : 'Reverted to needs follow-up')
+  const statusMutation = useMutation({
+    mutationFn: (status: LeadStatus) => api.updateLeadStatus(validType!, id, status),
+    onSuccess: (_, status) => {
+      toast.success(`Lead tagged as ${leadStatusMeta(status).label}`)
       qc.invalidateQueries({ queryKey: ['admin', 'lead', validType, id] })
       qc.invalidateQueries({ queryKey: ['admin', validType === 'interests' ? 'interests' : validType === 'help-me' ? 'help-me' : 'incomplete'] })
     },
-    onError: () => toast.error('Could not update follow-up status'),
+    onError: () => toast.error('Could not update lead tag'),
+  })
+
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: () => api.getPrograms(),
+    enabled: validType === 'help-me',
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const pipelineMutation = useMutation({
+    mutationFn: ({ slug, name }: { slug: string; name: string }) =>
+      api.convertHelpMeToPipeline(id, slug, name),
+    onSuccess: (_, { name }) => {
+      toast.success(`Pipeline email sent for ${name}`)
+      setPipelineProgramSlug('')
+      qc.invalidateQueries({ queryKey: ['admin', 'lead', validType, id] })
+      qc.invalidateQueries({ queryKey: ['admin', 'help-me'] })
+    },
+    onError: (e: Error) => toast.error(e.message ?? 'Failed to send pipeline email'),
   })
 
   if (isLoading) {
@@ -232,6 +283,15 @@ export function LeadDetail() {
   const message = 'message' in lead ? lead.message : ''
   const createdAt = 'created_at' in lead ? lead.created_at : ''
   const updatedAt = 'updated_at' in lead ? lead.updated_at : ''
+  const currentLeadStatus = leadStatus(lead)
+  const helpMeLead = validType === 'help-me' ? lead as HelpMeLead : null
+  const selectedPipelineProgramSlug = pipelineProgramSlug || helpMeLead?.assigned_program_slug || ''
+  const programOptions = [
+    { value: '', label: 'Select a program...' },
+    ...programs
+      .filter((p) => !p.coming_soon)
+      .map((p) => ({ value: p.slug, label: p.name })),
+  ]
 
   return (
     <AdminLayout>
@@ -318,50 +378,60 @@ export function LeadDetail() {
           </div>
 
           <div className="space-y-5">
-            {/* Follow-up status */}
-            <SectionCard title="Follow-up Status" icon={<Clock className="w-4 h-4" />}>
+            {/* Lead tag */}
+            <SectionCard title="Lead Tag" icon={<Tag className="w-4 h-4" />}>
               <div className="pt-4 space-y-3">
-                {lead.follow_up_completed ? (
-                  <>
-                    <div className="flex items-center gap-2 text-sm text-success font-medium">
-                      <CheckCircle2 className="w-4 h-4 shrink-0" />
-                      Follow-up completed
-                    </div>
-                    {lead.follow_up_completed_at && (
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(lead.follow_up_completed_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })}
-                      </p>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full gap-1.5"
-                      disabled={followUpMutation.isPending}
-                      onClick={() => followUpMutation.mutate('revert')}
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      {followUpMutation.isPending ? 'Reverting…' : 'Undo — Needs Follow-up'}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Clock className="w-4 h-4 shrink-0" />
-                      Needs follow-up
-                    </div>
-                    <Button
-                      size="sm"
-                      className="w-full gap-1.5"
-                      disabled={followUpMutation.isPending}
-                      onClick={() => followUpMutation.mutate('complete')}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      {followUpMutation.isPending ? 'Saving…' : 'Mark as Done'}
-                    </Button>
-                  </>
+                <LeadStatusBadge status={currentLeadStatus} />
+                {currentLeadStatus === 'completed' && lead.follow_up_completed_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Completed {new Date(lead.follow_up_completed_at).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })}
+                  </p>
                 )}
+                <Select
+                  value={currentLeadStatus}
+                  onChange={(next) => statusMutation.mutate(next as LeadStatus)}
+                  options={LEAD_STATUS_SELECT_OPTIONS}
+                  disabled={statusMutation.isPending}
+                  icon={<Tag className="w-3.5 h-3.5" />}
+                />
               </div>
             </SectionCard>
+
+            {helpMeLead && (
+              <SectionCard title="Application Pipeline" icon={<Send className="w-4 h-4" />}>
+                <div className="pt-4 space-y-3">
+                  {helpMeLead.converted_to_pipeline && (
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
+                      <CheckCircle2 className="w-3 h-3" />
+                      In Pipeline{helpMeLead.assigned_program_name ? ` · ${helpMeLead.assigned_program_name}` : ''}
+                    </span>
+                  )}
+                  <Select
+                    value={selectedPipelineProgramSlug}
+                    onChange={setPipelineProgramSlug}
+                    options={programOptions}
+                    disabled={pipelineMutation.isPending}
+                  />
+                  <Button
+                    size="sm"
+                    className="w-full gap-1.5"
+                    disabled={!selectedPipelineProgramSlug || pipelineMutation.isPending}
+                    onClick={() => {
+                      const program = programs.find((p) => p.slug === selectedPipelineProgramSlug)
+                      if (!program) return
+                      pipelineMutation.mutate({ slug: program.slug, name: program.name })
+                    }}
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    {pipelineMutation.isPending
+                      ? 'Sending...'
+                      : helpMeLead.converted_to_pipeline
+                        ? 'Resend Pipeline Email'
+                        : 'Send Pipeline Email'}
+                  </Button>
+                </div>
+              </SectionCard>
+            )}
 
             <SectionCard title="Reach Out" icon={<Mail className="w-4 h-4" />}>
               <div className="pt-4 space-y-3">

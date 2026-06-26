@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.db.models import Q
 from .models import Application, ApplicationAdminNote, ApplicationLog, DraftApplication
 from .models import InterviewSlot, InterviewBlackout, CustomCalendarEvent
 
@@ -38,6 +39,40 @@ class InterviewSlotSerializer(serializers.ModelSerializer):
 class ApplicationSerializer(serializers.ModelSerializer):
     logs = ApplicationLogSerializer(many=True, read_only=True)
     interview_slot = InterviewSlotSerializer(read_only=True)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get('estimated_fees') not in (None, ''):
+            return data
+
+        try:
+            from programs.models import Enrollment, Program
+
+            enrollment_qs = Enrollment.objects.filter(
+                Q(student=instance.user) | Q(student__email__iexact=instance.email),
+            )
+            if instance.program_name:
+                enrollment_qs = enrollment_qs.filter(program_name__iexact=instance.program_name)
+            elif instance.program:
+                enrollment_qs = enrollment_qs.filter(program__slug__iexact=instance.program)
+
+            enrollment_amount = enrollment_qs.order_by('-enrollment_date').values_list('amount', flat=True).first()
+            if enrollment_amount is not None:
+                data['estimated_fees'] = str(enrollment_amount)
+                return data
+
+            program_qs = Program.objects.all()
+            if instance.program:
+                program_qs = program_qs.filter(slug__iexact=instance.program)
+            elif instance.program_name:
+                program_qs = program_qs.filter(name__iexact=instance.program_name)
+
+            program_price = program_qs.values_list('price', flat=True).first()
+            if program_price is not None:
+                data['estimated_fees'] = str(program_price)
+        except Exception:
+            pass
+        return data
     
     class Meta:
         model = Application

@@ -141,7 +141,7 @@ class ProgramInterestSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProgramInterest
         fields = ['id', 'program_slug', 'program_name', 'name', 'email', 'phone', 'message',
-                  'follow_up_completed', 'follow_up_completed_at', 'created_at']
+                  'lead_status', 'follow_up_completed', 'follow_up_completed_at', 'created_at']
         read_only_fields = ['id', 'created_at', 'follow_up_completed_at']
 
 
@@ -149,7 +149,7 @@ class HelpMeLeadSerializer(serializers.ModelSerializer):
     class Meta:
         model = HelpMeLead
         fields = ['id', 'name', 'email', 'phone', 'message',
-                  'follow_up_completed', 'follow_up_completed_at',
+                  'lead_status', 'follow_up_completed', 'follow_up_completed_at',
                   'assigned_program_slug', 'assigned_program_name',
                   'converted_to_pipeline', 'converted_at',
                   'created_at']
@@ -160,7 +160,7 @@ class IncompleteApplicationSerializer(serializers.ModelSerializer):
     class Meta:
         model = IncompleteApplication
         fields = ['id', 'name', 'email', 'phone', 'program_slug', 'program_name', 'step_reached',
-                  'follow_up_completed', 'follow_up_completed_at', 'created_at', 'updated_at']
+                  'lead_status', 'follow_up_completed', 'follow_up_completed_at', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at', 'follow_up_completed_at']
 
 

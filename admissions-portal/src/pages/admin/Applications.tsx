@@ -33,6 +33,7 @@ const SORT_OPTIONS = [
 const PAGE_SIZE = 10
 
 const INTAKE_TABS = [
+  { value: 'all', label: 'All applications' },
   { value: 'with', label: 'With intake dates' },
   { value: 'without', label: 'No intake dates' },
 ] as const
@@ -54,7 +55,7 @@ export function Applications() {
   const [searchTerm, setSearchTerm] = useState('')
   const [ordering, setOrdering] = useState('-applied_at')
   const [page, setPage] = useState(1)
-  const [intakeTab, setIntakeTab] = useState<(typeof INTAKE_TABS)[number]['value']>('with')
+  const [intakeTab, setIntakeTab] = useState<(typeof INTAKE_TABS)[number]['value']>('all')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin', 'applications', { status, searchTerm, ordering, page, intakeTab }],
@@ -65,7 +66,7 @@ export function Applications() {
         ordering,
         page,
         page_size: PAGE_SIZE,
-        intake_status: intakeTab,
+        intake_status: intakeTab === 'all' ? undefined : intakeTab,
       }),
     placeholderData: (prev) => prev,
   })
@@ -85,7 +86,7 @@ export function Applications() {
           <div>
             <h1 className="font-heading text-2xl font-bold">Applications</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {isLoading ? 'Loading…' : `${total} application${total !== 1 ? 's' : ''} ${intakeTab === 'with' ? 'with intake dates' : 'without intake dates'}`}
+              {isLoading ? 'Loading…' : `${total} application${total !== 1 ? 's' : ''}${intakeTab === 'all' ? '' : ` ${intakeTab === 'with' ? 'with intake dates' : 'without intake dates'}`}`}
             </p>
           </div>
         </div>

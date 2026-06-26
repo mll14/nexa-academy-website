@@ -4,6 +4,14 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.text import slugify
 
+LEAD_STATUS_CHOICES = (
+    ('new', 'New'),
+    ('contacted', 'Contacted'),
+    ('not_reached', 'Not Reached'),
+    ('completed', 'Completed'),
+)
+
+
 class Program(models.Model):
     STATUS_CHOICES = (
         ('active', 'Active'),
@@ -311,6 +319,7 @@ class HelpMeLead(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=30, blank=True)
     message = models.TextField(blank=True)
+    lead_status = models.CharField(max_length=20, choices=LEAD_STATUS_CHOICES, default='new')
     follow_up_completed = models.BooleanField(default=False)
     follow_up_completed_at = models.DateTimeField(null=True, blank=True)
     assigned_program_slug = models.CharField(max_length=255, blank=True)
@@ -324,6 +333,7 @@ class HelpMeLead(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['email']),
+            models.Index(fields=['lead_status']),
             models.Index(fields=['-created_at']),
         ]
 
@@ -340,6 +350,7 @@ class IncompleteApplication(models.Model):
     program_slug = models.CharField(max_length=100, blank=True)
     program_name = models.CharField(max_length=255, blank=True)
     step_reached = models.IntegerField(default=1)
+    lead_status = models.CharField(max_length=20, choices=LEAD_STATUS_CHOICES, default='new')
     follow_up_completed = models.BooleanField(default=False)
     follow_up_completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
@@ -352,6 +363,7 @@ class IncompleteApplication(models.Model):
         unique_together = [['email', 'program_slug']]
         indexes = [
             models.Index(fields=['email']),
+            models.Index(fields=['lead_status']),
             models.Index(fields=['-updated_at']),
         ]
 
@@ -369,6 +381,7 @@ class ProgramInterest(models.Model):
     email = models.EmailField()
     phone = models.CharField(max_length=30, blank=True)
     message = models.TextField(blank=True)
+    lead_status = models.CharField(max_length=20, choices=LEAD_STATUS_CHOICES, default='new')
     follow_up_completed = models.BooleanField(default=False)
     follow_up_completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
@@ -378,6 +391,7 @@ class ProgramInterest(models.Model):
         indexes = [
             models.Index(fields=['program_slug']),
             models.Index(fields=['email']),
+            models.Index(fields=['lead_status']),
             models.Index(fields=['-created_at']),
         ]
 
