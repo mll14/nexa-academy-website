@@ -7,7 +7,9 @@ import {
 } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { tokens, getStoredUser } from "./lib/auth";
+import { getProfile, tryRefreshToken } from "./lib/api";
+import { tokens, getStoredUser, setStoredUser } from "./lib/auth";
+import type { User } from "./types";
 
 // ─── Lazy page imports ───────────────────────────────────────────────────────
 // Each route chunk is only downloaded when that route is first visited.
@@ -67,6 +69,45 @@ function requirePermission(codename: string) {
   }
 }
 
+let sessionRestorePromise: Promise<User | null> | null = null;
+
+async function restoreSessionUser(): Promise<User | null> {
+  if (tokens.access) {
+    const user = getStoredUser();
+    if (user) return user;
+  } else {
+    sessionRestorePromise ??= tryRefreshToken()
+      .then((restored) => (restored ? getProfile() : null))
+      .then((user) => {
+        if (user) setStoredUser(user);
+        return user;
+      })
+      .catch(() => null)
+      .finally(() => {
+        sessionRestorePromise = null;
+      });
+
+    const restoredUser = await sessionRestorePromise;
+    if (restoredUser) return restoredUser;
+  }
+
+  try {
+    const user = await getProfile();
+    setStoredUser(user);
+    return user;
+  } catch {
+    return null;
+  }
+}
+
+async function requireSession(redirectTo?: string): Promise<User> {
+  const user = await restoreSessionUser();
+  if (!user) {
+    throw redirect({ to: "/login", search: { redirect: redirectTo } });
+  }
+  return user;
+}
+
 // ─── Root ────────────────────────────────────────────────────────────────────
 
 const rootRoute = createRootRoute({
@@ -84,9 +125,9 @@ const rootRoute = createRootRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  beforeLoad: () => {
-    const user = getStoredUser();
-    if (!user || !tokens.access) throw redirect({ to: "/login", search: { redirect: undefined } });
+  beforeLoad: async () => {
+    const user = await restoreSessionUser();
+    if (!user) throw redirect({ to: "/login", search: { redirect: undefined } });
     if (user.role === "admin") throw redirect({ to: "/admin" });
     throw redirect({ to: "/student/dashboard" });
   },
@@ -99,11 +140,20 @@ const loginRoute = createRoute({
   validateSearch: (s: Record<string, unknown>) => ({
     redirect: typeof s.redirect === "string" ? s.redirect : undefined,
   }),
-  beforeLoad: () => {
-    if (!tokens.access) return;
-    const user = getStoredUser();
-    if (user?.role === "admin") throw redirect({ to: "/admin" });
-    if (user?.role === "student") throw redirect({ to: "/student/dashboard" });
+  beforeLoad: async ({ search }) => {
+    const user = await restoreSessionUser();
+    if (!user) return;
+
+    const redirectTo = search.redirect;
+    if (redirectTo) {
+      const isAdminPath = redirectTo.startsWith("/admin");
+      const isStudentPath = redirectTo.startsWith("/student");
+      if (user.role === "admin" && isAdminPath) throw redirect({ to: redirectTo });
+      if (user.role === "student" && isStudentPath) throw redirect({ to: redirectTo });
+    }
+
+    if (user.role === "admin") throw redirect({ to: "/admin" });
+    if (user.role === "student") throw redirect({ to: "/student/dashboard" });
   },
   component: Login,
 });
@@ -159,10 +209,9 @@ const acceptInviteRoute = createRoute({
 const studentLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/student",
-  beforeLoad: ({ location }) => {
-    if (!tokens.access) throw redirect({ to: "/login", search: { redirect: location.href } });
-    const user = getStoredUser();
-    if (user?.role === "admin") throw redirect({ to: "/admin" });
+  beforeLoad: async ({ location }) => {
+    const user = await requireSession(location.href);
+    if (user.role === "admin") throw redirect({ to: "/admin" });
   },
   component: () => <Outlet />,
 });
@@ -202,10 +251,9 @@ const studentProfileRoute = createRoute({
 const adminLayoutRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/admin",
-  beforeLoad: ({ location }) => {
-    if (!tokens.access) throw redirect({ to: "/login", search: { redirect: location.href } });
-    const user = getStoredUser();
-    if (user && user.role !== "admin") throw redirect({ to: "/login", search: { redirect: undefined } });
+  beforeLoad: async ({ location }) => {
+    const user = await requireSession(location.href);
+    if (user.role !== "admin") throw redirect({ to: "/login", search: { redirect: undefined } });
   },
   component: () => <Outlet />,
 });
