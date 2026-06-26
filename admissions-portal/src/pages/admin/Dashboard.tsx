@@ -3,12 +3,14 @@ import { useQuery } from '@tanstack/react-query'
 import { Users, MessageSquare, CreditCard, BookOpen, ArrowRight, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Button } from '../../components/ui/button'
+import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate } from '../../lib/utils'
 import type { Application, ApplicationStats } from '../../types'
 
 export function AdminDashboard() {
   const navigate = useNavigate()
+  const { hasPermission } = useAuth()
 
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['admin', 'stats'],
@@ -37,11 +39,11 @@ export function AdminDashboard() {
   const loading = statsLoading || appsLoading || paymentStatsLoading
 
   const statCards = [
-    { label: 'Total Applications', value: (stats as ApplicationStats)?.total ?? (stats as ApplicationStats)?.count ?? 0, icon: Users, accent: 'text-primary', iconBg: 'bg-primary/10', href: '/admin/applications' },
-    { label: 'Unread Messages', value: messagesRes?.count ?? 0, icon: MessageSquare, accent: 'text-warning', iconBg: 'bg-warning/10', href: '/admin/messages' },
-    { label: 'Revenue (KSh)', value: revenue.toLocaleString('en-KE'), icon: CreditCard, accent: 'text-success', iconBg: 'bg-success/10', href: '/admin/payments' },
-    { label: 'Enrolled Students', value: (stats as ApplicationStats)?.enrolled ?? (stats as ApplicationStats)?.enrolled_count ?? 0, icon: BookOpen, accent: 'text-primary', iconBg: 'bg-primary/10', href: '/admin/enrolled' },
-  ]
+    { label: 'Total Applications', value: (stats as ApplicationStats)?.total ?? (stats as ApplicationStats)?.count ?? 0, icon: Users, accent: 'text-primary', iconBg: 'bg-primary/10', href: '/admin/applications', permission: 'applications.view' },
+    { label: 'Unread Messages', value: messagesRes?.count ?? 0, icon: MessageSquare, accent: 'text-warning', iconBg: 'bg-warning/10', href: '/admin/messages', permission: 'messages.view' },
+    { label: 'Revenue (KSh)', value: revenue.toLocaleString('en-KE'), icon: CreditCard, accent: 'text-success', iconBg: 'bg-success/10', href: '/admin/payments', permission: 'transactions.view' },
+    { label: 'Enrolled Students', value: (stats as ApplicationStats)?.enrolled ?? (stats as ApplicationStats)?.enrolled_count ?? 0, icon: BookOpen, accent: 'text-primary', iconBg: 'bg-primary/10', href: '/admin/enrolled', permission: 'students.view' },
+  ].filter(({ permission }) => hasPermission(permission))
 
   const pendingCount = recentApps.filter((a: Application) => a.status === 'pending').length
 
@@ -56,7 +58,7 @@ export function AdminDashboard() {
               {new Date().toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
           </div>
-          {pendingCount > 0 && (
+          {pendingCount > 0 && hasPermission('applications.view') && (
             <button
               onClick={() => navigate({ to: '/admin/applications' })}
               className="flex items-center gap-2 px-3 py-2 bg-warning/10 border border-warning/20 rounded-xl text-sm text-warning font-medium hover:bg-warning/20 transition-colors"
@@ -88,24 +90,32 @@ export function AdminDashboard() {
           ))}
         </div>
 
-        {/* Quick actions */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button onClick={() => navigate({ to: '/admin/applications' })} className="flex items-center gap-3 px-4 py-3.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:opacity-90 transition-opacity">
-            <Users className="w-4 h-4" />
-            <span className="flex-1 text-left">Review Applications</span>
-            <ArrowRight className="w-4 h-4 opacity-70" />
-          </button>
-          <button onClick={() => navigate({ to: '/admin/interviews' })} className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors">
-            <Clock className="w-4 h-4 text-muted-foreground" />
-            <span className="flex-1 text-left">Manage Interviews</span>
-            <ArrowRight className="w-4 h-4 text-muted-foreground" />
-          </button>
-          <button onClick={() => navigate({ to: '/admin/programs' })} className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors">
-            <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
-            <span className="flex-1 text-left">Manage Programs</span>
-            <ArrowRight className="w-4 h-4 text-muted-foreground" />
-          </button>
-        </div>
+        {/* Quick actions — only show if user has access */}
+        {(hasPermission('applications.view') || hasPermission('interviews.view') || hasPermission('programs.view')) && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {hasPermission('applications.view') && (
+              <button onClick={() => navigate({ to: '/admin/applications' })} className="flex items-center gap-3 px-4 py-3.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:opacity-90 transition-opacity">
+                <Users className="w-4 h-4" />
+                <span className="flex-1 text-left">Review Applications</span>
+                <ArrowRight className="w-4 h-4 opacity-70" />
+              </button>
+            )}
+            {hasPermission('interviews.view') && (
+              <button onClick={() => navigate({ to: '/admin/interviews' })} className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span className="flex-1 text-left">Manage Interviews</span>
+                <ArrowRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+            )}
+            {hasPermission('programs.view') && (
+              <button onClick={() => navigate({ to: '/admin/programs' })} className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors">
+                <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
+                <span className="flex-1 text-left">Manage Programs</span>
+                <ArrowRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Recent applications */}
         <div>
