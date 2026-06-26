@@ -166,9 +166,10 @@ export function AdminLayout({ children }: Props) {
       if (item.anyPermissions?.length) return item.anyPermissions.some((p) => hasPermission(p))
       return !item.permission || hasPermission(item.permission)
     }
+    const all = [...PRIMARY_NAV, ...MORE_NAV].filter(canSee)
     return {
-      visiblePrimary: PRIMARY_NAV.filter(canSee),
-      visibleMore: MORE_NAV.filter(canSee),
+      visiblePrimary: all.slice(0, 6),
+      visibleMore: all.slice(6),
     }
   }, [hasPermission])
 
