@@ -6,7 +6,7 @@ import {
   CreditCard, MessageSquare, User, Send, Activity,
   BadgeCheck, CircleDashed, RefreshCw, CircleX,
   Banknote, ChevronRight, GraduationCap, CheckCircle2, XCircle, AlertCircle,
-  TrendingDown, TrendingUp, ReceiptText,
+  TrendingDown, TrendingUp, ReceiptText, ExternalLink,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Card, CardContent } from '../../components/ui/card'
@@ -522,13 +522,27 @@ export function EnrolledStudentDetail() {
 
         {/* Page header */}
         <div className="flex flex-col gap-4">
-          <button
-            onClick={() => navigate({ to: '/admin/enrolled' })}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Enrolled Students
-          </button>
+          <div className="flex items-center justify-between gap-3">
+            <button
+              onClick={() => navigate({ to: '/admin/enrolled' })}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Enrolled Students
+            </button>
+            {studentUid && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate({ to: '/admin/students/$uid', params: { uid: studentUid } })}
+                className="gap-1.5"
+              >
+                <User className="w-3.5 h-3.5" />
+                View Student Profile
+                <ExternalLink className="w-3 h-3 opacity-60" />
+              </Button>
+            )}
+          </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-4">
