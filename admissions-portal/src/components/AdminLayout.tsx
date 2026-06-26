@@ -172,6 +172,13 @@ export function AdminLayout({ children }: Props) {
     }
   }, [hasPermission])
 
+  // Role-scoped admin with no pages means DB permissions not yet seeded
+  const roleHasNoPages = !!(
+    user?.staffRole &&
+    visiblePrimary.filter((i) => i.permission).length === 0 &&
+    visibleMore.length === 0
+  )
+
   return (
     <div className="min-h-screen flex bg-background">
       {/* Sidebar */}
@@ -219,6 +226,11 @@ export function AdminLayout({ children }: Props) {
 
         {/* Nav */}
         <nav className={cn('flex-1 overflow-y-auto', sidebarCollapsed ? 'lg:p-2 p-4' : 'p-4')}>
+          {roleHasNoPages && !sidebarCollapsed && (
+            <div className="mb-3 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2.5 text-xs text-warning leading-snug">
+              No pages configured for your role. Ask a super admin to check your role permissions.
+            </div>
+          )}
           {/* Primary items */}
           <div className="space-y-1">
             {visiblePrimary.map(({ to, label, icon: Icon, exact }) => (
