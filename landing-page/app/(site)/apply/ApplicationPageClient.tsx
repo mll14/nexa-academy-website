@@ -7,6 +7,8 @@ import Link from "next/link";
 import PhoneInput, { isValidPhoneNumber } from "react-phone-number-input";
 // @ts-ignore: CSS import without type declarations
 import "react-phone-number-input/style.css";
+// @ts-ignore: no type declarations for flags
+import flags from "react-phone-number-input/flags";
 import toast from "react-hot-toast";
 import {
   User,
@@ -743,6 +745,7 @@ export function ApplicationPageClient({
                         <div className="relative">
                           <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground z-10" />
                           <PhoneInput
+                            flags={flags}
                             defaultCountry="KE"
                             international
                             value={form.phone}
