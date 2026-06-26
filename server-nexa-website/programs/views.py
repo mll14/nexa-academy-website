@@ -318,26 +318,9 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             if enrollment_update_fields:
                 enrollment.save(update_fields=list(dict.fromkeys(enrollment_update_fields)))
 
-            # Mark application as enrolled — the admin is making an explicit
-            # enrollment decision regardless of whether a deposit is paid now.
-            if application.status != 'enrolled':
-                prev_status = application.status
-                application.status = 'enrolled'
-                application.status_updated_at = timezone.now()
-                application.save(update_fields=['status', 'status_updated_at'])
-                ApplicationLog.objects.create(
-                    application=application,
-                    previous_status=prev_status,
-                    new_status='enrolled',
-                    changed_by=str(request.user.uid),
-                    notes='Enrolled by admin via manual enrollment form',
-                    applicant_email=student.email,
-                    applicant_name=student.display_name,
-                )
-
         # 3. Optionally initialise Paystack deposit transaction
-        # deposit_amount is optional — if omitted the student is still enrolled
-        # and can pay from their own dashboard.
+        # deposit_amount is optional — if omitted the student stays at
+        # interview_completed until a deposit is paid from their dashboard.
         raw_deposit = request.data.get('deposit_amount')
         skip_payment = raw_deposit is None or str(raw_deposit).strip() == '' or str(raw_deposit).strip() == '0'
         if not skip_payment:
@@ -524,12 +507,15 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
     def backfill_enrolled_status(self, request):
         """
         Promote interview_completed applications to enrolled for any student
-        who already has an Enrollment record. Fixes students enrolled via
-        manual_enroll before the auto-promotion fix was deployed.
+        whose total completed payments reach KSh 10,000. Useful for students
+        who paid a deposit but whose application status was not updated.
         """
-        from django.db.models import Q
+        from django.db.models import Q, Sum
+        from django.db.models.functions import Coalesce
         from applications.models import Application, ApplicationLog
+        from payments.models import Payment
 
+        THRESHOLD = Decimal('10000')
         promoted = []
         errors = []
 
@@ -537,6 +523,13 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             student = enrollment.student
             program = enrollment.program
             if student is None or program is None:
+                continue
+
+            total_paid = Payment.objects.filter(
+                student=student, status='completed',
+            ).aggregate(total=Coalesce(Sum('amount'), Decimal('0.00')))['total']
+
+            if total_paid < THRESHOLD:
                 continue
 
             apps_qs = Application.objects.filter(
@@ -556,7 +549,7 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
                             previous_status='interview_completed',
                             new_status='enrolled',
                             changed_by=str(request.user.uid),
-                            notes='Backfill: enrollment record existed; status corrected by admin',
+                            notes='Backfill: deposit threshold met; status corrected by admin',
                             applicant_email=app.email,
                             applicant_name=app.full_name,
                         )

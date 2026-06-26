@@ -183,7 +183,7 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
           handleClose()
         }
       } else {
-        toast.success(`${name.trim()} enrolled — deposit can be collected from their profile`)
+        toast.success(`${name.trim()} added — they can pay the deposit from their dashboard`)
         onSuccess()
         handleClose()
       }
@@ -314,7 +314,7 @@ function EnrollDialog({ open, onClose, programs, onSuccess }: {
       <div className="space-y-5">
 
         <p className="text-sm text-muted-foreground">
-          <span className="font-medium text-foreground">{name.trim()}</span> will be <span className="font-medium text-foreground">enrolled immediately</span>. Would you like to collect a deposit payment now?
+          <span className="font-medium text-foreground">{name.trim()}</span> will be added at <span className="font-medium text-foreground">Interview Completed</span>. A deposit of KSh 10,000+ will automatically move them to Enrolled.
         </p>
 
         <div className="grid grid-cols-2 gap-3">
