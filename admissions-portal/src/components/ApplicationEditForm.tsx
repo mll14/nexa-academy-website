@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Save, User } from 'lucide-react'
+import { Save, User, Wallet } from 'lucide-react'
 import * as api from '../lib/api'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
@@ -12,7 +12,18 @@ import { isValidPhoneNumber } from 'react-phone-number-input'
 import toast from 'react-hot-toast'
 import type { Application, Intake, Program } from '../types'
 
-type ProgramOption = Pick<Program, 'slug' | 'name' | 'coming_soon'>
+type ProgramOption = Pick<Program, 'slug' | 'name' | 'coming_soon' | 'price'>
+
+function calcFee(base: number, plan: string) {
+  if (!base) return null
+  if (plan === 'full') return { total: base, per: base, count: 1, label: 'One-time payment' }
+  if (plan === 'installment3') {
+    const per = Math.round((base * 1.2) / 3 / 500) * 500
+    return { total: per * 3, per, count: 3, label: '3 instalments · 20% surcharge' }
+  }
+  const per = Math.round((base * 1.1) / 2 / 500) * 500
+  return { total: per * 2, per, count: 2, label: '2 instalments · 10% surcharge' }
+}
 
 const PAYMENT_PLAN_OPTIONS = [
   { value: 'full', label: 'One-time Payment' },
@@ -87,15 +98,17 @@ export function ApplicationEditForm({
       slug: program.slug,
       name: program.name,
       coming_soon: program.coming_soon,
+      price: program.price,
     }))
     if (fallbackProgram && !list.some((program) => program.slug === fallbackProgram.slug)) {
-      list.push(fallbackProgram)
+      list.push({ slug: fallbackProgram.slug, name: fallbackProgram.name, coming_soon: fallbackProgram.coming_soon, price: fallbackProgram.price })
     }
     if (application.program && application.program !== '__help_me__' && !list.some((program) => program.slug === application.program)) {
       list.push({
         slug: application.program,
         name: application.program_name || application.program,
         coming_soon: false,
+        price: null,
       })
     }
     return list.sort((a, b) => a.name.localeCompare(b.name))
@@ -151,6 +164,12 @@ export function ApplicationEditForm({
     },
     onError: (error: Error) => toast.error(error.message),
   })
+
+  const feePreview = useMemo(() => {
+    const base = selectedProgram?.price ?? null
+    if (!base) return null
+    return calcFee(base, form.paymentPlan)
+  }, [selectedProgram, form.paymentPlan])
 
   const hasIntakeChoices = !!selectedProgram && selectedProgram.slug !== '__help_me__' && intakes.length > 0
   const isValidPhone = !form.phone || isValidPhoneNumber(form.phone)
@@ -241,6 +260,22 @@ export function ApplicationEditForm({
           />
         </div>
       </div>
+
+      {feePreview && (
+        <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            <Wallet className="w-4 h-4 text-primary shrink-0" />
+            <span>Estimated Fees</span>
+            <span className="text-xs font-normal text-muted-foreground">({feePreview.label})</span>
+          </div>
+          <div className="text-right">
+            <p className="text-lg font-bold text-primary">KSh {feePreview.total.toLocaleString('en-KE')}</p>
+            {feePreview.count > 1 && (
+              <p className="text-xs text-muted-foreground">KSh {feePreview.per.toLocaleString('en-KE')} × {feePreview.count}</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
         <p className="text-xs text-muted-foreground">

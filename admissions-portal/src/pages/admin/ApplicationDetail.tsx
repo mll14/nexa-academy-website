@@ -5,7 +5,7 @@ import {
   ArrowLeft, Calendar, Video, Check, X, Clock,
   Mail, Phone, BookOpen, CreditCard, CalendarDays,
   MessageSquare, Activity, User, AlertTriangle, Send,
-  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus,
+  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus, Pencil,
 } from 'lucide-react'
 import type { Payment } from '../../types/index'
 import { AdminLayout } from '../../components/AdminLayout'
@@ -281,6 +281,7 @@ export function ApplicationDetail() {
   const [showPayLinkDialog, setShowPayLinkDialog] = useState(false)
   const [payLinkAmount, setPayLinkAmount] = useState('')
   const [payLinkDescription, setPayLinkDescription] = useState('')
+  const [showEditModal, setShowEditModal] = useState(false)
 
   const { data: app, isLoading, error } = useQuery({
     queryKey: ['admin', 'application', id],
@@ -534,6 +535,14 @@ export function ApplicationDetail() {
               <span className={`inline-flex items-center px-3.5 py-1.5 rounded-full text-sm font-semibold border ${STATUS_COLORS[app.status] ?? 'bg-muted text-foreground border-border'}`}>
                 {statusText(app.status)}
               </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowEditModal(true)}
+                className="gap-1.5"
+              >
+                <Pencil className="w-3.5 h-3.5" /> Edit Details
+              </Button>
             </div>
           </div>
 
@@ -694,17 +703,6 @@ export function ApplicationDetail() {
             )}
 
             {leftTab === 'details' && <>
-
-            <SectionCard title="Edit Application Details" icon={<User className="w-4 h-4" />}>
-              <ApplicationEditForm
-                application={app}
-                showHeader={false}
-                onSaved={(updated) => {
-                  qc.setQueryData(['admin', 'application', id], updated)
-                  qc.invalidateQueries({ queryKey: ['admin', 'applications'] })
-                }}
-              />
-            </SectionCard>
 
             {/* Applicant info */}
             <SectionCard title="Applicant Details" icon={<User className="w-4 h-4" />}>
@@ -1181,6 +1179,27 @@ export function ApplicationDetail() {
           submitting={confirmMutation.isPending}
           confirmLabel={app?.status === 'interview_scheduled' ? 'Reschedule Interview' : 'Schedule Interview'}
         />
+      </Dialog>
+
+      {/* Edit application details modal */}
+      <Dialog
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Application Details"
+        description={`Update details for ${app.full_name}'s application.`}
+        className="max-w-2xl"
+      >
+        <div className="pt-1">
+          <ApplicationEditForm
+            application={app}
+            showHeader={false}
+            onSaved={(updated) => {
+              qc.setQueryData(['admin', 'application', id], updated)
+              qc.invalidateQueries({ queryKey: ['admin', 'applications'] })
+              setShowEditModal(false)
+            }}
+          />
+        </div>
       </Dialog>
 
     </AdminLayout>
