@@ -5,7 +5,7 @@ import {
   GraduationCap, UserPlus, Search, ArrowUpDown,
   TrendingUp, Users, ChevronRight, CheckCircle2,
   AlertCircle, XCircle, BookOpen, CalendarDays,
-  Wallet, Filter,
+  Wallet, Filter, RefreshCw,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Select } from '../../components/ui/select'
@@ -395,6 +395,20 @@ export function EnrolledStudents() {
   const [page,      setPage]      = useState(1)
   const [showEnroll, setShowEnroll] = useState(false)
 
+  const backfillMutation = useMutation({
+    mutationFn: api.backfillEnrolledStatus,
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['admin', 'enrollments'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'applications'] })
+      if (res.promoted === 0) {
+        toast('All enrollment statuses are up to date')
+      } else {
+        toast.success(`Fixed ${res.promoted} student${res.promoted !== 1 ? 's' : ''} — application status updated to enrolled`)
+      }
+    },
+    onError: () => toast.error('Failed to run backfill — check server logs'),
+  })
+
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'enrollments', { search, status, programId, ordering, page }],
     queryFn: () => api.getEnrollments({
@@ -447,11 +461,25 @@ export function EnrolledStudents() {
               {isLoading ? 'Loading…' : `${total.toLocaleString()} student${total !== 1 ? 's' : ''} enrolled`}
             </p>
           </div>
-          <Button onClick={() => setShowEnroll(true)} className="self-start sm:self-auto gap-2">
-            <UserPlus className="w-4 h-4" />
-            <span className="sm:hidden">Enroll</span>
-            <span className="hidden sm:inline">Enroll Student</span>
-          </Button>
+          <div className="flex gap-2 self-start sm:self-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => backfillMutation.mutate()}
+              disabled={backfillMutation.isPending}
+              title="Fix any enrolled students whose application status is still at Interview Completed"
+            >
+              <RefreshCw className={`w-4 h-4 ${backfillMutation.isPending ? 'animate-spin' : ''}`} />
+              <span className="ml-2 hidden sm:inline">
+                {backfillMutation.isPending ? 'Fixing…' : 'Fix Statuses'}
+              </span>
+            </Button>
+            <Button onClick={() => setShowEnroll(true)} className="gap-2">
+              <UserPlus className="w-4 h-4" />
+              <span className="sm:hidden">Enroll</span>
+              <span className="hidden sm:inline">Enroll Student</span>
+            </Button>
+          </div>
         </div>
 
         {/* Stats */}

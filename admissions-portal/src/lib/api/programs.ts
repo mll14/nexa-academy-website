@@ -115,6 +115,10 @@ export interface ManualEnrollResult {
   amount?: string;
 }
 
+export async function backfillEnrolledStatus(): Promise<{ promoted: number; fixed: { application_id: string; student: string }[]; errors: { application_id: string; error: string }[] }> {
+  return req("/enrollments/backfill_enrolled_status/", { method: "POST" });
+}
+
 export async function manualEnroll(data: {
   studentId?: string;
   studentName?: string;

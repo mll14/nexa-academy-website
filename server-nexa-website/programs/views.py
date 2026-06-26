@@ -520,6 +520,53 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED
         )
 
+    @action(detail=False, methods=['post'], permission_classes=[HasAppPermission('students.manage')])
+    def backfill_enrolled_status(self, request):
+        """
+        Promote interview_completed applications to enrolled for any student
+        who already has an Enrollment record. Fixes students enrolled via
+        manual_enroll before the auto-promotion fix was deployed.
+        """
+        from django.db.models import Q
+        from applications.models import Application, ApplicationLog
+
+        promoted = []
+        errors = []
+
+        for enrollment in Enrollment.objects.select_related('student', 'program').iterator():
+            student = enrollment.student
+            program = enrollment.program
+            if student is None or program is None:
+                continue
+
+            apps_qs = Application.objects.filter(
+                Q(user=student) | Q(email__iexact=student.email),
+                status='interview_completed',
+                program_name__iexact=program.name,
+            )
+
+            for app in apps_qs:
+                try:
+                    with transaction.atomic():
+                        app.status = 'enrolled'
+                        app.status_updated_at = timezone.now()
+                        app.save(update_fields=['status', 'status_updated_at'])
+                        ApplicationLog.objects.create(
+                            application=app,
+                            previous_status='interview_completed',
+                            new_status='enrolled',
+                            changed_by=str(request.user.uid),
+                            notes='Backfill: enrollment record existed; status corrected by admin',
+                            applicant_email=app.email,
+                            applicant_name=app.full_name,
+                        )
+                    promoted.append({'application_id': str(app.id), 'student': app.email})
+                except Exception as e:
+                    errors.append({'application_id': str(app.id), 'error': str(e)})
+                    logger.error('backfill_enrolled_status failed for app %s: %s', app.id, e, exc_info=True)
+
+        return Response({'promoted': len(promoted), 'fixed': promoted, 'errors': errors})
+
 
 class PaymentPlanChangeRequestViewSet(viewsets.ModelViewSet):
     queryset = PaymentPlanChangeRequest.objects.select_related('student', 'enrollment', 'enrollment__program')
