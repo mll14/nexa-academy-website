@@ -161,6 +161,24 @@ function AppointmentDetailDialog({
               </span>
             </div>
 
+            {appt.meet_url ? (
+              <a
+                href={appt.meet_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm font-medium text-primary hover:bg-primary/10 transition-colors"
+              >
+                <Video className="w-4 h-4 shrink-0" />
+                <span className="flex-1 truncate">{appt.meet_url}</span>
+                <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-70" />
+              </a>
+            ) : appt.appointment_type === 'virtual' ? (
+              <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                <Video className="w-4 h-4 shrink-0" />
+                <span>No meeting link added yet</span>
+              </div>
+            ) : null}
+
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Attendee</p>
               <div className="divide-y divide-border">
@@ -191,24 +209,6 @@ function AppointmentDetailDialog({
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Purpose</p>
               <p className="text-sm text-muted-foreground px-1 whitespace-pre-wrap">{appt.reason}</p>
             </div>
-
-            {appt.appointment_type === 'virtual' && appt.meet_url && (
-              <>
-                <Separator />
-                <div>
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-2">Meeting Link</p>
-                  <a
-                    href={appt.meet_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-medium hover:bg-muted/50 transition-colors break-all"
-                  >
-                    <ExternalLink className="w-4 h-4 shrink-0" />
-                    {appt.meet_url}
-                  </a>
-                </div>
-              </>
-            )}
 
             <Separator />
 
