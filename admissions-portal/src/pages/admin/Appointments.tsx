@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'react-hot-toast'
 import {
@@ -862,7 +863,9 @@ export function CreateAppointmentDialog({
 // ── Appointments list page ────────────────────────────────────────────────────
 
 export function Appointments() {
-  const [statusTab, setStatusTab] = useState<string>('all')
+  const navigate = useNavigate()
+  const searchParams = useSearch({ from: '/admin/appointments' }) as { tab?: string }
+  const statusTab: string = searchParams.tab ?? 'all'
   const [apptType, setApptType] = useState('')
   const [host, setHost] = useState('')
   const [search, setSearch] = useState('')
@@ -919,7 +922,7 @@ export function Appointments() {
         <UnderlineTabs
           tabs={[...STATUS_TABS]}
           active={statusTab}
-          onChange={(v) => { setStatusTab(v); setPage(1) }}
+          onChange={(v) => { navigate({ to: '/admin/appointments', search: { tab: v } } as never); setPage(1) }}
           className="overflow-x-auto"
         />
 

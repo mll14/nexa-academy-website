@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { Search, ArrowUpDown, ChevronRight } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
@@ -51,11 +51,14 @@ const STATUS_DOT: Record<string, string> = {
 
 export function Applications() {
   const navigate = useNavigate()
+  const search = useSearch({ from: '/admin/applications' }) as { tab?: 'all' | 'with' | 'without' }
+  const intakeTab: (typeof INTAKE_TABS)[number]['value'] = search.tab ?? 'all'
   const [status, setStatus] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [ordering, setOrdering] = useState('-applied_at')
   const [page, setPage] = useState(1)
-  const [intakeTab, setIntakeTab] = useState<(typeof INTAKE_TABS)[number]['value']>('all')
+
+  useEffect(() => { setPage(1) }, [intakeTab])
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin', 'applications', { status, searchTerm, ordering, page, intakeTab }],
@@ -94,10 +97,7 @@ export function Applications() {
         <UnderlineTabs
           tabs={[...INTAKE_TABS]}
           active={intakeTab}
-          onChange={(value) => {
-            setIntakeTab(value as typeof intakeTab)
-            setPage(1)
-          }}
+          onChange={(value) => navigate({ to: '/admin/applications', search: { tab: value as 'all' | 'with' | 'without' } } as never)}
           className="overflow-x-auto"
         />
 

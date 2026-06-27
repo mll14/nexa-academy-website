@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw, Search, ArrowUpDown, X, CreditCard,
@@ -611,8 +612,10 @@ const TABS: { value: Tab; label: string }[] = [
   { value: 'payment-plans', label: 'Plan Request Changes' },
 ]
 
-export function Payments({ defaultTab }: { defaultTab?: Tab }) {
-  const [tab, setTab] = useState<Tab>(defaultTab ?? 'transactions')
+export function Payments() {
+  const navigate = useNavigate()
+  const search = useSearch({ from: '/admin/payments' }) as { tab?: Tab }
+  const tab: Tab = search.tab ?? 'transactions'
 
   return (
     <AdminLayout>
@@ -624,7 +627,7 @@ export function Payments({ defaultTab }: { defaultTab?: Tab }) {
           </div>
         </div>
 
-        <UnderlineTabs tabs={TABS} active={tab} onChange={(v) => setTab(v as Tab)} />
+        <UnderlineTabs tabs={TABS} active={tab} onChange={(v) => navigate({ to: '/admin/payments', search: { tab: v as Tab } } as never)} />
 
         {tab === 'transactions' ? <TransactionsTab /> : <PaymentPlansTab />}
       </div>

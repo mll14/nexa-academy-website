@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Mail, Users, Send, Plus, Pencil, Trash2,
@@ -691,9 +692,11 @@ function SubscribersTab() {
 type PageView = 'list' | 'compose' | 'edit'
 
 export function Newsletter() {
+  const navigate = useNavigate()
+  const searchParams = useSearch({ from: '/admin/newsletter' }) as { tab?: 'campaigns' | 'subscribers' }
+  const activeTab: 'campaigns' | 'subscribers' = searchParams.tab ?? 'campaigns'
   const [view, setView] = useState<PageView>('list')
   const [editTarget, setEditTarget] = useState<NewsletterCampaign | null>(null)
-  const [activeTab, setActiveTab] = useState<'campaigns' | 'subscribers'>('campaigns')
 
   const { data: countData } = useQuery({
     queryKey: ['subscriber-count'],
@@ -783,7 +786,7 @@ export function Newsletter() {
           ] as const).map(({ key, label, icon: Icon }) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
+              onClick={() => navigate({ to: '/admin/newsletter', search: { tab: key } } as never)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 activeTab === key
                   ? 'border-primary text-primary'

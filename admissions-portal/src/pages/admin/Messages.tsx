@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   MessageSquare, Search, Mail, Phone,
@@ -312,8 +313,10 @@ function MessageRow({ msg, onClick }: { msg: ContactMessage; onClick: () => void
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export function Messages() {
+  const navigate = useNavigate()
+  const searchParams = useSearch({ from: '/admin/messages' }) as { tab?: FollowUpFilter }
+  const followUp: FollowUpFilter = searchParams.tab ?? 'pending'
   const qc = useQueryClient()
-  const [followUp, setFollowUp] = useState<FollowUpFilter>('pending')
   const [search, setSearch] = useState('')
   const [readFilter, setReadFilter] = useState('all')
   const [sort, setSort] = useState('-created_at')
@@ -428,7 +431,7 @@ export function Messages() {
         </div>
 
         {/* Follow-up tabs */}
-        <FollowUpTabs value={followUp} onChange={(v) => { setFollowUp(v); setPage(1) }} />
+        <FollowUpTabs value={followUp} onChange={(v) => { navigate({ to: '/admin/messages', search: { tab: v } } as never); setPage(1) }} />
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-2">

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Flame, HelpCircle, FileWarning, Search,
@@ -703,13 +703,15 @@ function IncompleteTab() {
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] = [
-  { id: 'interests',  label: 'Coming Soon',     icon: Flame,       desc: 'Interest in upcoming programs' },
-  { id: 'help_me',    label: 'Help Me Choose',   icon: HelpCircle,  desc: 'Need guidance on which program' },
   { id: 'incomplete', label: 'Incomplete Forms', icon: FileWarning, desc: 'Started but did not submit' },
+  { id: 'help_me',    label: 'Help Me Choose',   icon: HelpCircle,  desc: 'Need guidance on which program' },
+  { id: 'interests',  label: 'Coming Soon',       icon: Flame,       desc: 'Interest in upcoming programs' },
 ]
 
 export function Leads() {
-  const [tab, setTab] = useState<Tab>('interests')
+  const navigate = useNavigate()
+  const search = useSearch({ from: '/admin/leads' }) as { tab?: Tab }
+  const tab: Tab = TABS.find((t) => t.id === search.tab)?.id ?? 'incomplete'
   const current = TABS.find((t) => t.id === tab)!
 
   return (
@@ -722,7 +724,7 @@ export function Leads() {
 
         <div className="flex border-b border-border">
           {TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => setTab(id)}
+            <button key={id} onClick={() => navigate({ to: '/admin/leads', search: { tab: id } } as never)}
               className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
                 tab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}>
@@ -733,9 +735,9 @@ export function Leads() {
 
         <p className="text-xs text-muted-foreground -mt-2">{current.desc}</p>
 
-        {tab === 'interests'  && <InterestsTab />}
-        {tab === 'help_me'    && <HelpMeTab />}
         {tab === 'incomplete' && <IncompleteTab />}
+        {tab === 'help_me'    && <HelpMeTab />}
+        {tab === 'interests'  && <InterestsTab />}
       </div>
     </AdminLayout>
   )

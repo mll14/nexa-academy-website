@@ -267,6 +267,9 @@ const adminDashboardRoute = createRoute({
 const adminApplicationsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "applications",
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: s.tab === 'all' || s.tab === 'with' || s.tab === 'without' ? s.tab as 'all' | 'with' | 'without' : undefined,
+  }),
   beforeLoad: () => requirePermission('applications.view'),
   component: Applications,
 });
@@ -288,6 +291,9 @@ const adminInterviewsRoute = createRoute({
 const adminPaymentsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "payments",
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: s.tab === 'transactions' || s.tab === 'payment-plans' ? s.tab as 'transactions' | 'payment-plans' : undefined,
+  }),
   beforeLoad: () => requirePermission('transactions.view'),
   component: Payments,
 });
@@ -309,6 +315,9 @@ const adminPaymentPlansRoute = createRoute({
 const adminProgramsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "programs",
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: s.tab === 'programs' || s.tab === 'intakes' ? s.tab as 'programs' | 'intakes' : undefined,
+  }),
   beforeLoad: () => requirePermission('programs.view'),
   component: Programs,
 });
@@ -323,6 +332,9 @@ const adminIntakesRoute = createRoute({
 const adminLeadsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "leads",
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: s.tab === 'incomplete' || s.tab === 'help_me' || s.tab === 'interests' ? s.tab as 'incomplete' | 'help_me' | 'interests' : undefined,
+  }),
   beforeLoad: () => requirePermission('leads.view'),
   component: Leads,
 });
@@ -351,6 +363,9 @@ const adminEnrolledDetailRoute = createRoute({
 const adminMessagesRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "messages",
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: s.tab === 'pending' || s.tab === 'done' ? s.tab as 'pending' | 'done' : undefined,
+  }),
   beforeLoad: () => requirePermission('messages.view'),
   component: Messages,
 });
@@ -371,6 +386,9 @@ const adminNotificationsRoute = createRoute({
 const adminNewsletterRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "newsletter",
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: s.tab === 'campaigns' || s.tab === 'subscribers' ? s.tab as 'campaigns' | 'subscribers' : undefined,
+  }),
   beforeLoad: () => requirePermission('newsletter.view'),
   component: Newsletter,
 });
@@ -378,6 +396,11 @@ const adminNewsletterRoute = createRoute({
 const adminAppointmentsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "appointments",
+  validateSearch: (s: Record<string, unknown>) => ({
+    tab: s.tab === 'all' || s.tab === 'scheduled' || s.tab === 'completed' || s.tab === 'cancelled' || s.tab === 'no_show'
+      ? s.tab as 'all' | 'scheduled' | 'completed' | 'cancelled' | 'no_show'
+      : undefined,
+  }),
   beforeLoad: () => requirePermission('appointments.view'),
   component: Appointments,
 });

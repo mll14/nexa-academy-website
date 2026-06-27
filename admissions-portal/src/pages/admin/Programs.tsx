@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, BookOpen, CalendarDays, ChevronRight,
@@ -651,7 +652,9 @@ function IntakesTab() {
 type Tab = 'programs' | 'intakes'
 
 export function Programs() {
-  const [tab, setTab] = useState<Tab>('programs')
+  const navigate = useNavigate()
+  const search = useSearch({ from: '/admin/programs' }) as { tab?: Tab }
+  const tab: Tab = search.tab ?? 'programs'
 
   return (
     <AdminLayout>
@@ -670,7 +673,7 @@ export function Programs() {
           ] as { id: Tab; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => setTab(id)}
+              onClick={() => navigate({ to: '/admin/programs', search: { tab: id } } as never)}
               className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
                 tab === id
                   ? 'border-primary text-primary'
