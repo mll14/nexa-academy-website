@@ -60,7 +60,7 @@ export function AdminDashboard() {
           </div>
           {pendingCount > 0 && hasPermission('applications.view') && (
             <button
-              onClick={() => navigate({ to: '/admin/applications' })}
+              onClick={() => navigate({ to: '/admin/applications', search: { tab: undefined } })}
               className="flex items-center gap-2 px-3 py-2 bg-warning/10 border border-warning/20 rounded-xl text-sm text-warning font-medium hover:bg-warning/20 transition-colors"
             >
               <AlertCircle className="w-4 h-4" />
@@ -94,7 +94,7 @@ export function AdminDashboard() {
         {(hasPermission('applications.view') || hasPermission('interviews.view') || hasPermission('programs.view')) && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {hasPermission('applications.view') && (
-              <button onClick={() => navigate({ to: '/admin/applications' })} className="flex items-center gap-3 px-4 py-3.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:opacity-90 transition-opacity">
+              <button onClick={() => navigate({ to: '/admin/applications', search: { tab: undefined } })} className="flex items-center gap-3 px-4 py-3.5 bg-primary text-primary-foreground rounded-xl font-medium text-sm hover:opacity-90 transition-opacity">
                 <Users className="w-4 h-4" />
                 <span className="flex-1 text-left">Review Applications</span>
                 <ArrowRight className="w-4 h-4 opacity-70" />
@@ -108,7 +108,7 @@ export function AdminDashboard() {
               </button>
             )}
             {hasPermission('programs.view') && (
-              <button onClick={() => navigate({ to: '/admin/programs' })} className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors">
+              <button onClick={() => navigate({ to: '/admin/programs', search: { tab: undefined } })} className="flex items-center gap-3 px-4 py-3.5 bg-card border rounded-xl font-medium text-sm hover:bg-muted transition-colors">
                 <CheckCircle2 className="w-4 h-4 text-muted-foreground" />
                 <span className="flex-1 text-left">Manage Programs</span>
                 <ArrowRight className="w-4 h-4 text-muted-foreground" />
@@ -121,7 +121,7 @@ export function AdminDashboard() {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold">Recent Applications</h2>
-            <Button variant="ghost" size="sm" onClick={() => navigate({ to: '/admin/applications' })} className="text-primary gap-1.5">
+            <Button variant="ghost" size="sm" onClick={() => navigate({ to: '/admin/applications', search: { tab: undefined } })} className="text-primary gap-1.5">
               View all <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           </div>

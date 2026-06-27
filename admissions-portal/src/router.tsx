@@ -301,14 +301,14 @@ const adminPaymentsRoute = createRoute({
 const adminTransactionsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "transactions",
-  beforeLoad: () => { throw redirect({ to: '/admin/payments' }) },
+  beforeLoad: () => { throw redirect({ to: '/admin/payments', search: { tab: undefined } }) },
   component: () => null,
 });
 
 const adminPaymentPlansRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "payment-plans",
-  beforeLoad: () => { throw redirect({ to: '/admin/payments' }) },
+  beforeLoad: () => { throw redirect({ to: '/admin/payments', search: { tab: undefined } }) },
   component: () => null,
 });
 
@@ -325,7 +325,7 @@ const adminProgramsRoute = createRoute({
 const adminIntakesRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "intakes",
-  beforeLoad: () => { throw redirect({ to: '/admin/programs' }) },
+  beforeLoad: () => { throw redirect({ to: '/admin/programs', search: { tab: undefined } }) },
   component: () => null,
 });
 
@@ -409,7 +409,7 @@ const adminAppointmentDetailRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "appointments/$id",
   beforeLoad: () => {
-    throw redirect({ to: '/admin/appointments' });
+    throw redirect({ to: '/admin/appointments', search: { tab: undefined } });
   },
   component: () => null,
 });

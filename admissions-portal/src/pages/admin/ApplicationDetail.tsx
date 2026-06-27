@@ -492,7 +492,7 @@ export function ApplicationDetail() {
       <AdminLayout>
         <div className="max-w-xl mx-auto text-center py-20">
           <p className="text-destructive font-medium">Application not found.</p>
-          <Button variant="ghost" className="mt-4" onClick={() => navigate({ to: '/admin/applications' })}>
+          <Button variant="ghost" className="mt-4" onClick={() => navigate({ to: '/admin/applications', search: { tab: undefined } })}>
             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Applications
           </Button>
         </div>
@@ -512,7 +512,7 @@ export function ApplicationDetail() {
         {/* Page header */}
         <div className="flex flex-col gap-4">
           <button
-            onClick={() => navigate({ to: '/admin/applications' })}
+            onClick={() => navigate({ to: '/admin/applications', search: { tab: undefined } })}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
           >
             <ArrowLeft className="w-4 h-4" />

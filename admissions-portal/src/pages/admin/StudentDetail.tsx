@@ -90,7 +90,7 @@ export function StudentDetail() {
       <AdminLayout>
         <div className="max-w-3xl mx-auto text-center py-16">
           <p className="text-destructive">Student not found.</p>
-          <Button variant="ghost" className="mt-4" onClick={() => navigate({ to: '/admin/applications' })}>
+          <Button variant="ghost" className="mt-4" onClick={() => navigate({ to: '/admin/applications', search: { tab: undefined } })}>
             <ArrowLeft className="w-4 h-4 mr-2" /> Back
           </Button>
         </div>
@@ -115,7 +115,7 @@ export function StudentDetail() {
     <AdminLayout>
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={() => navigate({ to: '/admin/applications' })}>
+          <Button variant="ghost" size="sm" onClick={() => navigate({ to: '/admin/applications', search: { tab: undefined } })}>
             <ArrowLeft className="w-4 h-4 mr-1" /> Back
           </Button>
           <h1 className="font-heading text-xl font-bold flex-1">{user.display_name ?? user.email}</h1>
