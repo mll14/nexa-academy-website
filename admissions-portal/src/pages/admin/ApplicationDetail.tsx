@@ -25,11 +25,12 @@ import toast from 'react-hot-toast'
 import type { AvailableSlot, Intake } from '../../types/index'
 
 const NEXT_STATUSES: Record<string, string[]> = {
-  pending: ['reviewed', 'approved', 'rejected'],
-  reviewed: ['approved', 'rejected'],
-  approved: ['interview_scheduled', 'rejected'],
-  interview_scheduled: ['interview_completed', 'approved'],
-  interview_completed: ['enrolled', 'rejected'],
+  pending: ['reviewed', 'not_reached', 'approved', 'rejected'],
+  reviewed: ['not_reached', 'approved', 'rejected'],
+  not_reached: ['pending', 'reviewed', 'approved', 'rejected'],
+  approved: ['not_reached', 'interview_scheduled', 'rejected'],
+  interview_scheduled: ['not_reached', 'interview_completed', 'approved'],
+  interview_completed: ['not_reached', 'enrolled', 'rejected'],
   enrolled: [],
   rejected: ['pending'],
 }
@@ -37,6 +38,7 @@ const NEXT_STATUSES: Record<string, string[]> = {
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-warning/10 text-warning border-warning/20',
   reviewed: 'bg-secondary/10 text-secondary-foreground border-secondary/20',
+  not_reached: 'bg-warning/10 text-warning border-warning/20',
   approved: 'bg-success/10 text-success border-success/20',
   interview_scheduled: 'bg-primary/10 text-primary border-primary/20',
   interview_completed: 'bg-primary/10 text-primary border-primary/20',
@@ -547,7 +549,7 @@ export function ApplicationDetail() {
           </div>
 
           {/* Progress stepper (non-rejected) */}
-          {app.status !== 'rejected' && (
+          {app.status !== 'rejected' && app.status !== 'not_reached' && (
             <div className="bg-muted/40 border border-border rounded-2xl px-6 py-5 overflow-x-auto">
               <div className="flex items-center gap-0 min-w-max mx-auto w-full justify-between">
                 {STATUS_SEQUENCE.map((s, i) => {
@@ -581,6 +583,11 @@ export function ApplicationDetail() {
           {app.status === 'rejected' && (
             <div className="px-5 py-3.5 bg-destructive/5 border border-destructive/20 rounded-2xl text-sm text-destructive font-semibold">
               Application rejected
+            </div>
+          )}
+          {app.status === 'not_reached' && (
+            <div className="px-5 py-3.5 bg-warning/8 border border-warning/25 rounded-2xl text-sm text-warning font-semibold">
+              Followed up but not responding
             </div>
           )}
         </div>

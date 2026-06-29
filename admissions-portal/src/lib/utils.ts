@@ -11,6 +11,7 @@ export function statusText(status: string | undefined | null): string {
   const map: Record<string, string> = {
     pending: "Pending",
     reviewed: "Reviewed",
+    not_reached: "Not Responding",
     approved: "Approved",
     rejected: "Rejected",
     interview_scheduled: "Interview Scheduled",
@@ -33,6 +34,7 @@ export function statusBadgeClass(status: ApplicationStatus | string): string {
     enrolled: "bg-success/10 text-success",
     approved: "bg-success/10 text-success",
     pending: "bg-warning/10 text-warning",
+    not_reached: "bg-warning/10 text-warning",
     rejected: "bg-destructive/10 text-destructive",
     interview_scheduled: "bg-primary/10 text-primary",
     interview_completed: "bg-primary/15 text-primary",

@@ -215,7 +215,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
     serializer_class = ApplicationSerializer
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['status', 'program', 'email_sent']
-    search_fields = ['full_name', 'email', 'phone']
+    search_fields = ['full_name', 'email', 'phone', 'program', 'program_name']
     ordering_fields = ['applied_at', 'updated_at', 'full_name']
     ordering = ['-applied_at']
     pagination_class = StandardResultsSetPagination
@@ -1228,6 +1228,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         return Response({
             'total': sum(counts.values()),
             'pending': counts.get('pending', 0),
+            'not_reached': counts.get('not_reached', 0),
             'approved': counts.get('approved', 0),
             'rejected': counts.get('rejected', 0),
             'interview_scheduled': counts.get('interview_scheduled', 0),

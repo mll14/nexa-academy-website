@@ -132,6 +132,7 @@ export interface IntakeMapped {
 export type ApplicationStatus =
   | 'pending'
   | 'reviewed'
+  | 'not_reached'
   | 'approved'
   | 'rejected'
   | 'interview_scheduled'
@@ -386,6 +387,7 @@ export interface ApplicationStats {
   total?: number
   count?: number
   pending?: number
+  not_reached?: number
   approved?: number
   rejected?: number
   enrolled?: number

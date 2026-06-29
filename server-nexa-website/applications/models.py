@@ -7,6 +7,7 @@ class Application(models.Model):
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('reviewed', 'Reviewed'),
+        ('not_reached', 'Not Responding'),
         ('approved', 'Approved'),
         ('rejected', 'Rejected'),
         ('interview_scheduled', 'Interview Scheduled'),

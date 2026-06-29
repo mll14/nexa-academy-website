@@ -118,16 +118,18 @@ class ContactMessageViewSet(viewsets.ModelViewSet):
     def mark_completed(self, request, pk=None):
         """Mark a message follow-up as completed"""
         message = self.get_object()
+        message.status = 'completed'
         message.follow_up_completed = True
         message.follow_up_completed_at = timezone.now()
-        message.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+        message.save(update_fields=['status', 'follow_up_completed', 'follow_up_completed_at'])
         return Response({'success': True, 'follow_up_completed': True})
 
     @action(detail=True, methods=['post'])
     def revert_completed(self, request, pk=None):
         """Revert a message follow-up completion (undo accidental mark)"""
         message = self.get_object()
+        message.status = 'pending'
         message.follow_up_completed = False
         message.follow_up_completed_at = None
-        message.save(update_fields=['follow_up_completed', 'follow_up_completed_at'])
+        message.save(update_fields=['status', 'follow_up_completed', 'follow_up_completed_at'])
         return Response({'success': True, 'follow_up_completed': False})

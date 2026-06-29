@@ -21,7 +21,8 @@ import { Pagination } from '../../components/ui/pagination'
 
 const PAGE_SIZE = 10
 
-type FollowUpFilter = 'pending' | 'done'
+type FollowUpFilter = 'pending' | 'not_reached' | 'done'
+type MessageStatus = 'pending' | 'not_reached' | 'completed'
 
 const READ_OPTIONS = [
   { value: 'all',    label: 'All messages' },
@@ -45,6 +46,7 @@ function FollowUpTabs({ value, onChange }: {
     <div className="flex gap-1 p-1 bg-muted rounded-xl w-fit">
       {([
         { id: 'pending' as FollowUpFilter, label: 'Needs Follow-up', icon: Clock },
+        { id: 'not_reached' as FollowUpFilter, label: 'Not Responding', icon: Phone },
         { id: 'done'    as FollowUpFilter, label: 'Completed',        icon: CheckCircle2 },
       ]).map(({ id, label, icon: Icon }) => (
         <button key={id} onClick={() => onChange(id)}
@@ -71,12 +73,13 @@ function escapeHtml(value: string) {
 
 // ─── Detail dialog ────────────────────────────────────────────────────────────
 
-function MessageDetailDialog({ msg, onClose, onMarkRead, onMarkCompleted, onRevertCompleted }: {
+function MessageDetailDialog({ msg, onClose, onMarkRead, onMarkCompleted, onRevertCompleted, onSetStatus }: {
   msg: ContactMessage
   onClose: () => void
   onMarkRead: (id: string) => void
   onMarkCompleted: (id: string) => void
   onRevertCompleted: (id: string) => void
+  onSetStatus: (id: string, status: MessageStatus) => void
 }) {
   const [subject, setSubject] = useState(`Re: ${msg.subject ?? ''}`.trim())
   const [body, setBody] = useState('')
@@ -147,6 +150,11 @@ function MessageDetailDialog({ msg, onClose, onMarkRead, onMarkCompleted, onReve
                 {msg.follow_up_completed && (
                   <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border bg-success/10 text-success border-success/20">
                     <CheckCircle2 className="w-3 h-3" /> Done
+                  </span>
+                )}
+                {msg.status === 'not_reached' && !msg.follow_up_completed && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border bg-warning/10 text-warning border-warning/20">
+                    <Phone className="w-3 h-3" /> Not Responding
                   </span>
                 )}
               </div>
@@ -245,6 +253,17 @@ function MessageDetailDialog({ msg, onClose, onMarkRead, onMarkCompleted, onReve
                 <RotateCcw className="w-4 h-4 text-warning" /> Undo Completed
               </Button>
             )}
+            {msg.status === 'not_reached' ? (
+              <Button variant="outline" className="flex-1 gap-1.5 min-w-0"
+                onClick={() => { onSetStatus(msg.id, 'pending'); onClose() }}>
+                <RotateCcw className="w-4 h-4 text-warning" /> Mark as Pending
+              </Button>
+            ) : !msg.follow_up_completed && (
+              <Button variant="outline" className="flex-1 gap-1.5 min-w-0"
+                onClick={() => { onSetStatus(msg.id, 'not_reached'); onClose() }}>
+                <Phone className="w-4 h-4 text-warning" /> Mark Not Responding
+              </Button>
+            )}
           </div>
         </div>
       </Dialog>
@@ -291,6 +310,11 @@ function MessageRow({ msg, onClick }: { msg: ContactMessage; onClick: () => void
               <CheckCircle2 className="w-3 h-3" /> Done
             </span>
           )}
+          {msg.status === 'not_reached' && !msg.follow_up_completed && (
+            <span className="shrink-0 inline-flex items-center gap-0.5 text-xs font-medium text-warning">
+              <Phone className="w-3 h-3" /> Not Responding
+            </span>
+          )}
         </div>
         <p className={`text-xs truncate mt-0.5 ${!msg.is_read ? 'text-foreground' : 'text-muted-foreground'}`}>
           {msg.subject || '(No subject)'} — {msg.message.slice(0, 80)}{msg.message.length > 80 ? '…' : ''}
@@ -326,7 +350,8 @@ export function Messages() {
   const params = {
     search: search || undefined,
     is_read: readFilter === 'unread' ? 'false' : readFilter === 'read' ? 'true' : undefined,
-    follow_up_completed: followUp === 'done' ? 'true' : 'false',
+    status: followUp === 'not_reached' ? 'not_reached' : followUp === 'pending' ? 'pending' : undefined,
+    follow_up_completed: followUp === 'done' ? 'true' : followUp === 'pending' || followUp === 'not_reached' ? 'false' : undefined,
     ordering: sort,
     page,
     page_size: PAGE_SIZE,
@@ -359,7 +384,7 @@ export function Messages() {
       qc.setQueryData(['messages', params], (old: typeof data) => {
         if (!old) return old
         const results = (Array.isArray(old) ? old : old.results ?? []).map((m: ContactMessage) =>
-          m.id === id ? { ...m, follow_up_completed: true } : m
+          m.id === id ? { ...m, status: 'completed', follow_up_completed: true } : m
         )
         return Array.isArray(old) ? results : { ...old, results }
       })
@@ -375,12 +400,28 @@ export function Messages() {
       qc.setQueryData(['messages', params], (old: typeof data) => {
         if (!old) return old
         const results = (Array.isArray(old) ? old : old.results ?? []).map((m: ContactMessage) =>
-          m.id === id ? { ...m, follow_up_completed: false } : m
+          m.id === id ? { ...m, status: 'pending', follow_up_completed: false } : m
         )
         return Array.isArray(old) ? results : { ...old, results }
       })
       qc.invalidateQueries({ queryKey: ['messages'] })
       toast.success('Reverted — marked as needs follow-up')
+    },
+    onError: () => toast.error('Could not update message'),
+  })
+
+  const setStatus = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: MessageStatus }) => api.updateMessageStatus(id, status),
+    onSuccess: (updated) => {
+      qc.setQueryData(['messages', params], (old: typeof data) => {
+        if (!old) return old
+        const results = (Array.isArray(old) ? old : old.results ?? []).map((m: ContactMessage) =>
+          m.id === updated.id ? updated : m
+        )
+        return Array.isArray(old) ? results : { ...old, results }
+      })
+      qc.invalidateQueries({ queryKey: ['messages'] })
+      toast.success(updated.status === 'not_reached' ? 'Marked as not responding' : 'Marked as pending')
     },
     onError: () => toast.error('Could not update message'),
   })
@@ -459,7 +500,11 @@ export function Messages() {
             <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
               <MessageSquare className="w-8 h-8 opacity-30" />
               <p className="text-sm">
-                {followUp === 'done' ? 'No completed follow-ups yet.' : 'No messages found'}
+                {followUp === 'done'
+                  ? 'No completed follow-ups yet.'
+                  : followUp === 'not_reached'
+                    ? 'No not-responding messages yet.'
+                    : 'No messages found'}
               </p>
             </div>
           ) : (
@@ -487,6 +532,7 @@ export function Messages() {
           onMarkRead={(id) => markRead.mutate(id)}
           onMarkCompleted={(id) => markCompleted.mutate(id)}
           onRevertCompleted={(id) => revertCompleted.mutate(id)}
+          onSetStatus={(id, status) => setStatus.mutate({ id, status })}
         />
       )}
     </AdminLayout>

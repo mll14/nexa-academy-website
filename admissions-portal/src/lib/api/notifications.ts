@@ -50,6 +50,13 @@ export async function revertMessageCompleted(id: string): Promise<void> {
   await req(`/messages/${id}/revert_completed/`, { method: "POST" });
 }
 
+export async function updateMessageStatus(id: string, status: string): Promise<ContactMessage> {
+  return req<ContactMessage>(`/messages/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}
+
 // ── Newsletter ────────────────────────────────────────────────────────────────
 
 export async function getNewsletterSubscribers(

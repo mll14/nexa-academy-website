@@ -36,7 +36,7 @@ const LEAD_STATUS_OPTIONS: {
 }[] = [
   { value: 'new', label: 'New', icon: Clock, className: 'bg-muted text-muted-foreground border-border' },
   { value: 'contacted', label: 'Contacted', icon: Phone, className: 'bg-primary/10 text-primary border-primary/20' },
-  { value: 'not_reached', label: 'Not Reached', icon: PhoneOff, className: 'bg-warning/10 text-warning border-warning/20' },
+  { value: 'not_reached', label: 'Not Responding', icon: PhoneOff, className: 'bg-warning/10 text-warning border-warning/20' },
   { value: 'completed', label: 'Completed', icon: CheckCircle2, className: 'bg-success/10 text-success border-success/20' },
 ]
 

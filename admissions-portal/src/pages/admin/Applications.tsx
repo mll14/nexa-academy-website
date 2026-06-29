@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { Search, ArrowUpDown, ChevronRight } from 'lucide-react'
+import { Search, ArrowUpDown, ChevronRight, BookOpen } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
@@ -16,6 +16,7 @@ const STATUS_OPTIONS = [
   { value: 'all', label: 'All Applications' },
   { value: 'pending', label: 'Pending' },
   { value: 'reviewed', label: 'Reviewed' },
+  { value: 'not_reached', label: 'Not Responding' },
   { value: 'approved', label: 'Approved' },
   { value: 'interview_scheduled', label: 'Interview Scheduled' },
   { value: 'interview_completed', label: 'Interview Completed' },
@@ -42,6 +43,7 @@ const INTAKE_TABS = [
 const STATUS_DOT: Record<string, string> = {
   pending: 'bg-warning',
   reviewed: 'bg-secondary',
+  not_reached: 'bg-warning',
   approved: 'bg-success',
   interview_scheduled: 'bg-primary',
   interview_completed: 'bg-primary/60',
@@ -55,17 +57,25 @@ export function Applications() {
   const intakeTab: (typeof INTAKE_TABS)[number]['value'] = search.tab ?? 'all'
   const [status, setStatus] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
+  const [program, setProgram] = useState('')
   const [ordering, setOrdering] = useState('-applied_at')
   const [page, setPage] = useState(1)
 
   useEffect(() => { setPage(1) }, [intakeTab])
 
+  const { data: programs = [] } = useQuery({
+    queryKey: ['programs'],
+    queryFn: () => api.getPrograms(),
+    staleTime: 5 * 60 * 1000,
+  })
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['admin', 'applications', { status, searchTerm, ordering, page, intakeTab }],
+    queryKey: ['admin', 'applications', { status, searchTerm, program, ordering, page, intakeTab }],
     queryFn: () =>
       api.getApplications({
         status: status === 'all' ? undefined : status,
         search: searchTerm || undefined,
+        program: program || undefined,
         ordering,
         page,
         page_size: PAGE_SIZE,
@@ -77,6 +87,10 @@ export function Applications() {
   const applications: Application[] = data?.results ?? []
   const total = data?.count ?? 0
   const totalPages = Math.ceil(total / PAGE_SIZE)
+  const programOptions = [
+    { value: '', label: 'All Programs' },
+    ...programs.map((p) => ({ value: p.slug, label: p.name })),
+  ]
 
   const openDetail = (app: Application) =>
     navigate({ to: '/admin/applications/$id', params: { id: app.id } })
@@ -116,6 +130,14 @@ export function Applications() {
             />
           </div>
           <div className="flex flex-col sm:flex-row gap-2.5">
+            <div className="w-full sm:w-56">
+              <Select
+                value={program}
+                onChange={(v) => { setProgram(v); setPage(1) }}
+                options={programOptions}
+                icon={<BookOpen className="w-3.5 h-3.5" />}
+              />
+            </div>
             <div className="w-full sm:w-52">
               <Select
                 value={status}
