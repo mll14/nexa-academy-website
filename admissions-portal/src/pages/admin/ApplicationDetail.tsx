@@ -25,12 +25,13 @@ import toast from 'react-hot-toast'
 import type { AvailableSlot, Intake } from '../../types/index'
 
 const NEXT_STATUSES: Record<string, string[]> = {
-  pending: ['reviewed', 'not_reached', 'approved', 'rejected'],
-  reviewed: ['not_reached', 'approved', 'rejected'],
-  not_reached: ['pending', 'reviewed', 'approved', 'rejected'],
-  approved: ['not_reached', 'interview_scheduled', 'rejected'],
-  interview_scheduled: ['not_reached', 'interview_completed', 'approved'],
-  interview_completed: ['not_reached', 'enrolled', 'rejected'],
+  pending: ['reviewed', 'not_reached', 'achieved', 'approved', 'rejected'],
+  reviewed: ['not_reached', 'achieved', 'approved', 'rejected'],
+  not_reached: ['pending', 'reviewed', 'achieved', 'approved', 'rejected'],
+  approved: ['not_reached', 'achieved', 'interview_scheduled', 'rejected'],
+  interview_scheduled: ['not_reached', 'achieved', 'interview_completed', 'approved'],
+  interview_completed: ['not_reached', 'achieved', 'enrolled', 'rejected'],
+  achieved: ['pending', 'reviewed', 'not_reached', 'rejected'],
   enrolled: [],
   rejected: ['pending'],
 }
@@ -42,6 +43,7 @@ const STATUS_COLORS: Record<string, string> = {
   approved: 'bg-success/10 text-success border-success/20',
   interview_scheduled: 'bg-primary/10 text-primary border-primary/20',
   interview_completed: 'bg-primary/10 text-primary border-primary/20',
+  achieved: 'bg-muted text-muted-foreground border-border',
   enrolled: 'bg-success/10 text-success border-success/20',
   rejected: 'bg-destructive/10 text-destructive border-destructive/20',
 }
@@ -52,6 +54,7 @@ const STATUS_SEQUENCE = [
   'approved',
   'interview_scheduled',
   'interview_completed',
+  'achieved',
   'enrolled',
 ]
 

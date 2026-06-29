@@ -205,7 +205,7 @@ class ApplicationCreateSerializer(serializers.ModelSerializer):
         # Normalize email
         email = value.lower().strip()
         # Check for existing applications that are not rejected
-        if Application.objects.filter(email__iexact=email).exclude(status='rejected').exists():
+        if Application.objects.filter(email__iexact=email).exclude(status__in=['rejected', 'achieved']).exists():
             raise serializers.ValidationError("An active application already exists for this email.")
         return email
 

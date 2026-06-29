@@ -137,6 +137,7 @@ export type ApplicationStatus =
   | 'rejected'
   | 'interview_scheduled'
   | 'interview_completed'
+  | 'achieved'
   | 'enrolled'
 
 export interface InterviewSlot {
@@ -394,6 +395,7 @@ export interface ApplicationStats {
   enrolled_count?: number
   interview_scheduled?: number
   interview_completed?: number
+  achieved?: number
   reviewed?: number
 }
 

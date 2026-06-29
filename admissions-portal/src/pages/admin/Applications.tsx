@@ -20,6 +20,7 @@ const STATUS_OPTIONS = [
   { value: 'approved', label: 'Approved' },
   { value: 'interview_scheduled', label: 'Interview Scheduled' },
   { value: 'interview_completed', label: 'Interview Completed' },
+  { value: 'achieved', label: 'Achieved' },
   { value: 'enrolled', label: 'Enrolled' },
   { value: 'rejected', label: 'Rejected' },
 ]
@@ -47,6 +48,7 @@ const STATUS_DOT: Record<string, string> = {
   approved: 'bg-success',
   interview_scheduled: 'bg-primary',
   interview_completed: 'bg-primary/60',
+  achieved: 'bg-muted-foreground',
   enrolled: 'bg-success',
   rejected: 'bg-destructive',
 }

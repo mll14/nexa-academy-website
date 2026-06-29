@@ -228,6 +228,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         # Admins see everything
         if getattr(user, 'role', None) == 'admin':
             qs = Application.objects.select_related('user', 'interview_slot').all()
+            status_filter = self.request.query_params.get('status')
+            if status_filter != 'achieved':
+                qs = qs.exclude(status='achieved')
             intake_status = self.request.query_params.get('intake_status')
             if intake_status == 'with':
                 return qs.filter(start_date__isnull=False)
@@ -1233,6 +1236,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             'rejected': counts.get('rejected', 0),
             'interview_scheduled': counts.get('interview_scheduled', 0),
             'interview_completed': counts.get('interview_completed', 0),
+            'achieved': counts.get('achieved', 0),
             'enrolled': counts.get('enrolled', 0),
         })
 

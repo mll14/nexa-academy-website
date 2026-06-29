@@ -16,6 +16,7 @@ export function statusText(status: string | undefined | null): string {
     rejected: "Rejected",
     interview_scheduled: "Interview Scheduled",
     interview_completed: "Interview Completed",
+    achieved: "Achieved",
     enrolled: "Enrolled",
     completed: "Completed",
     failed: "Failed",
@@ -38,6 +39,7 @@ export function statusBadgeClass(status: ApplicationStatus | string): string {
     rejected: "bg-destructive/10 text-destructive",
     interview_scheduled: "bg-primary/10 text-primary",
     interview_completed: "bg-primary/15 text-primary",
+    achieved: "bg-muted text-muted-foreground",
     reviewed: "bg-secondary text-secondary-foreground",
   };
   return map[status] ?? "bg-muted text-muted-foreground";

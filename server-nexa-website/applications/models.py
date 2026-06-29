@@ -12,6 +12,7 @@ class Application(models.Model):
         ('rejected', 'Rejected'),
         ('interview_scheduled', 'Interview Scheduled'),
         ('interview_completed', 'Interview Completed'),
+        ('achieved', 'Achieved'),
         ('enrolled', 'Enrolled'),
     )
 
