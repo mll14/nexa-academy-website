@@ -334,6 +334,9 @@ const adminLeadsRoute = createRoute({
   path: "leads",
   validateSearch: (s: Record<string, unknown>) => ({
     tab: s.tab === 'incomplete' || s.tab === 'help_me' || s.tab === 'interests' ? s.tab as 'incomplete' | 'help_me' | 'interests' : undefined,
+    filter: s.filter === 'all' || s.filter === 'new' || s.filter === 'contacted' || s.filter === 'not_reached' || s.filter === 'completed'
+      ? s.filter as 'all' | 'new' | 'contacted' | 'not_reached' | 'completed'
+      : undefined,
   }),
   beforeLoad: () => requirePermission('leads.view'),
   component: Leads,

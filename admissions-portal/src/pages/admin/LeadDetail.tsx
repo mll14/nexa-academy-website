@@ -271,7 +271,7 @@ export function LeadDetail() {
       <AdminLayout>
         <div className="max-w-xl mx-auto text-center py-20">
           <p className="text-destructive font-medium">Lead not found.</p>
-          <Button variant="ghost" className="mt-4" onClick={() => navigate({ to: '/admin/leads', search: { tab: undefined } })}>
+          <Button variant="ghost" className="mt-4" onClick={() => navigate({ to: '/admin/leads', search: { tab: undefined, filter: undefined } })}>
             <ArrowLeft className="w-4 h-4 mr-2" /> Back to Leads
           </Button>
         </div>
@@ -308,7 +308,7 @@ export function LeadDetail() {
       <div className="space-y-6">
         <div className="flex flex-col gap-4">
           <button
-            onClick={() => navigate({ to: '/admin/leads', search: { tab: undefined } })}
+            onClick={() => navigate({ to: '/admin/leads', search: { tab: undefined, filter: undefined } })}
             className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors w-fit"
           >
             <ArrowLeft className="w-4 h-4" />

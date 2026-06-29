@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -23,6 +23,10 @@ const PAGE_SIZE = 10
 
 type Tab = 'interests' | 'help_me' | 'incomplete'
 type LeadStatusFilter = 'all' | LeadStatus
+type LeadStatusFilterProps = {
+  statusFilter: LeadStatusFilter
+  onStatusFilterChange: (status: LeadStatusFilter) => void
+}
 
 const LEAD_STATUS_OPTIONS: {
   value: LeadStatus
@@ -44,6 +48,10 @@ function leadStatus(item: { lead_status?: LeadStatus; follow_up_completed: boole
 
 function leadStatusMeta(status: LeadStatus) {
   return LEAD_STATUS_OPTIONS.find((option) => option.value === status) ?? LEAD_STATUS_OPTIONS[0]
+}
+
+function isLeadStatusFilter(value: unknown): value is LeadStatusFilter {
+  return value === 'all' || LEAD_STATUS_OPTIONS.some((option) => option.value === value)
 }
 
 function Avatar({ name, email }: { name?: string; email: string }) {
@@ -172,12 +180,11 @@ function NotifyForm({
 
 // ─── Tab 1: Coming-soon interests ─────────────────────────────────────────────
 
-function InterestsTab() {
+function InterestsTab({ statusFilter, onStatusFilterChange }: LeadStatusFilterProps) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { isFullAdmin } = useAuth()
   const canDelete = isFullAdmin()
-  const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [search, setSearch] = useState('')
   const [programSlug, setProgramSlug] = useState('')
   const [ordering, setOrdering] = useState('-created_at')
@@ -185,6 +192,8 @@ function InterestsTab() {
   const [showBulkNotify, setShowBulkNotify] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<ProgramInterest | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  useEffect(() => { setPage(1) }, [statusFilter])
 
   const params = {
     search: search || undefined,
@@ -224,7 +233,7 @@ function InterestsTab() {
 
   return (
     <>
-      <LeadStatusTabs value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1) }} />
+      <LeadStatusTabs value={statusFilter} onChange={onStatusFilterChange} />
 
       <div className="flex flex-col sm:flex-row gap-2.5">
         <div className="relative flex-1">
@@ -333,18 +342,19 @@ function InterestsTab() {
 
 // ─── Tab 2: Help me / Don't know ──────────────────────────────────────────────
 
-function HelpMeTab() {
+function HelpMeTab({ statusFilter, onStatusFilterChange }: LeadStatusFilterProps) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { isFullAdmin } = useAuth()
   const canDelete = isFullAdmin()
-  const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<HelpMeLead | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [pipelineLeadId, setPipelineLeadId] = useState<string | null>(null)
   const [pipelineProgramSlug, setPipelineProgramSlug] = useState('')
+
+  useEffect(() => { setPage(1) }, [statusFilter])
 
   const params = {
     search: search || undefined,
@@ -406,7 +416,7 @@ function HelpMeTab() {
 
   return (
     <>
-      <LeadStatusTabs value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1) }} />
+      <LeadStatusTabs value={statusFilter} onChange={onStatusFilterChange} />
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
@@ -560,17 +570,18 @@ function HelpMeTab() {
 
 const STEP_LABELS: Record<number, string> = { 1: 'About You', 2: 'Program & Plan', 3: 'Review' }
 
-function IncompleteTab() {
+function IncompleteTab({ statusFilter, onStatusFilterChange }: LeadStatusFilterProps) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const { isFullAdmin } = useAuth()
   const canDelete = isFullAdmin()
   const [deleteTarget, setDeleteTarget] = useState<IncompleteApplication | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
-  const [statusFilter, setStatusFilter] = useState<LeadStatusFilter>('all')
   const [search, setSearch] = useState('')
   const [ordering, setOrdering] = useState('-updated_at')
   const [page, setPage] = useState(1)
+
+  useEffect(() => { setPage(1) }, [statusFilter])
 
   const params = {
     search: search || undefined,
@@ -602,7 +613,7 @@ function IncompleteTab() {
 
   return (
     <>
-      <LeadStatusTabs value={statusFilter} onChange={(v) => { setStatusFilter(v); setPage(1) }} />
+      <LeadStatusTabs value={statusFilter} onChange={onStatusFilterChange} />
 
       <div className="flex flex-col sm:flex-row gap-2.5">
         <div className="relative flex-1">
@@ -710,9 +721,13 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; desc: string }[] 
 
 export function Leads() {
   const navigate = useNavigate()
-  const search = useSearch({ from: '/admin/leads' }) as { tab?: Tab }
+  const search = useSearch({ from: '/admin/leads' }) as { tab?: Tab; filter?: LeadStatusFilter }
   const tab: Tab = TABS.find((t) => t.id === search.tab)?.id ?? 'incomplete'
+  const statusFilter: LeadStatusFilter = isLeadStatusFilter(search.filter) ? search.filter : 'all'
   const current = TABS.find((t) => t.id === tab)!
+  const setStatusFilter = (filter: LeadStatusFilter) => {
+    navigate({ to: '/admin/leads', search: { tab, filter } } as never)
+  }
 
   return (
     <AdminLayout>
@@ -724,7 +739,7 @@ export function Leads() {
 
         <div className="flex border-b border-border">
           {TABS.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => navigate({ to: '/admin/leads', search: { tab: id } } as never)}
+            <button key={id} onClick={() => navigate({ to: '/admin/leads', search: { tab: id, filter: statusFilter } } as never)}
               className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors -mb-px ${
                 tab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}>
@@ -735,9 +750,9 @@ export function Leads() {
 
         <p className="text-xs text-muted-foreground -mt-2">{current.desc}</p>
 
-        {tab === 'incomplete' && <IncompleteTab />}
-        {tab === 'help_me'    && <HelpMeTab />}
-        {tab === 'interests'  && <InterestsTab />}
+        {tab === 'incomplete' && <IncompleteTab statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} />}
+        {tab === 'help_me'    && <HelpMeTab statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} />}
+        {tab === 'interests'  && <InterestsTab statusFilter={statusFilter} onStatusFilterChange={setStatusFilter} />}
       </div>
     </AdminLayout>
   )
