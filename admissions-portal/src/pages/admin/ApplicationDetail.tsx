@@ -31,7 +31,7 @@ const NEXT_STATUSES: Record<string, string[]> = {
   approved: ['not_reached', 'achieved', 'interview_scheduled', 'rejected'],
   interview_scheduled: ['not_reached', 'achieved', 'interview_completed', 'approved'],
   interview_completed: ['not_reached', 'achieved', 'enrolled', 'rejected'],
-  achieved: ['pending', 'reviewed', 'not_reached', 'rejected'],
+  achieved: [],
   enrolled: [],
   rejected: ['pending'],
 }
@@ -54,7 +54,6 @@ const STATUS_SEQUENCE = [
   'approved',
   'interview_scheduled',
   'interview_completed',
-  'achieved',
   'enrolled',
 ]
 
@@ -551,8 +550,8 @@ export function ApplicationDetail() {
             </div>
           </div>
 
-          {/* Progress stepper (non-rejected) */}
-          {app.status !== 'rejected' && app.status !== 'not_reached' && (
+          {/* Progress stepper (main application process only) */}
+          {app.status !== 'rejected' && app.status !== 'not_reached' && app.status !== 'achieved' && (
             <div className="bg-muted/40 border border-border rounded-2xl px-6 py-5 overflow-x-auto">
               <div className="flex items-center gap-0 min-w-max mx-auto w-full justify-between">
                 {STATUS_SEQUENCE.map((s, i) => {
@@ -591,6 +590,11 @@ export function ApplicationDetail() {
           {app.status === 'not_reached' && (
             <div className="px-5 py-3.5 bg-warning/8 border border-warning/25 rounded-2xl text-sm text-warning font-semibold">
               Followed up but not responding
+            </div>
+          )}
+          {app.status === 'achieved' && (
+            <div className="px-5 py-3.5 bg-muted border border-border rounded-2xl text-sm text-muted-foreground font-semibold">
+              Application closed with no response
             </div>
           )}
         </div>

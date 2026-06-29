@@ -499,6 +499,17 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             )
         
         previous_status = application.status
+        if previous_status == 'achieved' and new_status != 'achieved':
+            return Response(
+                {'error': 'Achieved applications are closed and cannot be moved back into the application process.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if previous_status == 'enrolled' and new_status == 'achieved':
+            return Response(
+                {'error': 'Enrolled applications cannot be marked as achieved.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         application.status = new_status
         application.status_updated_at = timezone.now()
         application.processed_by = request.user.email
