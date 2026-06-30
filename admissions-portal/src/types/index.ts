@@ -143,6 +143,7 @@ export type ApplicationStatus =
 export interface InterviewSlot {
   id: string
   chosen_time: string
+  interview_type?: 'online' | 'physical'
   confirmed_at?: string
   meet_url?: string
   zoom_link?: string

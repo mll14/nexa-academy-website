@@ -132,9 +132,15 @@ class ApplicationAdminNote(models.Model):
 
 
 class InterviewSlot(models.Model):
+    INTERVIEW_TYPE_CHOICES = (
+        ('online', 'Online'),
+        ('physical', 'Physical'),
+    )
+
     application = models.OneToOneField(Application, on_delete=models.CASCADE, related_name='interview_slot')
     proposed_times = models.JSONField(default=list)   # list of ISO datetime strings
     chosen_time = models.DateTimeField(null=True, blank=True)
+    interview_type = models.CharField(max_length=20, choices=INTERVIEW_TYPE_CHOICES, default='online')
     zoom_link = models.URLField(blank=True)
     gcal_event_id = models.CharField(max_length=255, blank=True)
     meet_url = models.URLField(blank=True)

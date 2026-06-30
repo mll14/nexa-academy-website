@@ -110,7 +110,19 @@ const DEFAULT_NEXT_STEPS = [
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function AppointmentBookingForm({ section }: { section: AppointmentFormSection }) {
+export function AppointmentBookingForm({
+  section,
+  initialValues,
+  lockedHost,
+  lockContactDetails = false,
+  successActions = 'default',
+}: {
+  section: AppointmentFormSection
+  initialValues?: Partial<FormState>
+  lockedHost?: Host
+  lockContactDetails?: boolean
+  successActions?: 'default' | 'none'
+}) {
   const {
     badge = 'Schedule a Visit',
     headline = 'Book Your Appointment',
@@ -125,7 +137,14 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
   const { executeRecaptcha } = useGoogleReCaptcha()
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<FormState>({
-    appointmentType: '', host: '', chosenTime: '', name: '', email: '', phone: '', reason: '', attendees: [],
+    appointmentType: initialValues?.appointmentType ?? '',
+    host: lockedHost ?? initialValues?.host ?? '',
+    chosenTime: initialValues?.chosenTime ?? '',
+    name: initialValues?.name ?? '',
+    email: initialValues?.email ?? '',
+    phone: initialValues?.phone ?? '',
+    reason: initialValues?.reason ?? '',
+    attendees: initialValues?.attendees ?? [],
   })
   const [slots, setSlots] = useState<AppointmentSlot[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
@@ -231,14 +250,16 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
             Check your email for the confirmation and{' '}
             {form.appointmentType === 'virtual' ? 'Google Meet link.' : 'directions to our office.'}
           </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <a href="/apply" className="bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition-colors text-center">
-              Apply Now
-            </a>
-            <a href="/programs" className="text-sm font-semibold px-5 py-2.5 rounded-lg border hover:bg-muted transition-colors text-center">
-              Browse Programs
-            </a>
-          </div>
+          {successActions === 'default' && (
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <a href="/apply" className="bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-primary/90 transition-colors text-center">
+                Apply Now
+              </a>
+              <a href="/programs" className="text-sm font-semibold px-5 py-2.5 rounded-lg border hover:bg-muted transition-colors text-center">
+                Browse Programs
+              </a>
+            </div>
+          )}
         </div>
       </SectionWrapper>
     )
@@ -304,6 +325,7 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
                     {errors.appointmentType && <p className="text-destructive text-xs mt-2">{errors.appointmentType}</p>}
                   </div>
 
+                  {!lockedHost && (
                   <div>
                     <p className="text-sm font-semibold mb-3">Who would you like to meet?</p>
                     <div className="grid sm:grid-cols-2 gap-3">
@@ -335,6 +357,15 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
                     </div>
                     {errors.host && <p className="text-destructive text-xs mt-2">{errors.host}</p>}
                   </div>
+                  )}
+                  {lockedHost === 'admissions_manager' && (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                      <p className="text-sm font-semibold">Admissions Manager</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        This appointment connects you with admissions to review your application and next steps.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -425,32 +456,59 @@ export function AppointmentBookingForm({ section }: { section: AppointmentFormSe
               {/* Step 2 — Personal Details */}
               {step === 2 && (
                 <div className="space-y-4">
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-sm font-medium mb-1.5 block">Full Name</label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input className="pl-9" placeholder="Jane Doe" value={form.name} onChange={(e) => setField('name', e.target.value)} />
+                  {lockContactDetails ? (
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3">
+                      <p className="text-sm font-semibold">Using your application details</p>
+                      <div className="grid sm:grid-cols-3 gap-3 text-sm">
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">Name</p>
+                          <p className="font-medium truncate">{form.name || 'Not provided'}</p>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">Email</p>
+                          <p className="font-medium truncate">{form.email || 'Not provided'}</p>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-muted-foreground">Phone</p>
+                          <p className="font-medium truncate">{form.phone || 'Not provided'}</p>
+                        </div>
                       </div>
-                      {errors.name && <p className="text-destructive text-xs mt-1">{errors.name}</p>}
+                      {(errors.name || errors.email || errors.phone) && (
+                        <p className="text-destructive text-xs">
+                          We could not load all application contact details. Please go back and confirm your application information.
+                        </p>
+                      )}
                     </div>
-                    <div>
-                      <label className="text-sm font-medium mb-1.5 block">Email Address</label>
-                      <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input className="pl-9" type="email" placeholder="jane@email.com" value={form.email} onChange={(e) => setField('email', e.target.value)} />
+                  ) : (
+                    <>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="text-sm font-medium mb-1.5 block">Full Name</label>
+                          <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Input className="pl-9" placeholder="Jane Doe" value={form.name} onChange={(e) => setField('name', e.target.value)} />
+                          </div>
+                          {errors.name && <p className="text-destructive text-xs mt-1">{errors.name}</p>}
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium mb-1.5 block">Email Address</label>
+                          <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <Input className="pl-9" type="email" placeholder="jane@email.com" value={form.email} onChange={(e) => setField('email', e.target.value)} />
+                          </div>
+                          {errors.email && <p className="text-destructive text-xs mt-1">{errors.email}</p>}
+                        </div>
                       </div>
-                      {errors.email && <p className="text-destructive text-xs mt-1">{errors.email}</p>}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium mb-1.5 block">Phone Number</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                      <Input className="pl-9" type="tel" placeholder="+254 7XX XXX XXX" value={form.phone} onChange={(e) => setField('phone', e.target.value)} />
-                    </div>
-                    {errors.phone && <p className="text-destructive text-xs mt-1">{errors.phone}</p>}
-                  </div>
+                      <div>
+                        <label className="text-sm font-medium mb-1.5 block">Phone Number</label>
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <Input className="pl-9" type="tel" placeholder="+254 7XX XXX XXX" value={form.phone} onChange={(e) => setField('phone', e.target.value)} />
+                        </div>
+                        {errors.phone && <p className="text-destructive text-xs mt-1">{errors.phone}</p>}
+                      </div>
+                    </>
+                  )}
                   <div>
                     <label className="text-sm font-medium mb-1.5 block">What would you like to discuss?</label>
                     <Textarea

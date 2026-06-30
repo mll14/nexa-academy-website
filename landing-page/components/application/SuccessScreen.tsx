@@ -1,15 +1,17 @@
 'use client'
 
 import { useEffect } from 'react'
-import { CheckCircle2, ExternalLink, Mail } from 'lucide-react'
+import { CalendarClock, CheckCircle2, ExternalLink, Mail } from 'lucide-react'
 import { FaWhatsapp, FaTelegramPlane, FaDiscord, FaLinkedinIn } from 'react-icons/fa'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Separator } from '@/components/ui/Separator'
+import { AppointmentBookingForm } from '@/app/(site)/appointments/AppointmentBookingForm'
 
 interface SuccessData {
   id?: string
   full_name?: string
   email?: string
+  phone?: string
   program_name?: string
   start_date?: string
   estimated_fees?: number
@@ -34,20 +36,22 @@ export function SuccessScreen({
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [])
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-12 space-y-8 text-center">
-      <div className="mx-auto w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-        <CheckCircle2 className="w-10 h-10 text-primary" />
-      </div>
+    <div className="max-w-6xl mx-auto px-4 py-12 space-y-8 text-center">
+      <div className="max-w-2xl mx-auto space-y-8">
+        <div className="mx-auto w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+          <CheckCircle2 className="w-10 h-10 text-primary" />
+        </div>
 
-      <div className="space-y-2">
-        <h1 className="text-3xl sm:text-4xl font-bold">Application Submitted!</h1>
-        <p className="text-muted-foreground">
-          We&apos;ve received your application and will review it within 24–48 hours.
-        </p>
+        <div className="space-y-2">
+          <h1 className="text-3xl sm:text-4xl font-bold">Application Submitted!</h1>
+          <p className="text-muted-foreground">
+            We&apos;ve received your application and will review it within 24–48 hours.
+          </p>
+        </div>
       </div>
 
       {data && (
-        <Card className="border border-border rounded-2xl text-left">
+        <Card className="max-w-2xl mx-auto border border-border rounded-2xl text-left">
           <CardContent className="p-5 sm:p-7 space-y-4">
             <h3 className="font-semibold flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-primary" /> Application Summary
@@ -81,7 +85,7 @@ export function SuccessScreen({
 
       {/* ── Portal access card ── */}
       {data?.email && (
-        <Card className="border border-border rounded-2xl text-left">
+        <Card className="max-w-2xl mx-auto border border-border rounded-2xl text-left">
           <CardContent className="p-5 sm:p-7 space-y-4">
             <h3 className="font-semibold flex items-center gap-2">
               <ExternalLink className="w-4 h-4 text-primary" /> Access Your Application Portal
@@ -113,6 +117,63 @@ export function SuccessScreen({
             </p>
           </CardContent>
         </Card>
+      )}
+
+      {data?.email && (
+        <Card className="max-w-2xl mx-auto border border-primary/25 rounded-2xl text-left bg-primary/5">
+          <CardContent className="p-5 sm:p-7 space-y-4">
+            <h3 className="font-semibold flex items-center gap-2">
+              <CalendarClock className="w-4 h-4 text-primary" /> Book Your Admissions Appointment
+            </h3>
+            <Separator />
+            <p className="text-sm text-muted-foreground">
+              This is a necessary step if you want to fast-track your application. Choose a physical or virtual appointment with the Admissions Manager so we can review your goals, answer questions, and move your application forward faster.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {data?.email && (
+        <div className="text-left">
+          <AppointmentBookingForm
+            section={{
+              _key: 'post-application-appointment',
+              _type: 'appointmentFormSection',
+              badge: 'Fast-track step',
+              headline: 'Choose Your Appointment',
+              subheadline: 'Book a time with the Admissions Manager to discuss your application.',
+              sidebarItems: [
+                {
+                  _key: 'review',
+                  title: 'Review your application',
+                  description: 'Confirm your goals, program fit, fees, and next steps.',
+                },
+                {
+                  _key: 'format',
+                  title: 'Physical or virtual',
+                  description: 'Choose the appointment format that works for you.',
+                },
+              ],
+              nextSteps: [
+                'Pick a physical or virtual appointment',
+                'Receive your confirmation email',
+                'Speak with the Admissions Manager',
+              ],
+              officeAddress: '10th Floor, JKUAT Towers, CBD Nairobi',
+            }}
+            initialValues={{
+              name: data.full_name ?? '',
+              email: data.email,
+              phone: data.phone ?? '',
+              reason: data.program_name
+                ? `I just applied for ${data.program_name} and would like to discuss my application.`
+                : 'I just submitted my application and would like to discuss the next steps.',
+            }}
+            lockedHost="admissions_manager"
+            lockContactDetails
+            successActions="none"
+          />
+        </div>
       )}
 
       <div className="space-y-3">

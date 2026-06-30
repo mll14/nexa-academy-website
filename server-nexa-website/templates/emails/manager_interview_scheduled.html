@@ -8,7 +8,9 @@
 <div style="background:#f0faf4;border-radius:10px;padding:20px 24px;margin-bottom:24px;border:1px solid #c6f6d5;">
   <p style="margin:0 0 10px;font-size:11px;color:#276749;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Interview Details</p>
   <p style="margin:0 0 6px;font-size:18px;font-weight:800;color:#1a202c;">{{ chosen_time }}</p>
+  <p style="margin:0 0 6px;font-size:13px;color:#4a5568;">Type: <strong>{{ interview_type|default:"Online" }}</strong></p>
   {% if meet_url %}<p style="margin:0;font-size:13px;color:#4a5568;">Meet link: <a href="{{ meet_url }}" style="color:#141a42;font-weight:600;">{{ meet_url }}</a></p>{% endif %}
+  {% if not meet_url and office_location %}<p style="margin:0;font-size:13px;color:#4a5568;">Location: <strong>{{ office_location }}</strong></p>{% endif %}
 </div>
 
 <div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:24px;border:1px solid #e2e8f0;">

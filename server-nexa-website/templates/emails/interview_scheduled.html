@@ -1,5 +1,5 @@
 {% extends "emails/base_email.html" %}
-{% block subject %}Your interview is confirmed &mdash; here's the link{% endblock %}
+{% block subject %}Your interview is confirmed{% endblock %}
 {% block content %}
 <p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Interview Confirmed</p>
 <h2 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#1a202c;line-height:1.3;">Your interview is set, {{ full_name }}.</h2>
@@ -7,9 +7,14 @@
 <div style="background:#f0faf4;border-radius:8px;padding:18px 22px;margin-bottom:20px;border:1px solid #c6f6d5;">
   <p style="margin:0 0 6px;font-size:12px;color:#276749;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Interview Details</p>
   <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#1a202c;">{{ chosen_time }}</p>
-  <p style="margin:0;font-size:13px;color:#4a5568;">via Google Meet &nbsp;&middot;&nbsp; {{ program_name }}</p>
+  <p style="margin:0;font-size:13px;color:#4a5568;">{{ interview_type|default:"Online" }} &nbsp;&middot;&nbsp; {{ program_name }}</p>
+  {% if is_physical %}
+  <p style="margin:8px 0 0;font-size:13px;color:#4a5568;">Location: <strong>{{ office_location }}</strong></p>
+  {% endif %}
 </div>
 <p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">Just be yourself &mdash; this is a conversation, not a test. We want to get to know you, understand your goals, and hear why you're drawn to tech. No need to prepare any code.</p>
+{% if meet_url %}
 <a href="{{ meet_url }}" style="display:inline-block;background:#00bf63;color:#fff;padding:12px 24px;border-radius:7px;font-size:14px;font-weight:600;text-decoration:none;">Join Google Meet &rarr;</a>
+{% endif %}
 <p style="margin:20px 0 0;font-size:13px;color:#718096;">Need to reschedule? Contact us at <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a> at least 24 hours before the interview.</p>
 {% endblock %}

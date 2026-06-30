@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Calendar, Video, Check, X, Clock,
+  ArrowLeft, Calendar, Video, Check, X, Clock, MapPin,
   Mail, Phone, BookOpen, CreditCard, CalendarDays,
   MessageSquare, Activity, User, AlertTriangle, Send,
   Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus, Pencil,
@@ -17,6 +17,7 @@ import { Input } from '../../components/ui/input'
 import { Separator } from '../../components/ui/separator'
 import { Dialog } from '../../components/ui/dialog'
 import { SlotPicker } from '../../components/SlotPicker'
+import type { InterviewType } from '../../components/SlotPicker'
 import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
 import { EmailEditor } from '../../components/admin/EmailEditor'
 import * as api from '../../lib/api'
@@ -338,7 +339,8 @@ export function ApplicationDetail() {
   })
 
   const confirmMutation = useMutation({
-    mutationFn: (time: string) => api.confirmInterview(id, time),
+    mutationFn: ({ time, interviewType }: { time: string; interviewType: InterviewType }) =>
+      api.confirmInterview(id, time, interviewType),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'application', id] })
       setShowSlotPicker(false)
@@ -445,8 +447,8 @@ export function ApplicationDetail() {
     }
   }
 
-  const handleConfirmSlot = (time: string) => {
-    confirmMutation.mutate(time, {
+  const handleConfirmSlot = (time: string, interviewType: InterviewType) => {
+    confirmMutation.mutate({ time, interviewType }, {
       onSuccess: () => setShowSlotPicker(false),
     })
   }
@@ -961,8 +963,16 @@ export function ApplicationDetail() {
                   <Separator className="bg-primary/10" />
                   <div className="px-5 pb-5 pt-4 space-y-3">
                     <p className="text-sm font-semibold">{formatFullDateTime(slot.chosen_time)}</p>
-                    <p className="text-xs text-muted-foreground">East Africa Time (EAT)</p>
-                    {(slot.meet_url || slot.zoom_link) && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      {slot.interview_type === 'physical' ? <MapPin className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
+                      {slot.interview_type === 'physical' ? 'Physical interview' : 'Online interview'} · East Africa Time (EAT)
+                    </p>
+                    {slot.interview_type === 'physical' && (
+                      <p className="text-xs text-muted-foreground">
+                        Location: 10th Floor, JKUAT Towers, CBD Nairobi
+                      </p>
+                    )}
+                    {slot.interview_type !== 'physical' && (slot.meet_url || slot.zoom_link) && (
                       <a
                         href={slot.meet_url ?? slot.zoom_link}
                         target="_blank"
@@ -975,6 +985,7 @@ export function ApplicationDetail() {
                     )}
 
                     {/* Extra attendees */}
+                    {slot.interview_type !== 'physical' && (
                     <div className="space-y-2 pt-1 border-t border-primary/10">
                       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide pt-1">Extra Attendees</p>
                       {extraGuests.length > 0 && (
@@ -1017,6 +1028,7 @@ export function ApplicationDetail() {
                         </Button>
                       )}
                     </div>
+                    )}
 
                     <div className="grid grid-cols-1 gap-2 pt-1">
                       <Button
@@ -1191,6 +1203,7 @@ export function ApplicationDetail() {
           slots={slotsData}
           onConfirm={handleConfirmSlot}
           submitting={confirmMutation.isPending}
+          defaultInterviewType={app?.interview_slot?.interview_type}
           confirmLabel={app?.status === 'interview_scheduled' ? 'Reschedule Interview' : 'Schedule Interview'}
         />
       </Dialog>

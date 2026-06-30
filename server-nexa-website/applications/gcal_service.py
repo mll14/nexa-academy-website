@@ -195,9 +195,9 @@ def get_available_slots(weeks_ahead=2):
     return [s['time'] for s in get_all_slots_with_status(weeks_ahead) if s['status'] == 'available']
 
 
-def create_interview_event(application, chosen_time):
+def create_interview_event(application, chosen_time, interview_type='online'):
     """
-    Create a Google Calendar event with a Meet link.
+    Create a Google Calendar event for an online or physical interview.
     Returns {"event_id": str, "meet_url": str}.
     Raises CalendarServiceError on failure.
     """
@@ -212,11 +212,15 @@ def create_interview_event(application, chosen_time):
             start_dt = start_dt.replace(tzinfo=EAT)
 
         end_dt = start_dt + timedelta(minutes=settings.GCAL_SLOT_DURATION_MINUTES)
+        interview_type = 'physical' if interview_type == 'physical' else 'online'
+        type_label = 'Physical' if interview_type == 'physical' else 'Online'
+        office_location = getattr(settings, 'NEXA_OFFICE_LOCATION', '10th Floor, JKUAT Towers, CBD Nairobi')
 
         event_body = {
-            'summary': f'Nexa Academy Interview — {application.full_name}',
+            'summary': f'Nexa Academy {type_label} Interview — {application.full_name}',
             'description': (
                 f'Admissions interview for {application.program_name}.\n'
+                f'Type: {type_label}\n'
                 f'Application ID: {application.id}'
             ),
             'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Africa/Nairobi'},
@@ -225,19 +229,24 @@ def create_interview_event(application, chosen_time):
                 {'email': settings.GCAL_DELEGATE_EMAIL},
                 {'email': application.email, 'displayName': application.full_name},
             ],
-            'conferenceData': {
+            'colorId': '1',
+        }
+        conference_version = 0
+        if interview_type == 'physical':
+            event_body['location'] = office_location
+        else:
+            event_body['conferenceData'] = {
                 'createRequest': {
                     'requestId': f'nexa-{application.id}',
                     'conferenceSolutionKey': {'type': 'hangoutsMeet'},
                 },
-            },
-            'colorId': '1',
-        }
+            }
+            conference_version = 1
 
         event = service.events().insert(
             calendarId=settings.GCAL_ADMISSIONS_CALENDAR_ID,
             body=event_body,
-            conferenceDataVersion=1,
+            conferenceDataVersion=conference_version,
             sendUpdates='all',
         ).execute()
 
@@ -256,9 +265,9 @@ def create_interview_event(application, chosen_time):
         raise CalendarServiceError(str(exc))
 
 
-def update_interview_event(event_id, new_time):
+def update_interview_event(event_id, new_time, interview_type='online'):
     """
-    Patch start/end on an existing Calendar event.
+    Patch start/end and interview mode on an existing Calendar event.
     Returns the updated event dict.
     Raises CalendarServiceError on failure.
     """
@@ -273,16 +282,36 @@ def update_interview_event(event_id, new_time):
             start_dt = start_dt.replace(tzinfo=EAT)
 
         end_dt = start_dt + timedelta(minutes=settings.GCAL_SLOT_DURATION_MINUTES)
+        interview_type = 'physical' if interview_type == 'physical' else 'online'
+        type_label = 'Physical' if interview_type == 'physical' else 'Online'
+        office_location = getattr(settings, 'NEXA_OFFICE_LOCATION', '10th Floor, JKUAT Towers, CBD Nairobi')
 
         patch_body = {
+            'summary': f'Nexa Academy {type_label} Interview',
             'start': {'dateTime': start_dt.isoformat(), 'timeZone': 'Africa/Nairobi'},
             'end': {'dateTime': end_dt.isoformat(), 'timeZone': 'Africa/Nairobi'},
+            'description': f'Type: {type_label}',
         }
+        conference_version = 0
+        if interview_type == 'physical':
+            patch_body['location'] = office_location
+            patch_body['conferenceData'] = None
+            conference_version = 1
+        else:
+            patch_body['location'] = ''
+            patch_body['conferenceData'] = {
+                'createRequest': {
+                    'requestId': f'nexa-reschedule-{event_id}-{int(datetime.now(tz=EAT).timestamp())}',
+                    'conferenceSolutionKey': {'type': 'hangoutsMeet'},
+                },
+            }
+            conference_version = 1
 
         return service.events().patch(
             calendarId=settings.GCAL_ADMISSIONS_CALENDAR_ID,
             eventId=event_id,
             body=patch_body,
+            conferenceDataVersion=conference_version,
             sendUpdates='all',
         ).execute()
 

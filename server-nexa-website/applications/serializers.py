@@ -32,7 +32,7 @@ class InterviewSlotSerializer(serializers.ModelSerializer):
         model = InterviewSlot
         fields = [
             'id', 'application', 'proposed_times', 'chosen_time',
-            'zoom_link', 'gcal_event_id', 'meet_url',
+            'interview_type', 'zoom_link', 'gcal_event_id', 'meet_url',
             'admin_approved', 'completed', 'notes', 'confirmed_at', 'created_at',
             'extra_guests', 'student_gmail',
         ]

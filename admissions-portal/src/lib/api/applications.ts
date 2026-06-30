@@ -132,20 +132,22 @@ export async function getAvailableSlots(applicationId: string): Promise<{
 export async function confirmInterview(
   applicationId: string,
   chosenTime: string,
+  interviewType: "online" | "physical",
 ): Promise<InterviewSlot> {
   return req<InterviewSlot>(`/applications/${applicationId}/confirm_interview/`, {
     method: "POST",
-    body: JSON.stringify({ chosen_time: chosenTime }),
+    body: JSON.stringify({ chosen_time: chosenTime, interview_type: interviewType }),
   });
 }
 
 export async function rescheduleInterview(
   applicationId: string,
   chosenTime: string,
+  interviewType: "online" | "physical",
 ): Promise<InterviewSlot> {
   return req<InterviewSlot>(`/applications/${applicationId}/reschedule_interview/`, {
     method: "POST",
-    body: JSON.stringify({ chosen_time: chosenTime }),
+    body: JSON.stringify({ chosen_time: chosenTime, interview_type: interviewType }),
   });
 }
 

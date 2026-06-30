@@ -7,9 +7,14 @@
 <div style="background:#fffbeb;border-radius:8px;padding:18px 22px;margin-bottom:20px;border:1px solid #fef3c7;">
   <p style="margin:0 0 6px;font-size:12px;color:#b7791f;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">New Interview Time</p>
   <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#1a202c;">{{ chosen_time }}</p>
-  <p style="margin:0;font-size:13px;color:#4a5568;">via Google Meet (same link) &nbsp;&middot;&nbsp; {{ program_name }}</p>
+  <p style="margin:0;font-size:13px;color:#4a5568;">{{ interview_type|default:"Online" }} &nbsp;&middot;&nbsp; {{ program_name }}</p>
+  {% if is_physical %}
+  <p style="margin:8px 0 0;font-size:13px;color:#4a5568;">Location: <strong>{{ office_location }}</strong></p>
+  {% endif %}
 </div>
-<p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">Sorry for the change &mdash; we appreciate your flexibility. Your Google Meet link stays the same.</p>
+<p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">Sorry for the change &mdash; we appreciate your flexibility.</p>
+{% if meet_url %}
 <a href="{{ meet_url }}" style="display:inline-block;background:#141a42;color:#fff;padding:12px 24px;border-radius:7px;font-size:14px;font-weight:600;text-decoration:none;">Join Google Meet &rarr;</a>
+{% endif %}
 <p style="margin:20px 0 0;font-size:13px;color:#718096;">Any questions? <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a></p>
 {% endblock %}

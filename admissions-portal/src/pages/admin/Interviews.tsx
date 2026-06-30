@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Video, RefreshCw, Search, Check, X, Clock, CalendarClock } from 'lucide-react'
+import { Video, RefreshCw, Search, Check, X, Clock, CalendarClock, MapPin } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { AdminCalendar } from '../../components/admin/AdminCalendar'
 import { Card } from '../../components/ui/card'
@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Dialog } from '../../components/ui/dialog'
 import { SlotPicker } from '../../components/SlotPicker'
+import type { InterviewType } from '../../components/SlotPicker'
 import * as api from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -77,7 +78,11 @@ function InterviewCard({
               <CalendarClock className="w-3 h-3 text-muted-foreground shrink-0" />
               {formatDateTime(slot?.chosen_time ?? '')}
             </div>
-            {(slot?.meet_url || slot?.zoom_link) && (
+            <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground font-medium">
+              {slot?.interview_type === 'physical' ? <MapPin className="w-2.5 h-2.5" /> : <Video className="w-2.5 h-2.5" />}
+              {slot?.interview_type === 'physical' ? 'Physical' : 'Online'}
+            </span>
+            {slot?.interview_type !== 'physical' && (slot?.meet_url || slot?.zoom_link) && (
               <a
                 href={slot.meet_url ?? slot.zoom_link}
                 target="_blank"
@@ -134,6 +139,7 @@ export function Interviews() {
   const [rescheduleLoading, setRescheduleLoading] = useState(false)
   const [useCustomTime, setUseCustomTime] = useState(false)
   const [customTime, setCustomTime] = useState('')
+  const [rescheduleInterviewType, setRescheduleInterviewType] = useState<InterviewType | null>(null)
 
   const { data = [], isLoading, refetch } = useQuery({
     queryKey: ['admin', 'interviews'],
@@ -173,8 +179,8 @@ export function Interviews() {
   })
 
   const rescheduleMutation = useMutation({
-    mutationFn: ({ id, time }: { id: string; time: string }) =>
-      api.rescheduleInterview(id, time),
+    mutationFn: ({ id, time, interviewType }: { id: string; time: string; interviewType: InterviewType }) =>
+      api.rescheduleInterview(id, time, interviewType),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin', 'interviews'] })
       setReschedulingApp(null)
@@ -194,6 +200,7 @@ export function Interviews() {
     setRescheduleSlots([])
     setUseCustomTime(false)
     setCustomTime('')
+    setRescheduleInterviewType(app.interview_slot?.interview_type ?? null)
     setRescheduleLoading(true)
     try {
       const res = await api.getAvailableSlots(app.id)
@@ -211,7 +218,11 @@ export function Interviews() {
     const isoTime = customTime.includes('+') || customTime.endsWith('Z')
       ? customTime
       : `${customTime}:00+03:00`
-    rescheduleMutation.mutate({ id: reschedulingApp.id, time: isoTime })
+    if (!rescheduleInterviewType) {
+      toast.error('Choose whether this interview is online or physical')
+      return
+    }
+    rescheduleMutation.mutate({ id: reschedulingApp.id, time: isoTime, interviewType: rescheduleInterviewType })
   }
 
   const todayStr = new Date().toDateString()
@@ -363,6 +374,31 @@ export function Interviews() {
               />
               <p className="text-xs text-muted-foreground">Allows scheduling outside normal working hours (6 am, 8 pm, etc.)</p>
             </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Interview type
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  { value: 'online', label: 'Online', icon: Video },
+                  { value: 'physical', label: 'Physical', icon: MapPin },
+                ] as const).map(({ value, label, icon: Icon }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setRescheduleInterviewType(value)}
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      rescheduleInterviewType === value
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border hover:border-primary/40 hover:bg-primary/5'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={() => setUseCustomTime(false)}
@@ -372,7 +408,7 @@ export function Interviews() {
               </button>
               <button
                 onClick={handleCustomReschedule}
-                disabled={!customTime || rescheduleMutation.isPending}
+                disabled={!customTime || !rescheduleInterviewType || rescheduleMutation.isPending}
                 className="flex-1 h-10 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
               >
                 {rescheduleMutation.isPending ? 'Rescheduling…' : 'Confirm Custom Time'}
@@ -383,8 +419,9 @@ export function Interviews() {
           <div className="space-y-4">
             <SlotPicker
               slots={rescheduleSlots}
-              onConfirm={(time) =>
-                rescheduleMutation.mutate({ id: reschedulingApp!.id, time })
+              defaultInterviewType={reschedulingApp?.interview_slot?.interview_type}
+              onConfirm={(time, interviewType) =>
+                rescheduleMutation.mutate({ id: reschedulingApp!.id, time, interviewType })
               }
               submitting={rescheduleMutation.isPending}
               confirmLabel="Reschedule Interview"

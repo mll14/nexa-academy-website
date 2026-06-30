@@ -178,7 +178,7 @@ class ConfirmInterviewEndpointTest(TestCase):
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
             f'/api/applications/{self.app.id}/confirm_interview/',
-            {'chosen_time': '2026-06-02T10:00:00+03:00'},
+            {'chosen_time': '2026-06-02T10:00:00+03:00', 'interview_type': 'online'},
             format='json',
         )
 
@@ -188,6 +188,43 @@ class ConfirmInterviewEndpointTest(TestCase):
         slot = InterviewSlot.objects.get(application=self.app)
         self.assertEqual(slot.gcal_event_id, 'test_event_123')
         self.assertEqual(slot.meet_url, 'https://meet.google.com/abc-defg-hij')
+        self.assertEqual(slot.interview_type, 'online')
+
+    def test_confirm_requires_interview_type(self):
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f'/api/applications/{self.app.id}/confirm_interview/',
+            {'chosen_time': '2026-06-02T10:00:00+03:00'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('interview_type', response.data['error'])
+
+    @patch('applications.gcal_service._get_calendar_service')
+    @override_settings(**FAKE_SETTINGS)
+    def test_confirm_physical_interview_creates_slot_without_meet(self, mock_get_service):
+        mock_service = MagicMock()
+        mock_service.events().insert().execute.return_value = {
+            'id': 'physical_event_123',
+            'conferenceData': {'entryPoints': []},
+        }
+        mock_get_service.return_value = mock_service
+
+        self.client.force_authenticate(user=self.student)
+        response = self.client.post(
+            f'/api/applications/{self.app.id}/confirm_interview/',
+            {'chosen_time': '2026-06-02T10:00:00+03:00', 'interview_type': 'physical'},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        slot = InterviewSlot.objects.get(application=self.app)
+        self.assertEqual(slot.interview_type, 'physical')
+        self.assertEqual(slot.meet_url, '')
+        insert_kwargs = mock_service.events().insert.call_args.kwargs
+        self.assertEqual(insert_kwargs['conferenceDataVersion'], 0)
+        self.assertIn('location', insert_kwargs['body'])
 
     @patch('applications.gcal_service._get_calendar_service')
     @override_settings(**FAKE_SETTINGS)
@@ -201,7 +238,7 @@ class ConfirmInterviewEndpointTest(TestCase):
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
             f'/api/applications/{self.app.id}/confirm_interview/',
-            {'chosen_time': '2026-06-02T10:00:00+03:00'},
+            {'chosen_time': '2026-06-02T10:00:00+03:00', 'interview_type': 'online'},
             format='json',
         )
         self.assertEqual(response.status_code, 400)
@@ -245,7 +282,7 @@ class RescheduleInterviewEndpointTest(TestCase):
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
             f'/api/applications/{self.app.id}/reschedule_interview/',
-            {'chosen_time': '2026-06-05T14:00:00+03:00'},
+            {'chosen_time': '2026-06-05T14:00:00+03:00', 'interview_type': 'online'},
             format='json',
         )
         self.assertEqual(response.status_code, 200)
@@ -257,7 +294,7 @@ class RescheduleInterviewEndpointTest(TestCase):
         self.client.force_authenticate(user=self.student)
         response = self.client.post(
             f'/api/applications/{self.app.id}/reschedule_interview/',
-            {'chosen_time': '2026-06-05T14:00:00+03:00'},
+            {'chosen_time': '2026-06-05T14:00:00+03:00', 'interview_type': 'online'},
             format='json',
         )
         self.assertEqual(response.status_code, 400)

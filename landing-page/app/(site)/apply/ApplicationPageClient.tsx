@@ -77,6 +77,7 @@ interface SuccessData {
   id?: string;
   full_name?: string;
   email?: string;
+  phone?: string;
   program_name?: string;
   start_date?: string;
   estimated_fees?: number;
@@ -580,6 +581,7 @@ export function ApplicationPageClient({
           setSuccessData({
             full_name: form.fullName.trim(),
             email: form.email.trim(),
+            phone: form.phone.trim(),
           });
         } else {
           toast.error(result.error ?? "Submission failed");
@@ -624,6 +626,7 @@ export function ApplicationPageClient({
           id: result.id,
           full_name: form.fullName.trim(),
           email: form.email.trim(),
+          phone: form.phone.trim(),
           program_name: currentProgram?.title ?? form.program,
           start_date: form.startDate,
           estimated_fees: totalFee,
@@ -969,6 +972,7 @@ export function ApplicationPageClient({
                                     setSuccessData({
                                       full_name: form.fullName,
                                       email: form.email,
+                                      phone: form.phone,
                                       program_name:
                                         currentProgram?.title ?? form.program,
                                     })

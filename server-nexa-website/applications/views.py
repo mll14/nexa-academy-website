@@ -56,6 +56,19 @@ def _format_currency(value):
         return str(value)
 
 
+def _normalise_interview_type(value):
+    value = (value or '').strip().lower()
+    if value == 'virtual':
+        value = 'online'
+    if value in ('online', 'physical'):
+        return value
+    return ''
+
+
+def _interview_type_label(value):
+    return 'Physical' if value == 'physical' else 'Online'
+
+
 def _send_manager_application_notification(application, intake_mode=''):
     recipient = _admissions_notification_email()
     send_html_email(
@@ -82,7 +95,7 @@ def _send_manager_application_notification(application, intake_mode=''):
     )
 
 
-def _send_manager_interview_notification(application, chosen_time, meet_url=''):
+def _send_manager_interview_notification(application, chosen_time, meet_url='', interview_type='online'):
     recipient = _admissions_notification_email()
     send_html_email(
         subject=f"Interview scheduled — {application.full_name}",
@@ -94,7 +107,9 @@ def _send_manager_interview_notification(application, chosen_time, meet_url=''):
             'phone': application.phone,
             'program_name': application.program_name or application.program,
             'chosen_time': chosen_time,
+            'interview_type': _interview_type_label(interview_type),
             'meet_url': meet_url,
+            'office_location': getattr(settings, 'NEXA_OFFICE_LOCATION', '10th Floor, JKUAT Towers, CBD Nairobi'),
             'application_url': _admissions_portal_url(f"/admin/applications/{application.id}"),
             'calendar_url': _admissions_portal_url('/admin/interviews'),
             'frontend_url': settings.FRONTEND_URL,
@@ -602,10 +617,17 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         application = self.get_object()
         slot = getattr(application, 'interview_slot', None)
         chosen = request.data.get('chosen_time')
+        interview_type = _normalise_interview_type(
+            request.data.get('interview_type')
+            or request.data.get('appointment_type')
+            or getattr(slot, 'interview_type', '')
+        )
         if not chosen:
             return Response({'error': 'chosen_time is required'}, status=400)
         if not slot:
             return Response({'error': 'No interview slot found for this application.'}, status=400)
+        if not interview_type:
+            return Response({'error': 'interview_type must be online or physical'}, status=400)
         # Ensure the requester is the application owner (student) or an admin.
         # Allow matching by linked user.uid, or by email if the application wasn't linked to a user.
         user = request.user
@@ -621,6 +643,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         # Save chosen time
         slot.chosen_time = chosen
+        slot.interview_type = interview_type
         slot.save()
 
         previous_status = application.status
@@ -635,7 +658,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 previous_status=previous_status,
                 new_status='interview_scheduled',
                 changed_by=user.email if hasattr(user, 'email') else 'student',
-                notes=f'Chosen time: {chosen}',
+                notes=f'Chosen {_interview_type_label(interview_type).lower()} interview time: {chosen}',
                 applicant_email=application.email,
                 applicant_name=application.full_name,
             )
@@ -649,14 +672,14 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     user=application.user,
                     type='info',
                     title='Interview Confirmed',
-                    message=f'Your interview is confirmed for {chosen}.',
+                    message=f'Your {_interview_type_label(interview_type).lower()} interview is confirmed for {chosen}.',
                     application=application,
                 )
         except Exception:
             pass
 
         try:
-            _send_manager_interview_notification(application, chosen)
+            _send_manager_interview_notification(application, chosen, interview_type=interview_type)
         except Exception as exc:
             logger.error('manager interview notification failed for %s: %s', application.email, exc)
 
@@ -668,7 +691,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     user=admin,
                     type='info',
                     title='Interview Time Selected',
-                    message=f"{application.full_name} has chosen their interview time: {chosen}.",
+                    message=f"{application.full_name} has chosen a {_interview_type_label(interview_type).lower()} interview time: {chosen}.",
                     application=application,
                 )
                 for admin in admins
@@ -685,12 +708,16 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         data = request.data
         times = data.get('proposed_times') or data.get('proposedTimes')
         zoom_link = data.get('zoom_link') or data.get('zoomLink') or ''
+        interview_type = _normalise_interview_type(data.get('interview_type') or data.get('appointment_type'))
         if not times or not isinstance(times, list):
             return Response({'error': 'proposed_times (list) is required'}, status=400)
+        if not interview_type:
+            return Response({'error': 'interview_type must be online or physical'}, status=400)
 
         slot, created = InterviewSlot.objects.get_or_create(application=application)
         slot.proposed_times = times
         slot.zoom_link = zoom_link
+        slot.interview_type = interview_type
         slot.admin_approved = True
         slot.save()
         create_audit_log(
@@ -703,6 +730,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 'email': application.email,
                 'program': application.program_name,
                 'slots': str(len(times)),
+                'interview_type': _interview_type_label(interview_type),
             },
         )
 
@@ -720,7 +748,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     previous_status=previous_status,
                     new_status='approved',
                     changed_by=request.user.email if hasattr(request.user, 'email') else 'admin',
-                    notes=f'Proposed interview times: {times}',
+                    notes=f'Proposed {_interview_type_label(interview_type).lower()} interview times: {times}',
                     applicant_email=application.email,
                     applicant_name=application.full_name,
                 )
@@ -885,6 +913,14 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         chosen_time = request.data.get('chosen_time')
         if not chosen_time:
             return Response({'error': 'chosen_time is required'}, status=status.HTTP_400_BAD_REQUEST)
+        interview_type = _normalise_interview_type(
+            request.data.get('interview_type') or request.data.get('appointment_type')
+        )
+        if not interview_type:
+            return Response(
+                {'error': 'interview_type must be online or physical'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         existing_slot = getattr(application, 'interview_slot', None)
         if existing_slot and existing_slot.gcal_event_id:
@@ -893,15 +929,18 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 return self.reschedule_interview(request, pk=pk)
             # Status was incorrectly reset (e.g. by propose_interview_times) even though a
             # calendar event already exists. Restore the status without creating a duplicate event.
+            previous_status = application.status
             application.status = 'interview_scheduled'
             application.status_updated_at = timezone.now()
             application.save()
+            existing_slot.interview_type = interview_type
+            existing_slot.save(update_fields=['interview_type'])
             ApplicationLog.objects.create(
                 application=application,
-                previous_status=application.status,
+                previous_status=previous_status,
                 new_status='interview_scheduled',
                 changed_by=user.email if hasattr(user, 'email') else 'system',
-                notes='Status restored to interview_scheduled (was incorrectly reset)',
+                notes=f'Status restored to interview_scheduled (was incorrectly reset); type: {_interview_type_label(interview_type)}',
                 applicant_email=application.email,
                 applicant_name=application.full_name,
             )
@@ -909,7 +948,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
 
         from .gcal_service import create_interview_event, CalendarServiceError
         try:
-            result = create_interview_event(application, chosen_time)
+            result = create_interview_event(application, chosen_time, interview_type=interview_type)
         except CalendarServiceError:
             return Response(
                 {'error': 'Calendar unavailable, please try again'},
@@ -927,6 +966,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         slot.gcal_event_id = result['event_id']
         slot.meet_url = result['meet_url']
         slot.chosen_time = chosen_dt
+        slot.interview_type = interview_type
         slot.confirmed_at = timezone.now()
         slot.admin_approved = True
         slot.save()
@@ -945,6 +985,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 'email': application.email,
                 'program': application.program_name,
                 'time': str(chosen_time),
+                'interview_type': _interview_type_label(interview_type),
             },
         )
 
@@ -953,7 +994,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             previous_status=previous_status,
             new_status='interview_scheduled',
             changed_by=user.email if hasattr(user, 'email') else 'system',
-            notes=f'Interview confirmed for {chosen_time}. Meet: {result["meet_url"]}',
+            notes=f'{_interview_type_label(interview_type)} interview confirmed for {chosen_time}. Meet: {result["meet_url"]}',
             applicant_email=application.email,
             applicant_name=application.full_name,
         )
@@ -968,6 +1009,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     'program_name': application.program_name,
                     'chosen_time': formatted_time,
                     'meet_url': result['meet_url'],
+                    'interview_type': _interview_type_label(interview_type),
+                    'is_physical': interview_type == 'physical',
+                    'office_location': getattr(settings, 'NEXA_OFFICE_LOCATION', '10th Floor, JKUAT Towers, CBD Nairobi'),
                     'frontend_url': settings.FRONTEND_URL,
                 },
                 recipient_email=application.email,
@@ -980,6 +1024,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 application,
                 formatted_time if 'formatted_time' in locals() else chosen_time,
                 result['meet_url'],
+                interview_type,
             )
         except Exception as exc:
             logger.error('manager interview notification failed for %s: %s', application.email, exc)
@@ -990,7 +1035,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     user=application.user,
                     type='info',
                     title='Interview Scheduled',
-                    message='Your interview is confirmed. Check your email for the Google Meet link.',
+                    message=(
+                        'Your physical interview is confirmed. Check your email for the office details.'
+                        if interview_type == 'physical'
+                        else 'Your interview is confirmed. Check your email for the Google Meet link.'
+                    ),
                     application=application,
                 )
         except Exception:
@@ -1025,10 +1074,18 @@ class ApplicationViewSet(viewsets.ModelViewSet):
         new_time = request.data.get('chosen_time')
         if not new_time:
             return Response({'error': 'chosen_time is required'}, status=status.HTTP_400_BAD_REQUEST)
+        interview_type = _normalise_interview_type(
+            request.data.get('interview_type') or request.data.get('appointment_type')
+        )
+        if not interview_type:
+            return Response(
+                {'error': 'interview_type must be online or physical'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         from .gcal_service import update_interview_event, CalendarServiceError
         try:
-            update_interview_event(slot.gcal_event_id, new_time)
+            event_result = update_interview_event(slot.gcal_event_id, new_time, interview_type=interview_type)
         except CalendarServiceError:
             return Response(
                 {'error': 'Calendar unavailable, please try again'},
@@ -1043,7 +1100,20 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             new_dt = new_dt.replace(tzinfo=eat)
 
         old_time = slot.chosen_time
+        old_type = slot.interview_type
         slot.chosen_time = new_dt
+        slot.interview_type = interview_type
+        if interview_type == 'physical':
+            slot.meet_url = ''
+            slot.zoom_link = ''
+        else:
+            meet_url = ''
+            for ep in event_result.get('conferenceData', {}).get('entryPoints', []):
+                if ep.get('entryPointType') == 'video':
+                    meet_url = ep.get('uri', '')
+                    break
+            if meet_url:
+                slot.meet_url = meet_url
         slot.confirmed_at = timezone.now()
         slot.save()
         create_audit_log(
@@ -1057,6 +1127,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 'program': application.program_name,
                 'from': str(old_time) if old_time else None,
                 'to': new_time,
+                'interview_type': _interview_type_label(interview_type),
             },
         )
 
@@ -1072,7 +1143,11 @@ class ApplicationViewSet(viewsets.ModelViewSet):
             previous_status=previous_status,
             new_status='interview_scheduled',
             changed_by=user.email if hasattr(user, 'email') else 'system',
-            notes=f'Rescheduled from {old_time} to {new_time}',
+            notes=(
+                f'Rescheduled from {old_time} to {new_time}; '
+                f'type changed from {_interview_type_label(old_type).lower()} '
+                f'to {_interview_type_label(interview_type).lower()}'
+            ),
             applicant_email=application.email,
             applicant_name=application.full_name,
         )
@@ -1087,6 +1162,9 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                     'program_name': application.program_name,
                     'chosen_time': formatted_time,
                     'meet_url': slot.meet_url,
+                    'interview_type': _interview_type_label(interview_type),
+                    'is_physical': interview_type == 'physical',
+                    'office_location': getattr(settings, 'NEXA_OFFICE_LOCATION', '10th Floor, JKUAT Towers, CBD Nairobi'),
                     'frontend_url': settings.FRONTEND_URL,
                 },
                 recipient_email=application.email,
@@ -1099,6 +1177,7 @@ class ApplicationViewSet(viewsets.ModelViewSet):
                 application,
                 formatted_time if 'formatted_time' in locals() else new_time,
                 slot.meet_url,
+                interview_type,
             )
         except Exception as exc:
             logger.error('manager interview notification failed for %s: %s', application.email, exc)

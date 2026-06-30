@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CheckCircle2, Clock, Calendar, CreditCard, RefreshCw, Video, UserPlus, X, Mail } from 'lucide-react'
+import { CheckCircle2, Clock, Calendar, CreditCard, RefreshCw, Video, UserPlus, X, Mail, MapPin } from 'lucide-react'
 import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
 import { Separator } from './ui/separator'
@@ -11,6 +11,7 @@ import type { AvailableSlot } from '../types'
 import { cn } from '../lib/utils'
 import toast from 'react-hot-toast'
 import type { InterviewSlot } from '../types'
+import type { InterviewType } from './SlotPicker'
 
 export const STAGES = [
   { key: 'pending', label: 'Application Submitted', icon: CheckCircle2 },
@@ -90,13 +91,13 @@ export function ProcessTracker({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStatus, applicationId])
 
-  const handleConfirm = async (chosenTime: string) => {
+  const handleConfirm = async (chosenTime: string, interviewType: InterviewType) => {
     if (!applicationId) return
     setSubmitting(true)
     try {
-      const s = await api.confirmInterview(applicationId, chosenTime)
+      const s = await api.confirmInterview(applicationId, chosenTime, interviewType)
       setSlot(s)
-      toast.success('Interview confirmed! Check your email for the meeting link.')
+      toast.success(interviewType === 'physical' ? 'Physical interview confirmed!' : 'Interview confirmed! Check your email for the meeting link.')
       onScheduled?.(s)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to confirm interview.')
@@ -105,11 +106,11 @@ export function ProcessTracker({
     }
   }
 
-  const handleReschedule = async (chosenTime: string) => {
+  const handleReschedule = async (chosenTime: string, interviewType: InterviewType) => {
     if (!applicationId) return
     setSubmitting(true)
     try {
-      const s = await api.rescheduleInterview(applicationId, chosenTime)
+      const s = await api.rescheduleInterview(applicationId, chosenTime, interviewType)
       setSlot(s)
       setRescheduling(false)
       toast.success('Interview rescheduled!')
@@ -279,11 +280,15 @@ export function ProcessTracker({
               <div className="rounded-lg bg-card border border-primary/10 p-3 space-y-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Your interview time</p>
                 <p className="text-sm font-bold">{formatFullDateTime(slot.chosen_time)} EAT</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  {slot.interview_type === 'physical' ? <MapPin className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
+                  {slot.interview_type === 'physical' ? 'Physical interview at Nexa Academy' : 'Online interview'}
+                </p>
                 {countdownText && <p className="text-xs text-primary font-medium">{countdownText}</p>}
               </div>
 
               {/* Join meeting button — most prominent action */}
-              {(slot.meet_url || slot.zoom_link) ? (
+              {slot.interview_type !== 'physical' && (slot.meet_url || slot.zoom_link) ? (
                 <a
                   href={slot.meet_url || slot.zoom_link}
                   target="_blank"
@@ -293,6 +298,13 @@ export function ProcessTracker({
                   <Video className="w-5 h-5" />
                   Join Google Meet
                 </a>
+              ) : slot.interview_type === 'physical' ? (
+                <div className="flex items-start gap-2 bg-card border rounded-lg px-3 py-2.5">
+                  <MapPin className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <p className="text-xs text-muted-foreground">
+                    Visit Nexa Academy at 10th Floor, JKUAT Towers, CBD Nairobi. Check your email for any arrival details.
+                  </p>
+                </div>
               ) : (
                 <div className="flex items-start gap-2 bg-card border rounded-lg px-3 py-2.5">
                   <Mail className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" />
@@ -306,11 +318,18 @@ export function ProcessTracker({
               <div className="rounded-lg bg-card border border-border p-3 space-y-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">How to prepare</p>
                 <ul className="space-y-1.5">
-                  {[
-                    'Test your Google Meet link a few minutes before the interview',
-                    'Find a quiet place with a stable internet connection',
-                    'Have a pen and paper ready for any notes',
-                  ].map((tip) => (
+                  {(slot.interview_type === 'physical'
+                    ? [
+                        'Plan to arrive a few minutes before the interview',
+                        'Come to 10th Floor, JKUAT Towers, CBD Nairobi',
+                        'Have a pen and paper ready for any notes',
+                      ]
+                    : [
+                        'Test your Google Meet link a few minutes before the interview',
+                        'Find a quiet place with a stable internet connection',
+                        'Have a pen and paper ready for any notes',
+                      ]
+                  ).map((tip) => (
                     <li key={tip} className="flex items-start gap-2 text-xs text-muted-foreground">
                       <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0 mt-0.5" />
                       {tip}
@@ -320,46 +339,48 @@ export function ProcessTracker({
               </div>
 
               {/* Extra attendees */}
-              <div className="space-y-2 pt-1">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add people to the call (optional)</p>
-                {extraGuests.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {extraGuests.map((g) => (
-                      <span key={g} className="flex items-center gap-1 text-xs bg-muted rounded-full px-2.5 py-1">
-                        {g}
-                        <button
-                          onClick={() => setExtraGuests((prev) => prev.filter((e) => e !== g))}
-                          className="hover:text-destructive transition-colors"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
+              {slot.interview_type !== 'physical' && (
+                <div className="space-y-2 pt-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add people to the call (optional)</p>
+                  {extraGuests.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {extraGuests.map((g) => (
+                        <span key={g} className="flex items-center gap-1 text-xs bg-muted rounded-full px-2.5 py-1">
+                          {g}
+                          <button
+                            onClick={() => setExtraGuests((prev) => prev.filter((e) => e !== g))}
+                            className="hover:text-destructive transition-colors"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-1.5">
+                    <input
+                      type="email"
+                      placeholder="Enter email address…"
+                      value={newGuestEmail}
+                      onChange={(e) => setNewGuestEmail(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addGuest() } }}
+                      className="flex-1 text-xs h-8 rounded-md border border-input bg-background px-3 focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <button
+                      onClick={addGuest}
+                      disabled={!newGuestEmail.trim() || extraGuests.includes(newGuestEmail.trim())}
+                      className="h-8 px-2.5 rounded-md border border-input bg-background hover:bg-muted disabled:opacity-40 transition-colors shrink-0"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                )}
-                <div className="flex gap-1.5">
-                  <input
-                    type="email"
-                    placeholder="Enter email address…"
-                    value={newGuestEmail}
-                    onChange={(e) => setNewGuestEmail(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addGuest() } }}
-                    className="flex-1 text-xs h-8 rounded-md border border-input bg-background px-3 focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  <button
-                    onClick={addGuest}
-                    disabled={!newGuestEmail.trim() || extraGuests.includes(newGuestEmail.trim())}
-                    className="h-8 px-2.5 rounded-md border border-input bg-background hover:bg-muted disabled:opacity-40 transition-colors shrink-0"
-                  >
-                    <UserPlus className="w-3.5 h-3.5" />
-                  </button>
+                  {guestsChanged && (
+                    <Button size="sm" className="w-full" disabled={savingGuests} onClick={handleSaveGuests}>
+                      {savingGuests ? 'Saving…' : 'Save Attendees'}
+                    </Button>
+                  )}
                 </div>
-                {guestsChanged && (
-                  <Button size="sm" className="w-full" disabled={savingGuests} onClick={handleSaveGuests}>
-                    {savingGuests ? 'Saving…' : 'Save Attendees'}
-                  </Button>
-                )}
-              </div>
+              )}
 
               {/* Reschedule */}
               {(() => {
@@ -467,12 +488,13 @@ export function ProcessTracker({
             </div>
             <SlotPicker
               slots={allSlots}
-              onConfirm={async (time) => {
+              defaultInterviewType={slot?.interview_type}
+              onConfirm={async (time, interviewType) => {
                 const isReschedule = currentStatus === 'interview_scheduled'
                 if (isReschedule) {
-                  await handleReschedule(time)
+                  await handleReschedule(time, interviewType)
                 } else {
-                  await handleConfirm(time)
+                  await handleConfirm(time, interviewType)
                 }
                 setSlotDialogOpen(false)
               }}

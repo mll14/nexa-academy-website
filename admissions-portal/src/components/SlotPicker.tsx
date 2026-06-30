@@ -1,14 +1,17 @@
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, MapPin, Video } from 'lucide-react'
 import { Button } from './ui/button'
 import { cn } from '../lib/utils'
 import type { AvailableSlot } from '../types'
 
+export type InterviewType = 'online' | 'physical'
+
 interface Props {
   slots: AvailableSlot[]
-  onConfirm: (time: string) => void
+  onConfirm: (time: string, interviewType: InterviewType) => void
   submitting?: boolean
   confirmLabel?: string
+  defaultInterviewType?: InterviewType
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -155,6 +158,7 @@ export function SlotPicker({
   onConfirm,
   submitting,
   confirmLabel = 'Confirm Interview',
+  defaultInterviewType,
 }: Props) {
   const available = slots.filter((s) => s.status === 'available')
 
@@ -176,6 +180,7 @@ export function SlotPicker({
   const [viewMonth, setViewMonth] = useState(firstDate.getMonth())
   const [selectedDate, setSelectedDate] = useState<string | null>(availableDates[0] ?? null)
   const [selectedTime, setSelectedTime] = useState<string | null>(null)
+  const [interviewType, setInterviewType] = useState<InterviewType | null>(defaultInterviewType ?? null)
 
   const handlePrev = () => {
     if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11) }
@@ -261,13 +266,42 @@ export function SlotPicker({
       {/* Confirm */}
       {selectedTime && (
         <div className="space-y-3 border-t border-border pt-4">
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Interview type
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { value: 'online', label: 'Online', icon: Video },
+                { value: 'physical', label: 'Physical', icon: MapPin },
+              ] as const).map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setInterviewType(value)}
+                  className={cn(
+                    'flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors',
+                    interviewType === value
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-card hover:border-primary/40 hover:bg-primary/5',
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="px-4 py-3 bg-primary/5 border border-primary/20 rounded-xl">
             <p className="text-xs text-muted-foreground">Selected slot</p>
             <p className="text-sm font-bold mt-0.5">
               {formatDayFull(toDateKey(selectedTime))} · {formatTime(selectedTime)} EAT
             </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {interviewType ? `${interviewType === 'online' ? 'Online' : 'Physical'} interview` : 'Select online or physical interview'}
+            </p>
           </div>
-          <Button onClick={() => onConfirm(selectedTime)} disabled={submitting} className="w-full h-11 text-base">
+          <Button onClick={() => interviewType && onConfirm(selectedTime, interviewType)} disabled={submitting || !interviewType} className="w-full h-11 text-base">
             {submitting ? (
               <span className="flex items-center gap-2">
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
