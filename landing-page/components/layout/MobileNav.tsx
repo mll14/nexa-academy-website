@@ -60,6 +60,13 @@ export function MobileNav({ navigation }: MobileNavProps) {
                 )}
               </div>
             ))}
+            <Link
+              href="/legal"
+              className="block py-2 text-sm text-muted-foreground hover:text-primary"
+              onClick={() => setOpen(false)}
+            >
+              Privacy &amp; Terms
+            </Link>
             {navigation?.admissionsButton && (
               <LinkButton
                 href={navigation.admissionsButton.url}

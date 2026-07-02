@@ -75,6 +75,12 @@ export function Header({ navigation, settings }: HeaderProps) {
                 )}
               </div>
             ))}
+            <Link
+              href="/legal"
+              className="text-sm font-medium text-foreground/60 hover:text-primary transition-colors"
+            >
+              Privacy &amp; Terms
+            </Link>
           </nav>
 
           {/* CTA + mobile menu */}
