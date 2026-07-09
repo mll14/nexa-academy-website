@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from django.db import models, transaction
 from django.conf import settings
 from django.utils import timezone
@@ -75,6 +76,23 @@ class Enrollment(models.Model):
     payment_plan = models.CharField(max_length=100, blank=True)
     installment_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
 
+    DISCOUNT_TYPE_CHOICES = (
+        ('percentage', 'Percentage'),
+        ('amount', 'Fixed amount'),
+    )
+    discount_type = models.CharField(max_length=12, choices=DISCOUNT_TYPE_CHOICES, blank=True)
+    discount_value = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Raw waiver value: a percent (e.g. 10) or a KES amount (e.g. 5000).',
+    )
+    discount_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        help_text='Resolved absolute waiver in KES, computed on save from type + value.',
+    )
+    discount_reason = models.CharField(max_length=500, blank=True)
+    discount_granted_by = models.CharField(max_length=255, blank=True)
+    discount_granted_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = 'enrollments'
         unique_together = ['student', 'program']
@@ -87,7 +105,18 @@ class Enrollment(models.Model):
         ordering = ['-enrollment_date']
 
     def save(self, *args, **kwargs):
-        self.balance = self.amount - self.amount_paid
+        amount = Decimal(self.amount or 0)
+        value = Decimal(self.discount_value or 0)
+        if self.discount_type == 'percentage' and value > 0:
+            self.discount_amount = (amount * value / Decimal('100')).quantize(Decimal('0.01'))
+        elif self.discount_type == 'amount' and value > 0:
+            self.discount_amount = value
+        else:
+            self.discount_amount = Decimal('0.00')
+        # Never let a waiver exceed the fee.
+        self.discount_amount = min(self.discount_amount, amount)
+        # Effective balance = fee - waiver - paid, clamped at zero.
+        self.balance = max(Decimal('0.00'), amount - self.discount_amount - Decimal(self.amount_paid or 0))
         if not self.student_name:
             self.student_name = self.student.display_name
         if not self.program_name:

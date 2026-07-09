@@ -292,7 +292,9 @@ const adminPaymentsRoute = createRoute({
   getParentRoute: () => adminLayoutRoute,
   path: "payments",
   validateSearch: (s: Record<string, unknown>) => ({
-    tab: s.tab === 'transactions' || s.tab === 'payment-plans' ? s.tab as 'transactions' | 'payment-plans' : undefined,
+    tab: s.tab === 'transactions' || s.tab === 'payment-plans' || s.tab === 'manual-requests'
+      ? s.tab as 'transactions' | 'payment-plans' | 'manual-requests'
+      : undefined,
   }),
   beforeLoad: () => requirePermission('transactions.view'),
   component: Payments,

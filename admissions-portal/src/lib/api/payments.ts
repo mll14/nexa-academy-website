@@ -1,4 +1,4 @@
-import type { Payment, PaymentPlanChangeRequest, FinancialReconciliation, ApiFilters } from "../../types";
+import type { Payment, PaymentPlanChangeRequest, ManualPaymentRequest, FinancialReconciliation, ApiFilters } from "../../types";
 import { req, buildQuery } from "./core";
 
 export interface PaymentStats {
@@ -121,6 +121,83 @@ export async function adminSendPaymentLink(data: {
       description: data.description,
       program_id: data.programId,
     }),
+  });
+}
+
+// ─── Manual reconciliation ──────────────────────────────────────────────────
+
+export async function recordManualPayment(data: {
+  studentUid: string;
+  amount: number;
+  paymentMethod: string;
+  paymentDate?: string;
+  reference?: string;
+  providerMessage?: string;
+  programId?: string | null;
+  description?: string;
+}): Promise<Payment> {
+  return req<Payment>("/payments/record_manual/", {
+    method: "POST",
+    body: JSON.stringify({
+      student_uid: data.studentUid,
+      amount: data.amount,
+      payment_method: data.paymentMethod,
+      payment_date: data.paymentDate,
+      reference: data.reference ?? "",
+      provider_message: data.providerMessage ?? "",
+      program_id: data.programId ?? null,
+      description: data.description ?? "",
+    }),
+  });
+}
+
+export async function getManualPaymentRequests(
+  filters: ApiFilters = {},
+): Promise<ManualPaymentRequest[]> {
+  const res = await req<{ results: ManualPaymentRequest[] } | ManualPaymentRequest[]>(
+    `/manual-payment-requests/${buildQuery(filters)}`,
+  );
+  return Array.isArray(res) ? res : (res.results ?? []);
+}
+
+export async function createManualPaymentRequest(data: {
+  amount: number;
+  paymentMethod: string;
+  paymentDate: string;
+  reference?: string;
+  providerMessage: string;
+  programId?: string | null;
+}): Promise<ManualPaymentRequest> {
+  return req<ManualPaymentRequest>("/manual-payment-requests/", {
+    method: "POST",
+    body: JSON.stringify({
+      amount: data.amount,
+      payment_method: data.paymentMethod,
+      payment_date: data.paymentDate,
+      reference: data.reference ?? "",
+      provider_message: data.providerMessage,
+      program_id: data.programId ?? null,
+    }),
+  });
+}
+
+export async function approveManualPaymentRequest(
+  requestId: string,
+  data: { adminNotes?: string } = {},
+): Promise<ManualPaymentRequest> {
+  return req<ManualPaymentRequest>(`/manual-payment-requests/${requestId}/approve/`, {
+    method: "POST",
+    body: JSON.stringify({ admin_notes: data.adminNotes ?? "" }),
+  });
+}
+
+export async function rejectManualPaymentRequest(
+  requestId: string,
+  data: { adminNotes?: string } = {},
+): Promise<ManualPaymentRequest> {
+  return req<ManualPaymentRequest>(`/manual-payment-requests/${requestId}/reject/`, {
+    method: "POST",
+    body: JSON.stringify({ admin_notes: data.adminNotes ?? "" }),
   });
 }
 

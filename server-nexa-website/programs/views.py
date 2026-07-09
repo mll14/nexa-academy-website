@@ -146,6 +146,66 @@ class EnrollmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('transactions.manage')])
+    def apply_waiver(self, request, pk=None):
+        """Grant a manually-agreed fee waiver (percentage or fixed amount) on an enrollment."""
+        enrollment = self.get_object()
+        discount_type = (request.data.get('discount_type') or '').strip()
+        reason = (request.data.get('reason') or '').strip()
+
+        if discount_type not in ('percentage', 'amount'):
+            return Response({'error': 'discount_type must be "percentage" or "amount"'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            value = Decimal(str(request.data.get('discount_value')))
+        except (TypeError, ValueError, ArithmeticError):
+            return Response({'error': 'Enter a valid discount_value'}, status=status.HTTP_400_BAD_REQUEST)
+        if value <= 0:
+            return Response({'error': 'discount_value must be greater than zero'}, status=status.HTTP_400_BAD_REQUEST)
+        if discount_type == 'percentage' and value > 100:
+            return Response({'error': 'A percentage waiver cannot exceed 100%'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            enrollment.discount_type = discount_type
+            enrollment.discount_value = value
+            enrollment.discount_reason = reason
+            enrollment.discount_granted_by = request.user.email
+            enrollment.discount_granted_at = timezone.now()
+            enrollment.save()  # recomputes discount_amount + balance
+
+            from payments.views import _recalculate_student_totals
+            if enrollment.student:
+                _recalculate_student_totals(enrollment.student)
+                try:
+                    Notification.objects.create(
+                        user=enrollment.student,
+                        type='payment',
+                        title='Fee Waiver Applied',
+                        message=f"A fee waiver of KSh {enrollment.discount_amount:,.2f} was applied to your {enrollment.program_name} fees. New balance: KSh {enrollment.balance:,.2f}.",
+                        link='/student/dashboard',
+                    )
+                except Exception:
+                    logger.exception('Failed to notify student about waiver on enrollment %s', enrollment.enrollment_id)
+
+        return Response(self.get_serializer(enrollment).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[HasAppPermission('transactions.manage')])
+    def remove_waiver(self, request, pk=None):
+        """Remove any fee waiver from an enrollment and restore the full balance."""
+        enrollment = self.get_object()
+        with transaction.atomic():
+            enrollment.discount_type = ''
+            enrollment.discount_value = None
+            enrollment.discount_reason = ''
+            enrollment.discount_granted_by = ''
+            enrollment.discount_granted_at = None
+            enrollment.save()  # discount_amount resets to 0, balance restored
+
+            from payments.views import _recalculate_student_totals
+            if enrollment.student:
+                _recalculate_student_totals(enrollment.student)
+
+        return Response(self.get_serializer(enrollment).data)
+
     @action(detail=False, methods=['post'], permission_classes=[HasAppPermission('students.manage')])
     def manual_enroll(self, request):
         """

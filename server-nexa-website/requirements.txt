@@ -34,3 +34,4 @@ django-anymail[resend]
 nh3==0.2.21
 pyotp==2.9.0
 qrcode[pil]==8.0
+weasyprint==63.1

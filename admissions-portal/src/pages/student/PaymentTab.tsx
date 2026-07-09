@@ -3,17 +3,18 @@ import { Card, CardContent } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
+import { Select } from '../../components/ui/select'
 import { Badge } from '../../components/ui/badge'
 import { Separator } from '../../components/ui/separator'
 import { Textarea } from '../../components/ui/textarea'
 import { Dialog } from '../../components/ui/dialog'
 import { DepositProgress } from '../../components/DepositProgress'
-import { AlertCircle, CheckCircle2, CreditCard, History, Loader2, RefreshCw, Send, WalletCards } from 'lucide-react'
+import { AlertCircle, Banknote, CheckCircle2, CreditCard, History, Loader2, RefreshCw, Send, WalletCards } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
 import { statusText } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import type { FinancialReconciliation, Payment, PaymentPlanChangeRequest, ReconciliationLedgerLine } from '../../types'
+import type { FinancialReconciliation, ManualPaymentRequest, Payment, PaymentPlanChangeRequest, ReconciliationLedgerLine } from '../../types'
 
 const MIN_PAYMENT = 100
 const PLAN_OPTIONS = [
@@ -23,14 +24,22 @@ const PLAN_OPTIONS = [
 ] as const
 
 type Plan = typeof PLAN_OPTIONS[number]['value']
-type PaymentCategory = 'overview' | 'pay' | 'plan' | 'history'
+type PaymentCategory = 'overview' | 'pay' | 'plan' | 'manual' | 'history'
 
 const PAYMENT_TABS = [
   { value: 'overview', label: 'Overview', icon: WalletCards },
   { value: 'pay', label: 'Pay', icon: CreditCard },
   { value: 'plan', label: 'Payment Plan', icon: Send },
+  { value: 'manual', label: 'Record Payment', icon: Banknote },
   { value: 'history', label: 'History', icon: History },
 ] as const
+
+const MANUAL_METHOD_OPTIONS = [
+  { value: 'Bank Transfer', label: 'Bank Transfer' },
+  { value: 'KCB', label: 'KCB Bank Transfer' },
+  { value: 'Cash', label: 'Cash' },
+  { value: 'M-Pesa', label: 'M-Pesa' },
+]
 
 const completedStatuses = ['completed', 'paid', 'success']
 
@@ -143,10 +152,20 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
   const [reconciliationModalOpen, setReconciliationModalOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState<PaymentCategory>('overview')
 
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const [manualRequests, setManualRequests] = useState<ManualPaymentRequest[]>([])
+  const [manualAmount, setManualAmount] = useState('')
+  const [manualMethod, setManualMethod] = useState('Bank Transfer')
+  const [manualDate, setManualDate] = useState(todayIso)
+  const [manualReference, setManualReference] = useState('')
+  const [manualMessage, setManualMessage] = useState('')
+  const [submittingManual, setSubmittingManual] = useState(false)
+
   const primaryRecon = reconciliation?.items?.[0]
   const balance = Number(reconciliation?.amount_remaining ?? enrollment?.balance ?? 0)
   const amountPaid = Number(reconciliation?.amount_paid ?? enrollment?.amountPaid ?? 0)
   const totalFee = Number(reconciliation?.total_fee ?? enrollment?.amount ?? 0)
+  const totalDiscount = Number(reconciliation?.total_discount ?? 0)
   const installmentAmount = Number(primaryRecon?.installment_amount ?? enrollment?.installmentAmount ?? 0)
   const selectedPlan = calcPlan(totalFee, requestPlan)
   const isFullyPaid = balance <= 0 && totalFee > 0
@@ -163,6 +182,12 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
       .then(setPlanRequests)
       .catch(() => {})
   }, [enrollment?.enrollmentId])
+
+  useEffect(() => {
+    api.getManualPaymentRequests()
+      .then(setManualRequests)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (installmentAmount > 0 && !amount && balance > 0) {
@@ -296,6 +321,38 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
     }
   }
 
+  const handleManualRequest = async () => {
+    const amountNum = Number(manualAmount)
+    if (!amountNum || amountNum <= 0) {
+      toast.error('Enter a valid amount')
+      return
+    }
+    if (!manualMessage.trim()) {
+      toast.error('The confirmation message from your bank/service is required as proof')
+      return
+    }
+    setSubmittingManual(true)
+    try {
+      const created = await api.createManualPaymentRequest({
+        amount: amountNum,
+        paymentMethod: manualMethod,
+        paymentDate: manualDate,
+        reference: manualReference,
+        providerMessage: manualMessage,
+        programId: enrollment?.programId,
+      })
+      setManualRequests((prev) => [created, ...prev])
+      setManualAmount('')
+      setManualReference('')
+      setManualMessage('')
+      toast.success('Reconciliation request sent for review')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not send request')
+    } finally {
+      setSubmittingManual(false)
+    }
+  }
+
   const retryVerify = async (ref: string) => {
     const id = toast.loading('Verifying payment…')
     try {
@@ -387,6 +444,13 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
                 </div>
               )}
 
+              {totalDiscount > 0 && (
+                <div className="flex items-center justify-between rounded-xl bg-primary/5 border border-primary/20 px-3 py-2">
+                  <span className="text-sm text-primary font-medium">Fee waiver applied</span>
+                  <span className="text-sm font-bold text-primary">− KSh {totalDiscount.toLocaleString()}</span>
+                </div>
+              )}
+
               <Separator />
 
               <div className="grid grid-cols-3 gap-2 text-center">
@@ -450,6 +514,13 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
               </div>
             ))}
           </div>
+
+          {totalDiscount > 0 && (
+            <div className="flex items-center justify-between rounded-xl bg-primary/5 border border-primary/20 px-3 py-2">
+              <span className="text-sm text-primary font-medium">Fee waiver</span>
+              <span className="text-sm font-bold text-primary">− KSh {totalDiscount.toLocaleString()}</span>
+            </div>
+          )}
 
           <Separator />
 
@@ -782,6 +853,107 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
         </Card>
       )}
 
+      {activeCategory === 'manual' && (
+        <div className="space-y-4">
+          <Card>
+            <CardContent className="p-6 space-y-5">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <Banknote className="w-4 h-4 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">Paid outside the portal?</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    If you paid via KCB bank transfer, cash, or M-Pesa directly, submit the details and the
+                    confirmation message you received. Admissions will review and post it to your account.
+                  </p>
+                </div>
+              </div>
+              <Separator />
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Amount (KSh)</Label>
+                  <Input
+                    type="number"
+                    min={MIN_PAYMENT}
+                    value={manualAmount}
+                    onChange={(e) => setManualAmount(e.target.value)}
+                    placeholder="e.g. 10000"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Method</Label>
+                  <Select value={manualMethod} onChange={setManualMethod} options={MANUAL_METHOD_OPTIONS} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Payment date</Label>
+                  <Input type="date" value={manualDate} max={todayIso} onChange={(e) => setManualDate(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Reference (optional)</Label>
+                  <Input
+                    value={manualReference}
+                    onChange={(e) => setManualReference(e.target.value)}
+                    placeholder="e.g. bank/M-Pesa code"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Confirmation message *</Label>
+                <Textarea
+                  value={manualMessage}
+                  onChange={(e) => setManualMessage(e.target.value)}
+                  placeholder="Paste the exact message you received from the bank or service confirming this payment"
+                />
+                <p className="text-xs text-muted-foreground">Required — this is your proof of payment.</p>
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={handleManualRequest} disabled={submittingManual} className="gap-2">
+                  {submittingManual ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Submit for review
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {manualRequests.length > 0 && (
+            <Card>
+              <CardContent className="p-6 space-y-3">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Your requests</p>
+                <div className="divide-y divide-border rounded-xl border border-border overflow-hidden">
+                  {manualRequests.map((r) => (
+                    <div key={r.request_id} className="p-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold">
+                          KSh {Number(r.amount).toLocaleString()} · {r.payment_method}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {new Date(r.payment_date).toLocaleDateString('en-KE')}
+                          {r.reference ? ` · ${r.reference}` : ''}
+                        </p>
+                        {r.admin_notes && (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{r.admin_notes}</p>
+                        )}
+                      </div>
+                      <Badge className={
+                        r.status === 'approved' ? 'bg-success/10 text-success shrink-0' :
+                        r.status === 'rejected' ? 'bg-destructive/10 text-destructive shrink-0' :
+                        'bg-warning/10 text-warning shrink-0'
+                      }>
+                        {r.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
       {activeCategory === 'history' && (
         <Card>
           <CardContent className="p-6 space-y-4">
@@ -842,8 +1014,8 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
                           <td className="px-4 py-3 text-right font-bold">KSh {money(line.balance)}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
-                              <Badge className={line.type === 'fee' ? 'bg-primary/10 text-primary' : paymentStatusClass(line.status)}>
-                                {line.type === 'fee' ? 'Fee' : statusText(line.status)}
+                              <Badge className={line.type === 'fee' || line.type === 'waiver' ? 'bg-primary/10 text-primary' : paymentStatusClass(line.status)}>
+                                {line.type === 'fee' ? 'Fee' : line.type === 'waiver' ? 'Waiver' : statusText(line.status)}
                               </Badge>
                               {canRecheck && (
                                 <button onClick={() => handleRecheck(matchingPayment)} disabled={isRechecking} className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 disabled:opacity-50">

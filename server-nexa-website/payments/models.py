@@ -8,8 +8,15 @@ class Payment(models.Model):
         ('M-Pesa', 'M-Pesa'),
         ('Card', 'Card'),
         ('Bank Transfer', 'Bank Transfer'),
+        ('KCB', 'KCB Bank Transfer'),
+        ('Cash', 'Cash'),
     )
-    
+
+    SOURCE_CHOICES = (
+        ('online', 'Online (LMS)'),
+        ('manual', 'Manual reconciliation'),
+    )
+
     STATUS_CHOICES = (
         ('pending', 'Pending'),
         ('processing', 'Processing'),
@@ -44,6 +51,16 @@ class Payment(models.Model):
     payment_date = models.DateTimeField(default=timezone.now)
     confirmed_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='online')
+    provider_message = models.TextField(
+        blank=True,
+        help_text='Confirmation message from the bank/service for a manually recorded payment.',
+    )
+    recorded_by = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text='Admin email that recorded this payment manually.',
+    )
     description = models.TextField(blank=True)
     invoice_url = models.URLField(blank=True)
     receipt_url = models.URLField(blank=True)
@@ -97,3 +114,63 @@ class PaymentHistory(models.Model):
             models.Index(fields=['-payment_date']),
         ]
         ordering = ['-payment_date']
+
+
+class ManualPaymentRequest(models.Model):
+    """A student-initiated request to have an off-platform payment reconciled.
+
+    The student must supply the confirmation message from the bank/service as proof.
+    An admin reviews it and, on approval, a completed Payment is posted automatically.
+    """
+
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    )
+
+    request_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    student = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='manual_payment_requests',
+    )
+    program = models.ForeignKey(
+        'programs.Program',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='manual_payment_requests',
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=20, choices=Payment.PAYMENT_METHOD_CHOICES)
+    payment_date = models.DateField()
+    reference = models.CharField(max_length=255, blank=True)
+    provider_message = models.TextField(
+        help_text='Compulsory proof: the confirmation message sent by the bank/service.',
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    admin_notes = models.TextField(blank=True)
+    reviewed_by = models.CharField(max_length=255, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_payment = models.ForeignKey(
+        Payment,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='manual_request',
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'manual_payment_requests'
+        indexes = [
+            models.Index(fields=['student']),
+            models.Index(fields=['status']),
+            models.Index(fields=['-created_at']),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.student.email} - {self.amount} ({self.status})"

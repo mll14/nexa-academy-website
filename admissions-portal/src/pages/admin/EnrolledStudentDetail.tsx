@@ -365,6 +365,19 @@ export function EnrolledStudentDetail() {
   const [payDescription, setPayDescription] = useState('')
   const [payLoading, setPayLoading] = useState(false)
 
+  const todayIso = new Date().toISOString().slice(0, 10)
+  const [showManualDialog, setShowManualDialog] = useState(false)
+  const [manualAmount, setManualAmount] = useState('')
+  const [manualMethod, setManualMethod] = useState('Bank Transfer')
+  const [manualDate, setManualDate] = useState(todayIso)
+  const [manualReference, setManualReference] = useState('')
+  const [manualMessage, setManualMessage] = useState('')
+
+  const [showWaiverDialog, setShowWaiverDialog] = useState(false)
+  const [waiverType, setWaiverType] = useState<'percentage' | 'amount'>('percentage')
+  const [waiverValue, setWaiverValue] = useState('')
+  const [waiverReason, setWaiverReason] = useState('')
+
   // Fetch enrollment
   const { data: enrollment, isLoading, error } = useQuery({
     queryKey: ['admin', 'enrollment', enrollmentId],
@@ -403,6 +416,64 @@ export function EnrolledStudentDetail() {
       qc.invalidateQueries({ queryKey: ['admin', 'enrollments'] })
       setNewStatus('')
       toast.success('Enrollment status updated')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const resetManualForm = () => {
+    setManualAmount('')
+    setManualMethod('Bank Transfer')
+    setManualDate(todayIso)
+    setManualReference('')
+    setManualMessage('')
+  }
+
+  const recordManualMutation = useMutation({
+    mutationFn: () => api.recordManualPayment({
+      studentUid,
+      amount: Number(manualAmount),
+      paymentMethod: manualMethod,
+      paymentDate: manualDate,
+      reference: manualReference,
+      providerMessage: manualMessage,
+      programId: enrollment?.program ?? enrollment?.program_id,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payments', 'enrollment', studentEmail] })
+      qc.invalidateQueries({ queryKey: ['admin', 'student-detail', studentUid] })
+      setShowManualDialog(false)
+      resetManualForm()
+      setLeftTab('finance')
+      toast.success('Manual payment recorded — invoice emailed to student')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const applyWaiverMutation = useMutation({
+    mutationFn: () => api.applyEnrollmentWaiver(enrollmentId, {
+      discountType: waiverType,
+      discountValue: Number(waiverValue),
+      reason: waiverReason,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'enrollment', enrollmentId] })
+      qc.invalidateQueries({ queryKey: ['admin', 'student-detail', studentUid] })
+      qc.invalidateQueries({ queryKey: ['admin', 'enrollments'] })
+      setShowWaiverDialog(false)
+      setWaiverValue('')
+      setWaiverReason('')
+      toast.success('Fee waiver applied')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const removeWaiverMutation = useMutation({
+    mutationFn: () => api.removeEnrollmentWaiver(enrollmentId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'enrollment', enrollmentId] })
+      qc.invalidateQueries({ queryKey: ['admin', 'student-detail', studentUid] })
+      qc.invalidateQueries({ queryKey: ['admin', 'enrollments'] })
+      toast.success('Fee waiver removed')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -511,7 +582,9 @@ export function EnrolledStudentDetail() {
   const phone       = enrollment.student_details?.phone
   const totalFee    = enrollment.amount
   const amountPaid  = enrollment.amount_paid ?? 0
-  const balance     = enrollment.balance ?? (totalFee - amountPaid)
+  const discountAmount = Number(enrollment.discount_amount ?? 0)
+  const hasWaiver   = discountAmount > 0
+  const balance     = enrollment.balance ?? Math.max(0, totalFee - discountAmount - amountPaid)
   const cfg         = enrollmentStatusConfig(enrollment.status)
   const StatusIcon  = cfg.icon
   const nextOptions = NEXT_STATUSES[enrollment.status] ?? []
@@ -621,6 +694,13 @@ export function EnrolledStudentDetail() {
                 <SectionCard title="Fee Information" icon={<CreditCard className="w-4 h-4" />}>
                   <div className="divide-y divide-border">
                     <InfoRow label="Total Fee"    value={fmtKSh(totalFee)}  icon={<Banknote className="w-4 h-4" />} />
+                    {hasWaiver && (
+                      <InfoRow
+                        label="Fee Waiver"
+                        value={`− ${fmtKSh(discountAmount)}${enrollment.discount_type === 'percentage' ? ` (${enrollment.discount_value}%)` : ''}`}
+                        icon={<TrendingDown className="w-4 h-4" />}
+                      />
+                    )}
                     <InfoRow label="Amount Paid"  value={fmtKSh(amountPaid)} icon={<BadgeCheck className="w-4 h-4" />} />
                     <InfoRow
                       label="Balance Due"
@@ -840,6 +920,35 @@ export function EnrolledStudentDetail() {
                 <Button variant="outline" className="w-full" onClick={() => setShowPayDialog(true)}>
                   <CreditCard className="w-4 h-4 mr-2" /> Take Payment
                 </Button>
+                <Button variant="outline" className="w-full" onClick={() => setShowManualDialog(true)}>
+                  <Banknote className="w-4 h-4 mr-2" /> Record Manual Payment
+                </Button>
+                {hasWaiver ? (
+                  <div className="rounded-xl bg-primary/5 border border-primary/20 px-3.5 py-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-primary">Fee waiver applied</p>
+                      <p className="text-sm font-bold text-primary">−{fmtKSh(discountAmount)}</p>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {enrollment.discount_type === 'percentage'
+                        ? `${enrollment.discount_value}% off`
+                        : 'Fixed amount'}
+                      {enrollment.discount_reason ? ` · ${enrollment.discount_reason}` : ''}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeWaiverMutation.mutate()}
+                      disabled={removeWaiverMutation.isPending}
+                      className="text-xs text-destructive hover:underline disabled:opacity-50"
+                    >
+                      {removeWaiverMutation.isPending ? 'Removing…' : 'Remove waiver'}
+                    </button>
+                  </div>
+                ) : (
+                  <Button variant="outline" className="w-full" onClick={() => setShowWaiverDialog(true)}>
+                    <TrendingDown className="w-4 h-4 mr-2" /> Apply Fee Waiver
+                  </Button>
+                )}
                 <button
                   type="button"
                   onClick={() => setLeftTab('finance')}
@@ -940,6 +1049,150 @@ export function EnrolledStudentDetail() {
               {payLoading ? 'Opening Paystack…' : <><CreditCard className="w-4 h-4 mr-1.5" /> Process Payment</>}
             </Button>
             <Button variant="outline" onClick={() => { setShowPayDialog(false); setPayAmount(''); setPayDescription('') }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Manual reconciliation dialog */}
+      <Dialog
+        open={showManualDialog}
+        onClose={() => { setShowManualDialog(false); resetManualForm() }}
+        title="Record Manual Payment"
+        description={`Record a payment ${studentName} made outside the LMS (KCB transfer, cash, etc.). This posts a completed payment and emails a PDF invoice.`}
+        className="max-w-sm"
+      >
+        <div className="space-y-4 pt-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Amount (KSh) *</label>
+              <Input
+                type="number"
+                value={manualAmount}
+                onChange={(e) => setManualAmount(e.target.value)}
+                placeholder="e.g. 10000"
+                min="1"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Method *</label>
+              <Select
+                value={manualMethod}
+                onChange={setManualMethod}
+                options={[
+                  { value: 'Bank Transfer', label: 'Bank Transfer' },
+                  { value: 'KCB', label: 'KCB Bank Transfer' },
+                  { value: 'Cash', label: 'Cash' },
+                  { value: 'M-Pesa', label: 'M-Pesa' },
+                ]}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Payment date *</label>
+              <Input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} max={todayIso} />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Reference</label>
+              <Input
+                value={manualReference}
+                onChange={(e) => setManualReference(e.target.value)}
+                placeholder="e.g. KCB txn ref"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Provider message</label>
+            <textarea
+              className="w-full min-h-20 rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+              value={manualMessage}
+              onChange={(e) => setManualMessage(e.target.value)}
+              placeholder="Paste the bank/service confirmation message (optional)"
+            />
+          </div>
+          <div className="flex gap-3 pt-1">
+            <Button
+              className="flex-1"
+              disabled={recordManualMutation.isPending || !manualAmount || Number(manualAmount) <= 0 || !manualDate}
+              onClick={() => recordManualMutation.mutate()}
+            >
+              {recordManualMutation.isPending ? 'Recording…' : <><Banknote className="w-4 h-4 mr-1.5" /> Record Payment</>}
+            </Button>
+            <Button variant="outline" onClick={() => { setShowManualDialog(false); resetManualForm() }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      {/* Fee waiver dialog */}
+      <Dialog
+        open={showWaiverDialog}
+        onClose={() => { setShowWaiverDialog(false); setWaiverValue(''); setWaiverReason('') }}
+        title="Apply Fee Waiver"
+        description={`Reduce ${studentName}'s ${enrollment.program_name} fee by a manually-agreed discount.`}
+        className="max-w-sm"
+      >
+        <div className="space-y-4 pt-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Type *</label>
+              <Select
+                value={waiverType}
+                onChange={(v) => setWaiverType(v as 'percentage' | 'amount')}
+                options={[
+                  { value: 'percentage', label: 'Percentage (%)' },
+                  { value: 'amount', label: 'Fixed amount (KSh)' },
+                ]}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">{waiverType === 'percentage' ? 'Percent *' : 'Amount (KSh) *'}</label>
+              <Input
+                type="number"
+                value={waiverValue}
+                onChange={(e) => setWaiverValue(e.target.value)}
+                placeholder={waiverType === 'percentage' ? 'e.g. 10' : 'e.g. 5000'}
+                min="1"
+                max={waiverType === 'percentage' ? '100' : undefined}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Reason</label>
+            <Input
+              value={waiverReason}
+              onChange={(e) => setWaiverReason(e.target.value)}
+              placeholder="e.g. Scholarship, hardship, referral"
+            />
+          </div>
+          {waiverValue && Number(waiverValue) > 0 && (
+            <div className="rounded-xl bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
+              Waiver:{' '}
+              <span className="font-medium text-foreground">
+                {fmtKSh(waiverType === 'percentage'
+                  ? Math.min(totalFee, (totalFee * Number(waiverValue)) / 100)
+                  : Math.min(totalFee, Number(waiverValue)))}
+              </span>{' '}
+              off {fmtKSh(totalFee)} → new balance{' '}
+              <span className="font-medium text-foreground">
+                {fmtKSh(Math.max(0, totalFee - (waiverType === 'percentage'
+                  ? Math.min(totalFee, (totalFee * Number(waiverValue)) / 100)
+                  : Math.min(totalFee, Number(waiverValue))) - amountPaid))}
+              </span>
+            </div>
+          )}
+          <div className="flex gap-3 pt-1">
+            <Button
+              className="flex-1"
+              disabled={applyWaiverMutation.isPending || !waiverValue || Number(waiverValue) <= 0 || (waiverType === 'percentage' && Number(waiverValue) > 100)}
+              onClick={() => applyWaiverMutation.mutate()}
+            >
+              {applyWaiverMutation.isPending ? 'Applying…' : <><TrendingDown className="w-4 h-4 mr-1.5" /> Apply Waiver</>}
+            </Button>
+            <Button variant="outline" onClick={() => { setShowWaiverDialog(false); setWaiverValue(''); setWaiverReason('') }}>
               Cancel
             </Button>
           </div>

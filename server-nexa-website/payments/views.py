@@ -9,10 +9,18 @@ from django.db.models import Count, Sum, Q
 from django.db.models.functions import Coalesce
 from django.conf import settings
 from decimal import Decimal
+from datetime import datetime
 from ubuntu_labs.email_utils import send_html_email
-from .models import Payment, PaymentHistory
-from .serializers import PaymentSerializer, PaymentHistorySerializer, ProcessPaymentSerializer
+from .models import Payment, PaymentHistory, ManualPaymentRequest
+from .serializers import (
+    PaymentSerializer,
+    PaymentHistorySerializer,
+    ProcessPaymentSerializer,
+    ManualPaymentEntrySerializer,
+    ManualPaymentRequestSerializer,
+)
 from .reconciliation import payment_reconciliation_for_student, serialize_reconciliation
+from .invoices import render_invoice_pdf
 from programs.models import Program, Enrollment
 from accounts.permissions import IsAdminUser, HasAppPermission
 from notifications.models import Notification
@@ -82,6 +90,13 @@ def _send_payment_invoice(payment, amount=None, program=None, payment_type='paym
     program = program or payment.program
     amount = Decimal(str(amount if amount is not None else payment.amount))
     reconciliation = payment_reconciliation_for_student(student)
+    pdf_bytes = render_invoice_pdf(
+        payment, reconciliation, amount=amount, program=program, payment_type=payment_type,
+    )
+    invoice_attachments = (
+        [(f"nexa-invoice-{str(payment.payment_id)[:8]}.pdf", pdf_bytes, 'application/pdf')]
+        if pdf_bytes else None
+    )
     context = {
         'display_name': student.display_name or payment.student_name,
         'student_name': student.display_name or payment.student_name,
@@ -106,6 +121,7 @@ def _send_payment_invoice(payment, amount=None, program=None, payment_type='paym
             template_name='payment_confirmation.html',
             context=context,
             recipient_email=recipient,
+            attachments=invoice_attachments,
         )
 
 
@@ -195,6 +211,112 @@ def _maybe_enroll_application(student, program=None, notes='Enrollment confirmed
 
     except Exception as e:
         logger.error('Failed to mark application enrolled: %s', e, exc_info=True)
+
+
+def record_manual_payment(
+    student,
+    amount,
+    payment_method,
+    payment_date=None,
+    reference='',
+    provider_message='',
+    program=None,
+    recorded_by='',
+    description='',
+    payment_type='manual',
+):
+    """Post an off-platform payment as a completed Payment and reconcile it.
+
+    Shared by the admin direct-entry action and the approval of a student
+    ManualPaymentRequest. Mirrors the confirm() flow: create the Payment, update the
+    enrollment, recompute student totals, promote the application, write history +
+    notification, and email the invoice (with PDF) + manager alert.
+    """
+    amount = Decimal(str(amount))
+
+    # Payment.payment_date is a DateTimeField; requests carry a plain date. Normalise
+    # to a timezone-aware datetime (EAT) so no naive datetime is ever stored.
+    if payment_date is None:
+        payment_dt = timezone.now()
+    elif isinstance(payment_date, datetime):
+        payment_dt = payment_date if timezone.is_aware(payment_date) else timezone.make_aware(payment_date)
+    else:  # a date
+        payment_dt = timezone.make_aware(datetime.combine(payment_date, datetime.min.time()))
+
+    with transaction.atomic():
+        payment = Payment.objects.create(
+            student=student,
+            student_name=student.display_name,
+            student_email=student.email,
+            amount=amount,
+            payment_method=payment_method,
+            payment_reference=reference or f"MANUAL-{uuid.uuid4().hex[:8].upper()}",
+            status='completed',
+            source='manual',
+            provider_message=provider_message or '',
+            recorded_by=recorded_by or '',
+            confirmed_at=timezone.now(),
+            payment_date=payment_dt,
+            description=description or 'Manually reconciled payment',
+            program=program,
+            program_name=program.name if program else '',
+        )
+
+        if program:
+            enrollment, _ = Enrollment.objects.get_or_create(
+                student=student,
+                program=program,
+                defaults={
+                    'student_name': student.display_name,
+                    'program_name': program.name,
+                    'amount': program.price,
+                    'amount_paid': Decimal('0.00'),
+                    'balance': program.price,
+                    'status': 'active',
+                },
+            )
+            if enrollment.amount != program.price:
+                enrollment.amount = program.price
+                enrollment.program_name = program.name
+            enrollment.amount_paid = Decimal(enrollment.amount_paid or 0) + amount
+            enrollment.balance = enrollment.amount - enrollment.amount_paid
+            enrollment.save()
+
+        _recalculate_student_totals(student)
+        _maybe_enroll_application(student, program=program)
+
+        PaymentHistory.objects.create(
+            student=student,
+            payment=payment,
+            amount=amount,
+            payment_date=payment.payment_date,
+            payment_method=payment_method,
+            reference=payment.payment_reference,
+            status='completed',
+        )
+
+        try:
+            Notification.objects.create(
+                user=student,
+                type='payment',
+                title='Payment Recorded',
+                message=f"A payment of KSh {amount:,.2f} ({payment_method}) was recorded on your account.",
+                link=f"/student-dashboard/{student.uid}",
+            )
+        except Exception:
+            pass
+
+    try:
+        _send_payment_invoice(payment, amount=amount, program=program, payment_type=payment_type)
+    except Exception as exc:
+        logger.error('payment invoice email failed for manual payment %s: %s', payment.payment_id, exc)
+
+    try:
+        _send_manager_deposit_notification(payment, amount=amount, program=program, payment_type=payment_type)
+    except Exception as exc:
+        logger.error('manager notification failed for manual payment %s: %s', payment.payment_id, exc)
+
+    return payment
 
 
 class PaymentViewSet(viewsets.ModelViewSet):
@@ -996,3 +1118,208 @@ class PaymentViewSet(viewsets.ModelViewSet):
             'student_email': student.email,
             'amount': str(amount),
         })
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
+    def record_manual(self, request):
+        """
+        Admin: record a payment made outside the LMS (KCB transfer, cash, etc.).
+        Body: { student_uid, amount, payment_method, payment_date?, reference?,
+                provider_message?, program_id?, description? }
+        """
+        from accounts.models import User
+
+        serializer = ManualPaymentEntrySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        try:
+            student = User.objects.get(uid=data['student_uid'])
+        except User.DoesNotExist:
+            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        program = resolve_program(data.get('program_id'))
+        payment = record_manual_payment(
+            student=student,
+            amount=data['amount'],
+            payment_method=data['payment_method'],
+            payment_date=data.get('payment_date'),
+            reference=data.get('reference', ''),
+            provider_message=data.get('provider_message', ''),
+            program=program,
+            recorded_by=request.user.email,
+            description=data.get('description', ''),
+            payment_type='manual',
+        )
+        return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
+
+
+class ManualPaymentRequestViewSet(viewsets.ModelViewSet):
+    queryset = ManualPaymentRequest.objects.select_related('student', 'program')
+    serializer_class = ManualPaymentRequestSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status']
+    search_fields = ['student__display_name', 'student__email', 'reference']
+    ordering_fields = ['created_at', 'reviewed_at']
+    ordering = ['-created_at']
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in ('approve', 'reject'):
+            return [IsAuthenticated(), HasAppPermission('transactions.manage')()]
+        return [IsAuthenticated()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if getattr(self.request.user, 'role', None) == 'admin':
+            return qs
+        return qs.filter(student=self.request.user)
+
+    def _email_context(self, manual_request, **extra):
+        student = manual_request.student
+        context = {
+            'student_name': student.display_name or student.email,
+            'student_email': student.email,
+            'amount': f"KSh {Decimal(str(manual_request.amount)):,.2f}",
+            'payment_method': manual_request.get_payment_method_display(),
+            'payment_date': manual_request.payment_date,
+            'reference': manual_request.reference,
+            'provider_message': manual_request.provider_message,
+            'program_name': manual_request.program.name if manual_request.program else '',
+            'status': manual_request.status,
+            'admin_notes': manual_request.admin_notes,
+            'request_url': _admissions_portal_url('/admin/payments?tab=manual-requests'),
+            'student_dashboard_url': _admissions_portal_url('/student/payments'),
+            'frontend_url': getattr(settings, 'FRONTEND_URL', ''),
+            'admissions_url': getattr(settings, 'ADMISSIONS_PORTAL_URL', ''),
+        }
+        context.update(extra)
+        return context
+
+    def perform_create(self, serializer):
+        program = None
+        program_data = serializer.validated_data.pop('program', None)
+        if program_data and program_data.get('program_id'):
+            program = resolve_program(program_data['program_id'])
+        manual_request = serializer.save(student=self.request.user, program=program)
+
+        try:
+            from accounts.models import User
+            for admin in User.objects.filter(role='admin'):
+                Notification.objects.create(
+                    user=admin,
+                    type='payment',
+                    title='Manual Reconciliation Requested',
+                    message=f"{manual_request.student.display_name or manual_request.student.email} requested reconciliation of KSh {manual_request.amount:,.2f} ({manual_request.get_payment_method_display()}).",
+                    link='/admin/payments?tab=manual-requests',
+                )
+        except Exception:
+            logger.exception('Failed to notify admins about manual payment request %s', manual_request.request_id)
+
+        try:
+            send_html_email(
+                subject='Manual reconciliation request received - Nexa Academy',
+                template_name='manual_reconciliation_received.html',
+                context=self._email_context(
+                    manual_request,
+                    header_label='Manual Reconciliation',
+                    preview_text='We received your manual reconciliation request.',
+                ),
+                recipient_email=manual_request.student.email,
+            )
+            send_html_email(
+                subject=f"Manual reconciliation request - {manual_request.student.display_name or manual_request.student.email}",
+                template_name='manager_manual_reconciliation_request.html',
+                context=self._email_context(
+                    manual_request,
+                    header_label='Manual Reconciliation Request',
+                    preview_text=f"{manual_request.student.display_name or manual_request.student.email} submitted proof of an off-platform payment.",
+                ),
+                recipient_email=_admissions_notification_email(),
+            )
+        except Exception:
+            logger.exception('Failed to send manual payment request emails %s', manual_request.request_id)
+
+    def _send_decision_email(self, manual_request):
+        decision = manual_request.status
+        try:
+            send_html_email(
+                subject=f"Manual reconciliation request {decision} - Nexa Academy",
+                template_name='manual_reconciliation_decision.html',
+                context=self._email_context(
+                    manual_request,
+                    decision=decision,
+                    header_label='Manual Reconciliation',
+                    preview_text=f"Your manual reconciliation request was {decision}.",
+                ),
+                recipient_email=manual_request.student.email,
+            )
+        except Exception:
+            logger.exception('Failed to send manual payment decision email %s', manual_request.request_id)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
+    def approve(self, request, pk=None):
+        manual_request = self.get_object()
+        if manual_request.status != 'pending':
+            return Response({'error': 'Only pending requests can be approved'}, status=status.HTTP_400_BAD_REQUEST)
+
+        admin_notes = request.data.get('admin_notes', '').strip()
+        payment = record_manual_payment(
+            student=manual_request.student,
+            amount=manual_request.amount,
+            payment_method=manual_request.payment_method,
+            payment_date=manual_request.payment_date,
+            reference=manual_request.reference,
+            provider_message=manual_request.provider_message,
+            program=manual_request.program,
+            recorded_by=request.user.email,
+            description='Approved manual reconciliation request',
+            payment_type='manual',
+        )
+
+        manual_request.status = 'approved'
+        manual_request.admin_notes = admin_notes
+        manual_request.reviewed_by = request.user.email
+        manual_request.reviewed_at = timezone.now()
+        manual_request.created_payment = payment
+        manual_request.save()
+
+        try:
+            Notification.objects.create(
+                user=manual_request.student,
+                type='payment',
+                title='Manual Reconciliation Approved',
+                message=f"Your payment of KSh {manual_request.amount:,.2f} was approved and applied to your account.",
+                link='/student/dashboard',
+            )
+        except Exception:
+            logger.exception('Failed to notify student about approved manual request %s', manual_request.request_id)
+
+        self._send_decision_email(manual_request)
+        return Response(self.get_serializer(manual_request).data)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
+    def reject(self, request, pk=None):
+        manual_request = self.get_object()
+        if manual_request.status != 'pending':
+            return Response({'error': 'Only pending requests can be rejected'}, status=status.HTTP_400_BAD_REQUEST)
+
+        manual_request.status = 'rejected'
+        manual_request.admin_notes = request.data.get('admin_notes', '').strip()
+        manual_request.reviewed_by = request.user.email
+        manual_request.reviewed_at = timezone.now()
+        manual_request.save()
+
+        try:
+            Notification.objects.create(
+                user=manual_request.student,
+                type='payment',
+                title='Manual Reconciliation Rejected',
+                message=manual_request.admin_notes or 'Your manual reconciliation request was not approved. Contact admissions for details.',
+                link='/student/dashboard',
+            )
+        except Exception:
+            logger.exception('Failed to notify student about rejected manual request %s', manual_request.request_id)
+
+        self._send_decision_email(manual_request)
+        return Response(self.get_serializer(manual_request).data)

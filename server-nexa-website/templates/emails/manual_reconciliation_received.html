@@ -1,0 +1,23 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}Manual reconciliation request received &mdash; Nexa Academy{% endblock %}
+{% block content %}
+<p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Manual Reconciliation</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:800;color:#1a202c;line-height:1.3;">We received your payment proof, {{ student_name }}.</h2>
+<p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">Our admissions team will review the details below and confirm the payment on your account. You'll be notified once a decision is made.</p>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:18px 22px;margin-bottom:24px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 10px;font-size:11px;color:#718096;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Request Details</p>
+  <p style="margin:0 0 6px;font-size:20px;font-weight:800;color:#1a202c;">{{ amount }}</p>
+  <p style="margin:0 0 4px;font-size:13px;color:#4a5568;">Method: <strong>{{ payment_method }}</strong></p>
+  <p style="margin:0 0 4px;font-size:13px;color:#4a5568;">Date: <strong>{{ payment_date }}</strong></p>
+  {% if reference %}<p style="margin:0 0 4px;font-size:13px;color:#4a5568;">Reference: <strong>{{ reference }}</strong></p>{% endif %}
+  {% if program_name %}<p style="margin:0;font-size:13px;color:#4a5568;">Program: <strong>{{ program_name }}</strong></p>{% endif %}
+</div>
+
+<div style="background:#fffaf0;border-radius:10px;padding:16px 20px;margin-bottom:24px;border:1px solid #feebc8;">
+  <p style="margin:0 0 6px;font-size:11px;color:#975a16;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Proof submitted</p>
+  <p style="margin:0;font-size:13px;color:#4a5568;white-space:pre-wrap;">{{ provider_message }}</p>
+</div>
+
+<a href="{{ student_dashboard_url }}" style="display:inline-block;background:#141a42;color:#fff;padding:13px 26px;border-radius:8px;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">View Payment History &rarr;</a>
+{% endblock %}

@@ -19,7 +19,7 @@ import { Textarea } from '../../components/ui/textarea'
 import * as api from '../../lib/api'
 import { formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
-import type { Payment, PaymentPlanChangeRequest } from '../../types'
+import type { Payment, PaymentPlanChangeRequest, ManualPaymentRequest } from '../../types'
 import { Pagination } from '../../components/ui/pagination'
 
 // ─── Transactions tab ────────────────────────────────────────────────────────
@@ -603,13 +603,180 @@ function PaymentPlansTab() {
   )
 }
 
+// ─── Manual Requests tab ──────────────────────────────────────────────────────
+
+function ManualRequestsTab() {
+  const qc = useQueryClient()
+  const [status, setStatus] = useState('pending')
+  const [search, setSearch] = useState('')
+  const [selected, setSelected] = useState<ManualPaymentRequest | null>(null)
+  const [adminNotes, setAdminNotes] = useState('')
+
+  const { data: requests = [], isLoading } = useQuery({
+    queryKey: ['admin', 'manual-payment-requests', status],
+    queryFn: () => api.getManualPaymentRequests({ status: status === 'all' ? undefined : status }),
+  })
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return requests
+    return requests.filter((r) =>
+      [r.student_name, r.student_email, r.reference, r.payment_method]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q)),
+    )
+  }, [requests, search])
+
+  const approveMutation = useMutation({
+    mutationFn: () => api.approveManualPaymentRequest(selected!.request_id, { adminNotes }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'manual-payment-requests'] })
+      qc.invalidateQueries({ queryKey: ['admin', 'payments'] })
+      setSelected(null)
+      setAdminNotes('')
+      toast.success('Payment approved and posted to the student account')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const rejectMutation = useMutation({
+    mutationFn: () => api.rejectManualPaymentRequest(selected!.request_id, { adminNotes }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin', 'manual-payment-requests'] })
+      setSelected(null)
+      setAdminNotes('')
+      toast.success('Request rejected')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {isLoading ? 'Loading...' : `${filtered.length} request${filtered.length !== 1 ? 's' : ''}`}
+        </p>
+        <div className="w-44">
+          <Select value={status} onChange={setStatus} options={PP_STATUS_OPTIONS} />
+        </div>
+      </div>
+
+      <div className="relative max-w-lg">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+        <Input className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search student, email, reference..." />
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => <div key={i} className="h-20 rounded-2xl bg-muted animate-pulse" />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="py-20 text-center border border-dashed border-border rounded-2xl">
+          <p className="text-sm text-muted-foreground">No manual reconciliation requests found.</p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border">
+          {filtered.map((request) => (
+            <button
+              key={request.request_id}
+              onClick={() => { setSelected(request); setAdminNotes('') }}
+              className="w-full text-left px-5 py-4 hover:bg-muted/40 transition-colors"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm truncate">{request.student_name ?? request.student_email}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {request.payment_method} · {formatDate(request.payment_date)}
+                    {request.reference && <span className="ml-1 opacity-60">· {request.reference}</span>}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <p className="text-sm font-bold">KSh {Number(request.amount).toLocaleString('en-KE')}</p>
+                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${ppStatusClass(request.status)}`}>
+                    {request.status === 'pending' ? <Clock className="w-3 h-3" /> : request.status === 'approved' ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                    {request.status}
+                  </span>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <Dialog
+          open={!!selected}
+          onClose={() => setSelected(null)}
+          title="Manual Reconciliation Request"
+          description={selected.student_email}
+          className="max-w-xl"
+        >
+          <div className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-border p-4">
+                <p className="text-xs text-muted-foreground">Amount</p>
+                <p className="text-lg font-bold mt-1">KSh {Number(selected.amount).toLocaleString('en-KE')}</p>
+                <p className="text-xs text-muted-foreground mt-1">{selected.payment_method}</p>
+              </div>
+              <div className="rounded-xl border border-border p-4">
+                <p className="text-xs text-muted-foreground">Payment date</p>
+                <p className="text-sm font-semibold mt-1">{formatDate(selected.payment_date)}</p>
+                {selected.reference && <p className="text-xs text-muted-foreground mt-1">Ref: {selected.reference}</p>}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-warning/30 bg-warning/5 p-4">
+              <p className="text-xs font-semibold text-warning uppercase tracking-wide">Proof message</p>
+              <p className="text-sm text-foreground mt-1.5 whitespace-pre-wrap">{selected.provider_message}</p>
+            </div>
+
+            <div className="text-sm space-y-1">
+              <p><span className="text-muted-foreground">Student:</span> <strong>{selected.student_name}</strong></p>
+              <p><span className="text-muted-foreground">Submitted:</span> {formatFullDateTime(selected.created_at)}</p>
+            </div>
+
+            <Separator />
+
+            {selected.status === 'pending' ? (
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label>Admin notes</Label>
+                  <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} placeholder="Optional note shown to the student" />
+                </div>
+                <div className="rounded-xl bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
+                  Approving posts a completed payment of KSh {Number(selected.amount).toLocaleString('en-KE')} and emails a PDF invoice to the student.
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => rejectMutation.mutate()} disabled={rejectMutation.isPending || approveMutation.isPending}>
+                    Reject
+                  </Button>
+                  <Button onClick={() => approveMutation.mutate()} disabled={rejectMutation.isPending || approveMutation.isPending}>
+                    {approveMutation.isPending ? 'Approving…' : 'Approve & Post'}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border p-4">
+                <p className="text-sm font-semibold capitalize">{selected.status}</p>
+                {selected.reviewed_at && <p className="text-xs text-muted-foreground mt-1">Reviewed {formatFullDateTime(selected.reviewed_at)} by {selected.reviewed_by}</p>}
+                {selected.admin_notes && <p className="text-sm text-muted-foreground mt-2">{selected.admin_notes}</p>}
+              </div>
+            )}
+          </div>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
 // ─── Combined page ────────────────────────────────────────────────────────────
 
-type Tab = 'transactions' | 'payment-plans'
+type Tab = 'transactions' | 'payment-plans' | 'manual-requests'
 
 const TABS: { value: Tab; label: string }[] = [
   { value: 'transactions', label: 'Transactions' },
   { value: 'payment-plans', label: 'Plan Request Changes' },
+  { value: 'manual-requests', label: 'Manual Requests' },
 ]
 
 export function Payments() {
@@ -629,7 +796,9 @@ export function Payments() {
 
         <UnderlineTabs tabs={TABS} active={tab} onChange={(v) => navigate({ to: '/admin/payments', search: { tab: v as Tab } } as never)} />
 
-        {tab === 'transactions' ? <TransactionsTab /> : <PaymentPlansTab />}
+        {tab === 'transactions' && <TransactionsTab />}
+        {tab === 'payment-plans' && <PaymentPlansTab />}
+        {tab === 'manual-requests' && <ManualRequestsTab />}
       </div>
     </AdminLayout>
   )

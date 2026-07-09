@@ -50,6 +50,8 @@ def payment_reconciliation_for_student(student):
         'program_name',
         'amount',
         'amount_paid',
+        'discount_amount',
+        'discount_reason',
         'enrollment_date',
     ]
     if 'payment_plan' in columns:
@@ -72,7 +74,9 @@ def payment_reconciliation_for_student(student):
         allocated_paid += paid
 
         total_fee = money(enrollment.amount)
-        remaining = max(ZERO, total_fee - paid)
+        discount = money(enrollment.discount_amount)
+        effective_fee = max(ZERO, total_fee - discount)
+        remaining = max(ZERO, effective_fee - paid)
         payment_plan = enrollment.payment_plan if 'payment_plan' in columns else ''
         installment_value = enrollment.installment_amount if 'installment_amount' in columns else None
         installment = money(installment_value) if installment_value is not None else None
@@ -81,11 +85,14 @@ def payment_reconciliation_for_student(student):
             'program_id': str(enrollment.program_id),
             'program_name': enrollment.program_name,
             'total_fee': total_fee,
+            'discount': discount,
+            'discount_reason': enrollment.discount_reason or '',
+            'effective_fee': effective_fee,
             'amount_paid': paid,
             'amount_remaining': remaining,
             'payment_plan': payment_plan or 'Standard plan',
             'installment_amount': installment,
-            'status': 'paid' if remaining <= 0 and total_fee > 0 else 'outstanding',
+            'status': 'paid' if remaining <= 0 and effective_fee > 0 else 'outstanding',
             'ledger_date': enrollment.enrollment_date,
             'last_payment_date': program_payments.order_by('-payment_date').values_list('payment_date', flat=True).first(),
         })
@@ -102,6 +109,9 @@ def payment_reconciliation_for_student(student):
                 'program_id': application.program or None,
                 'program_name': application.program_name,
                 'total_fee': total_fee,
+                'discount': ZERO,
+                'discount_reason': '',
+                'effective_fee': total_fee,
                 'amount_paid': total_paid,
                 'amount_remaining': remaining,
                 'payment_plan': application.payment_plan or 'Standard plan',
@@ -112,8 +122,10 @@ def payment_reconciliation_for_student(student):
             })
 
     total_fee = money(sum((item['total_fee'] for item in items), ZERO))
+    total_discount = money(sum((item.get('discount', ZERO) for item in items), ZERO))
+    effective_fee = max(ZERO, total_fee - total_discount)
     amount_paid = money(total_paid if total_paid > allocated_paid else allocated_paid)
-    amount_remaining = max(ZERO, total_fee - amount_paid)
+    amount_remaining = max(ZERO, effective_fee - amount_paid)
     ledger = []
     running_balance = ZERO
 
@@ -134,6 +146,21 @@ def payment_reconciliation_for_student(student):
             'balance': running_balance,
             'applied': True,
         })
+        discount = money(item.get('discount', ZERO))
+        if discount > ZERO:
+            running_balance = max(ZERO, money(running_balance - discount))
+            ledger.append({
+                'date': item.get('ledger_date'),
+                'type': 'waiver',
+                'description': f"Fee waiver — {item['program_name'] or 'Program'}",
+                'program_name': item['program_name'],
+                'reference': item.get('discount_reason') or 'Waiver',
+                'status': 'applied',
+                'debit': ZERO,
+                'credit': discount,
+                'balance': running_balance,
+                'applied': True,
+            })
 
     for payment in payments:
         is_completed = payment.status == 'completed'
@@ -158,9 +185,11 @@ def payment_reconciliation_for_student(student):
         'student_name': student.display_name,
         'student_email': student.email,
         'total_fee': total_fee,
+        'total_discount': total_discount,
+        'effective_fee': effective_fee,
         'amount_paid': amount_paid,
         'amount_remaining': amount_remaining,
-        'status': 'paid' if amount_remaining <= 0 and total_fee > 0 else 'outstanding',
+        'status': 'paid' if amount_remaining <= 0 and effective_fee > 0 else 'outstanding',
         'items': items,
         'ledger': ledger,
     }

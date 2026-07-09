@@ -101,6 +101,24 @@ export async function updateEnrollment(
   return req<Enrollment>(`/enrollments/${id}/`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
+export async function applyEnrollmentWaiver(
+  id: string,
+  data: { discountType: 'percentage' | 'amount'; discountValue: number; reason?: string },
+): Promise<Enrollment> {
+  return req<Enrollment>(`/enrollments/${id}/apply_waiver/`, {
+    method: "POST",
+    body: JSON.stringify({
+      discount_type: data.discountType,
+      discount_value: data.discountValue,
+      reason: data.reason ?? "",
+    }),
+  });
+}
+
+export async function removeEnrollmentWaiver(id: string): Promise<Enrollment> {
+  return req<Enrollment>(`/enrollments/${id}/remove_waiver/`, { method: "POST" });
+}
+
 export interface ManualEnrollResult {
   student_uid: string;
   student_email: string;

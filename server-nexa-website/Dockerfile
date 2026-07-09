@@ -7,10 +7,16 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# System deps: libpq-dev + gcc needed for psycopg2
+# System deps: libpq-dev + gcc needed for psycopg2; pango/cairo/gdk-pixbuf for WeasyPrint PDFs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     gcc \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libcairo2 \
+    libffi-dev \
+    libjpeg62-turbo \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

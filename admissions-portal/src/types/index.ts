@@ -215,11 +215,33 @@ export interface Payment {
   program_name?: string
   description?: string
   notes?: string
+  source?: 'online' | 'manual'
+  provider_message?: string
+  recorded_by?: string
   invoice_url?: string
   receipt_url?: string
   payment_date?: string
   confirmed_at?: string
   due_date?: string
+  created_at: string
+  updated_at?: string
+}
+
+export interface ManualPaymentRequest {
+  request_id: string
+  student_uid?: string
+  student_name?: string
+  student_email?: string
+  amount: string
+  payment_method: string
+  payment_date: string
+  reference?: string
+  provider_message: string
+  status: 'pending' | 'approved' | 'rejected'
+  admin_notes?: string
+  reviewed_by?: string
+  reviewed_at?: string
+  created_payment?: string | null
   created_at: string
   updated_at?: string
 }
@@ -253,6 +275,9 @@ export interface ReconciliationItem {
   program_id?: string | null
   program_name: string
   total_fee: string
+  discount?: string
+  discount_reason?: string
+  effective_fee?: string
   amount_paid: string
   amount_remaining: string
   payment_plan: string
@@ -263,7 +288,7 @@ export interface ReconciliationItem {
 
 export interface ReconciliationLedgerLine {
   date?: string | null
-  type: 'fee' | 'payment'
+  type: 'fee' | 'payment' | 'waiver'
   description: string
   program_name?: string | null
   reference?: string | null
@@ -279,6 +304,8 @@ export interface FinancialReconciliation {
   student_name: string
   student_email: string
   total_fee: string
+  total_discount?: string
+  effective_fee?: string
   amount_paid: string
   amount_remaining: string
   status: 'paid' | 'outstanding'
@@ -304,6 +331,12 @@ export interface Enrollment {
   amount: number
   amount_paid: number
   balance: number
+  discount_type?: 'percentage' | 'amount' | ''
+  discount_value?: number | string | null
+  discount_amount?: number | string
+  discount_reason?: string
+  discount_granted_by?: string
+  discount_granted_at?: string | null
   payment_plan?: string
   installment_amount?: number | string | null
   student_details?: {

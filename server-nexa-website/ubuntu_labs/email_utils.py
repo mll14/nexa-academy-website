@@ -26,8 +26,13 @@ def _html_to_text(html: str) -> str:
     return html.strip()
 
 
-def send_html_email(subject, template_name, context, recipient_email):
-    """Send an HTML email using a Django template."""
+def send_html_email(subject, template_name, context, recipient_email, attachments=None):
+    """Send an HTML email using a Django template.
+
+    attachments: optional iterable of (filename, content, mimetype) tuples, e.g.
+    a generated PDF invoice. Falsy entries are skipped so a failed PDF render can be
+    passed through harmlessly.
+    """
     html_content = render_to_string(f'emails/{template_name}', context)
     text_content = _html_to_text(html_content)
 
@@ -38,4 +43,11 @@ def send_html_email(subject, template_name, context, recipient_email):
         to=[recipient_email],
     )
     email.attach_alternative(html_content, 'text/html')
+    for attachment in attachments or []:
+        if not attachment:
+            continue
+        filename, content, mimetype = attachment
+        if content is None:
+            continue
+        email.attach(filename, content, mimetype)
     email.send(fail_silently=False)

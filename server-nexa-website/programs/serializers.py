@@ -66,7 +66,11 @@ class EnrollmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Enrollment
         fields = '__all__'
-        read_only_fields = ['enrollment_id', 'enrollment_date', 'student_name', 'program_name']
+        read_only_fields = [
+            'enrollment_id', 'enrollment_date', 'student_name', 'program_name',
+            'discount_type', 'discount_value', 'discount_amount', 'discount_reason',
+            'discount_granted_by', 'discount_granted_at',
+        ]
 
 
 class PaymentPlanChangeRequestSerializer(serializers.ModelSerializer):

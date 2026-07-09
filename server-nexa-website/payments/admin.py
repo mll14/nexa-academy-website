@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Payment, PaymentHistory
+from .models import Payment, PaymentHistory, ManualPaymentRequest
 
 class PaymentHistoryInline(admin.TabularInline):
     model = PaymentHistory
@@ -23,13 +23,13 @@ class PaymentAdmin(admin.ModelAdmin):
             'fields': ('amount', 'currency', 'payment_method', 'payment_reference', 'mobile_number')
         }),
         ('Transaction', {
-            'fields': ('transaction_id', 'status', 'payment_date', 'confirmed_at')
+            'fields': ('transaction_id', 'status', 'source', 'recorded_by', 'payment_date', 'confirmed_at')
         }),
         ('Program', {
             'fields': ('program', 'program_name')
         }),
         ('Additional Info', {
-            'fields': ('description', 'invoice_url', 'receipt_url', 'notes')
+            'fields': ('description', 'provider_message', 'invoice_url', 'receipt_url', 'notes')
         }),
         ('Metadata', {
             'fields': ('payment_id', 'created_at', 'updated_at'),
@@ -43,3 +43,11 @@ class PaymentHistoryAdmin(admin.ModelAdmin):
     list_filter = ['status', 'payment_method', 'payment_date']
     search_fields = ['student__email', 'reference']
     readonly_fields = ['id', 'created_at']
+
+
+@admin.register(ManualPaymentRequest)
+class ManualPaymentRequestAdmin(admin.ModelAdmin):
+    list_display = ['student', 'amount', 'payment_method', 'status', 'payment_date', 'created_at']
+    list_filter = ['status', 'payment_method', 'created_at']
+    search_fields = ['student__email', 'student__display_name', 'reference']
+    readonly_fields = ['request_id', 'created_payment', 'reviewed_by', 'reviewed_at', 'created_at', 'updated_at']
