@@ -1,0 +1,152 @@
+{% extends "pdf/_base.html" %}
+
+{% block content %}
+{# ══════════════════ PAGE 1 — RECEIPT ══════════════════ #}
+<div class="page-one">
+<div class="page-body">
+{% include "pdf/_header.html" with title="Receipt" meta_1=receipt_no_html meta_2=issued_at_str %}
+
+<table class="parties">
+  <tr>
+    <td>
+      <div class="label">Billed to</div>
+      <div class="value strong">{{ student_name }}</div>
+      <div class="value">{{ student_email }}</div>
+    </td>
+    <td>
+      <div class="label">Payment details</div>
+      <div class="value">Method: {{ payment_method }}</div>
+      <div class="value">Reference: {{ reference }}</div>
+      {% if payment_type %}<div class="value">Type: {{ payment_type|capfirst }}</div>{% endif %}
+    </td>
+  </tr>
+</table>
+
+<div class="banner banner-paid">
+  <div class="caption">Amount received</div>
+  <div class="amount">{{ amount }}</div>
+  <div class="note">Received on {{ issued_at|date:"d F Y" }} &middot; Thank you.</div>
+</div>
+
+<table class="data">
+  <thead>
+    <tr>
+      <th>Description</th>
+      <th class="num">Total fee</th>
+      <th class="num">Paid</th>
+      <th class="num">Balance</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td>{{ item.program_name }}<br><span class="muted">{{ item.payment_plan }}</span></td>
+      <td class="num">{{ item.total_fee }}</td>
+      <td class="num">{{ item.amount_paid }}</td>
+      <td class="num">{{ item.amount_remaining }}</td>
+    </tr>
+    {% empty %}
+    <tr>
+      <td>{{ program_name|default:"Program fees" }}</td>
+      <td class="num">{{ total_fee }}</td>
+      <td class="num">{{ total_paid }}</td>
+      <td class="num">{{ balance }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<table class="totals">
+  <tr><td>Total fee</td><td class="num">{{ total_fee }}</td></tr>
+  {% if has_discount %}
+  <tr class="discount"><td>Waivers applied</td><td class="num">&minus;{{ total_discount }}</td></tr>
+  <tr><td>Net fee</td><td class="num">{{ effective_fee }}</td></tr>
+  {% endif %}
+  <tr><td>Total paid</td><td class="num">&minus;{{ total_paid }}</td></tr>
+  <tr class="grand"><td>Outstanding balance</td><td class="num">{{ balance }}</td></tr>
+</table>
+</div>{# /.page-body #}
+
+<div class="footer">
+  This is a computer-generated receipt from Nexa Academy and is valid without a signature.<br>
+  A full statement of account follows on the next page.
+</div>
+</div>{# /.page-one #}
+
+{# ══════════════════ PAGE 2 — STATEMENT ══════════════════ #}
+<div class="page-two">
+  {% include "pdf/_header.html" with title="Statement" meta_1=student_name meta_2=as_at_str %}
+
+  {% if is_settled %}
+  <div class="banner banner-settled">
+    <div class="caption">Balance remaining</div>
+    <div class="amount">{{ balance }}</div>
+    <div class="note">Your fees are fully settled. No further payment is due.</div>
+  </div>
+  {% elif not has_fees %}
+  <div class="banner banner-neutral">
+    <div class="caption">Balance remaining</div>
+    <div class="amount">{{ balance }}</div>
+    <div class="note">No programme fees have been posted to your account yet.</div>
+  </div>
+  {% else %}
+  <div class="banner banner-due">
+    <div class="caption">Balance remaining</div>
+    <div class="amount">{{ balance }}</div>
+    <div class="note">{{ total_paid }} paid of {{ effective_fee }} total.</div>
+  </div>
+  {% endif %}
+
+  <p class="section-title">Account activity</p>
+  <table class="data">
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Description</th>
+        <th class="num">Charged</th>
+        <th class="num">Paid</th>
+        <th class="num">Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in ledger %}
+      <tr {% if not row.applied %}class="row-unapplied"{% endif %}>
+        <td>{{ row.date|date:"d M Y"|default:"—" }}</td>
+        <td>
+          {{ row.description }}
+          {% if row.reference %}<br><span class="muted">{{ row.reference }}{% if not row.applied %} · {{ row.status }}, not applied{% endif %}</span>{% endif %}
+        </td>
+        <td class="num">{{ row.debit|default:"—" }}</td>
+        <td class="num {% if row.credit %}credit{% endif %}">{{ row.credit|default:"—" }}</td>
+        <td class="num">{{ row.balance }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" class="muted">No account activity recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <table class="totals">
+    <tr><td>Total fee</td><td class="num">{{ total_fee }}</td></tr>
+    {% if has_discount %}
+    <tr class="discount"><td>Waivers applied</td><td class="num">&minus;{{ total_discount }}</td></tr>
+    <tr><td>Net fee</td><td class="num">{{ effective_fee }}</td></tr>
+    {% endif %}
+    <tr><td>Total paid</td><td class="num">&minus;{{ total_paid }}</td></tr>
+    <tr class="grand"><td>Balance remaining</td><td class="num">{{ balance }}</td></tr>
+  </table>
+
+  {% if has_fees and not is_settled %}
+  <div class="paybox">
+    <div class="label">How to pay your balance</div>
+    <p>Pay online from your student dashboard{% if frontend_url %} at {{ frontend_url }}{% endif %}, or pay by bank transfer or M-Pesa and share the confirmation with admissions.</p>
+    <p>Payments made outside the platform are reconciled to your account once confirmed.</p>
+  </div>
+  {% endif %}
+
+  <div class="footer">
+    Questions about this statement? Contact {{ admissions_email }}<br>
+    Nexa Academy &middot; nexaacademy.co.ke
+  </div>
+</div>
+{% endblock %}

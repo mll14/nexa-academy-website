@@ -16,7 +16,7 @@ import { Dialog } from '../../components/ui/dialog'
 import { Separator } from '../../components/ui/separator'
 import { Label } from '../../components/ui/label'
 import { Textarea } from '../../components/ui/textarea'
-import { SendInvoiceButton } from '../../components/SendInvoiceButton'
+import { SendReceiptButton } from '../../components/SendReceiptButton'
 import * as api from '../../lib/api'
 import { formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -385,11 +385,11 @@ function TransactionsTab() {
               )}
               {selected.status === 'completed' && (
                 <div className="pt-1">
-                  <SendInvoiceButton
+                  <SendReceiptButton
                     paymentId={pid}
                     size="default"
                     className="w-full"
-                    label="Email invoice to student"
+                    label="Email receipt to student"
                   />
                 </div>
               )}
@@ -755,7 +755,7 @@ function ManualRequestsTab() {
                   <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} placeholder="Optional note shown to the student" />
                 </div>
                 <div className="rounded-xl bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
-                  Approving posts a completed payment of KSh {Number(selected.amount).toLocaleString('en-KE')} and emails a PDF invoice to the student.
+                  Approving posts a completed payment of KSh {Number(selected.amount).toLocaleString('en-KE')} and emails a PDF receipt to the student.
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => rejectMutation.mutate()} disabled={rejectMutation.isPending || approveMutation.isPending}>

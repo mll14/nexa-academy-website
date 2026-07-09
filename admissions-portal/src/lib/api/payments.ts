@@ -158,11 +158,38 @@ export async function recordManualPayment(data: {
   });
 }
 
-/** Re-send the PDF invoice email for a completed payment. */
-export async function sendPaymentInvoice(
+/**
+ * Invoice a student for an amount they owe. Records a pending payment and emails
+ * them a PDF invoice. Identify the student by `studentUid` or by `applicationId`.
+ */
+export async function issueInvoice(data: {
+  studentUid?: string;
+  applicationId?: string;
+  amount: number;
+  dueDate?: string;
+  description?: string;
+  email?: string;
+  programId?: string | null;
+}): Promise<Payment & { emailed_to: string }> {
+  return req("/payments/issue_invoice/", {
+    method: "POST",
+    body: JSON.stringify({
+      student_uid: data.studentUid,
+      application_id: data.applicationId,
+      amount: data.amount,
+      due_date: data.dueDate || null,
+      description: data.description ?? "",
+      email: data.email ?? "",
+      program_id: data.programId ?? null,
+    }),
+  });
+}
+
+/** Re-send the PDF receipt email (receipt + balance statement) for a completed payment. */
+export async function sendPaymentReceipt(
   paymentId: string,
 ): Promise<{ detail: string; recipients: string[] }> {
-  return req(`/payments/${paymentId}/send_invoice/`, { method: "POST" });
+  return req(`/payments/${paymentId}/send_receipt/`, { method: "POST" });
 }
 
 export async function getManualPaymentRequests(

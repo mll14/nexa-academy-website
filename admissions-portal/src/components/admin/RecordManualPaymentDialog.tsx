@@ -30,7 +30,7 @@ interface RecordManualPaymentDialogProps {
 
 /**
  * Admin entry point for payments made outside the LMS (KCB transfer, cash, M-Pesa).
- * Posts a completed payment and emails the student a PDF invoice.
+ * Posts a completed payment and emails the student a PDF receipt.
  */
 export function RecordManualPaymentDialog({
   open,
@@ -77,7 +77,7 @@ export function RecordManualPaymentDialog({
     onSuccess: () => {
       close()
       onRecorded?.()
-      toast.success('Manual payment recorded — invoice emailed to student')
+      toast.success('Manual payment recorded — receipt emailed to student')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -89,7 +89,7 @@ export function RecordManualPaymentDialog({
       open={open}
       onClose={close}
       title="Record Manual Payment"
-      description={`Record a payment ${studentName} made outside the LMS (KCB transfer, cash, etc.). This posts a completed payment and emails a PDF invoice.`}
+      description={`Record a payment ${studentName} made outside the LMS (KCB transfer, cash, etc.). This posts a completed payment and emails a PDF receipt.`}
       className="max-w-sm"
     >
       <div className="space-y-4 pt-1">

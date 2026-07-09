@@ -5,7 +5,7 @@ import {
   ArrowLeft, Calendar, Video, Check, X, Clock, MapPin,
   Mail, Phone, BookOpen, CreditCard, CalendarDays,
   MessageSquare, Activity, User, AlertTriangle, Send,
-  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus, Pencil,
+  Banknote, BadgeCheck, CircleDashed, CircleX, RefreshCw, ChevronRight, UserPlus, Pencil, FileText,
 } from 'lucide-react'
 import type { Payment } from '../../types/index'
 import { AdminLayout } from '../../components/AdminLayout'
@@ -21,7 +21,8 @@ import type { InterviewType } from '../../components/SlotPicker'
 import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
 import { EmailEditor } from '../../components/admin/EmailEditor'
 import { RecordManualPaymentDialog } from '../../components/admin/RecordManualPaymentDialog'
-import { SendInvoiceButton } from '../../components/SendInvoiceButton'
+import { IssueInvoiceDialog } from '../../components/admin/IssueInvoiceDialog'
+import { SendReceiptButton } from '../../components/SendReceiptButton'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -110,6 +111,7 @@ function PaymentsTab({
   enrolling,
   onRequestPaymentLink,
   onRecordManualPayment,
+  onRequestPayment,
 }: {
   payments: Payment[]
   estimatedFees: number | null
@@ -118,6 +120,7 @@ function PaymentsTab({
   enrolling: boolean
   onRequestPaymentLink: () => void
   onRecordManualPayment: () => void
+  onRequestPayment: () => void
 }) {
   const paid  = payments.filter((p) => p.status === 'completed').reduce((sum, p) => sum + Number(p.amount), 0)
   const total = payments.reduce((sum, p) => sum + Number(p.amount), 0)
@@ -151,13 +154,16 @@ function PaymentsTab({
             <Button size="sm" variant="outline" className="text-xs h-7 px-3" onClick={onRequestPaymentLink}>
               <CreditCard className="w-3 h-3 mr-1.5" /> Take Payment
             </Button>
+            <Button size="sm" variant="outline" className="text-xs h-7 px-3" onClick={onRequestPayment}>
+              <FileText className="w-3 h-3 mr-1.5" /> Request Payment
+            </Button>
             <Button size="sm" variant="outline" className="text-xs h-7 px-3" onClick={onRecordManualPayment}>
               <Banknote className="w-3 h-3 mr-1.5" /> Record Manual Payment
             </Button>
             {latestCompleted && (
-              <SendInvoiceButton
+              <SendReceiptButton
                 paymentId={latestCompleted.payment_id}
-                label="Email Invoice"
+                label="Email Receipt"
                 sendingLabel="Sending…"
                 className="text-xs h-7 px-3"
               />
@@ -278,10 +284,10 @@ function PaymentsTab({
                   </span>
                   <span className="text-[10px] text-muted-foreground">{formatDate(p.created_at)}</span>
                   {p.status === 'completed' && (
-                    <SendInvoiceButton
+                    <SendReceiptButton
                       paymentId={p.payment_id}
                       variant="ghost"
-                      label="Invoice"
+                      label="Receipt"
                       sendingLabel="Sending…"
                       className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-primary"
                     />
@@ -313,6 +319,7 @@ export function ApplicationDetail() {
   const [payLinkAmount, setPayLinkAmount] = useState('')
   const [payLinkDescription, setPayLinkDescription] = useState('')
   const [showManualDialog, setShowManualDialog] = useState(false)
+  const [showInvoiceDialog, setShowInvoiceDialog] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
 
   const { data: app, isLoading, error } = useQuery({
@@ -683,6 +690,7 @@ export function ApplicationDetail() {
                 enrolling={updateMutation.isPending}
                 onRequestPaymentLink={() => setShowPayLinkDialog(true)}
                 onRecordManualPayment={() => setShowManualDialog(true)}
+                onRequestPayment={() => setShowInvoiceDialog(true)}
               />
             )}
 
@@ -1105,6 +1113,20 @@ export function ApplicationDetail() {
           </div>
         </div>
       </div>
+
+      {/* Invoice dialog */}
+      <IssueInvoiceDialog
+        open={showInvoiceDialog}
+        onClose={() => setShowInvoiceDialog(false)}
+        studentName={app.full_name}
+        studentEmail={app.email}
+        applicationId={app.id}
+        programId={app.program}
+        onIssued={() => {
+          qc.invalidateQueries({ queryKey: ['payments', 'application', app.email] })
+          setLeftTab('payments')
+        }}
+      />
 
       {/* Manual reconciliation dialog */}
       <RecordManualPaymentDialog

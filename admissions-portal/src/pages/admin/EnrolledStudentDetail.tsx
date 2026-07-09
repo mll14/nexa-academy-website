@@ -6,7 +6,7 @@ import {
   CreditCard, MessageSquare, User, Send, Activity,
   BadgeCheck, CircleDashed, RefreshCw, CircleX,
   Banknote, ChevronRight, GraduationCap, CheckCircle2, XCircle, AlertCircle,
-  TrendingDown, TrendingUp, ReceiptText, ExternalLink,
+  TrendingDown, TrendingUp, ReceiptText, ExternalLink, FileText,
 } from 'lucide-react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { Card, CardContent } from '../../components/ui/card'
@@ -18,7 +18,8 @@ import { Select } from '../../components/ui/select'
 import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
 import { EmailEditor } from '../../components/admin/EmailEditor'
 import { RecordManualPaymentDialog } from '../../components/admin/RecordManualPaymentDialog'
-import { SendInvoiceButton } from '../../components/SendInvoiceButton'
+import { IssueInvoiceDialog } from '../../components/admin/IssueInvoiceDialog'
+import { SendReceiptButton } from '../../components/SendReceiptButton'
 import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -256,10 +257,10 @@ function FinanceTab({
                     </span>
                     <span className="text-[10px] text-muted-foreground">{formatDate(p.created_at)}</span>
                     {p.status === 'completed' && (
-                      <SendInvoiceButton
+                      <SendReceiptButton
                         paymentId={p.payment_id}
                         variant="ghost"
-                        label="Invoice"
+                        label="Receipt"
                         sendingLabel="Sending…"
                         className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-primary"
                       />
@@ -377,6 +378,7 @@ export function EnrolledStudentDetail() {
   const [payLoading, setPayLoading] = useState(false)
 
   const [showManualDialog, setShowManualDialog] = useState(false)
+  const [showInvoiceDialog, setShowInvoiceDialog] = useState(false)
 
   const [showWaiverDialog, setShowWaiverDialog] = useState(false)
   const [waiverType, setWaiverType] = useState<'percentage' | 'amount'>('percentage')
@@ -899,20 +901,23 @@ export function EnrolledStudentDetail() {
                 <Button variant="outline" className="w-full" onClick={() => setShowPayDialog(true)}>
                   <CreditCard className="w-4 h-4 mr-2" /> Take Payment
                 </Button>
+                <Button variant="outline" className="w-full" onClick={() => setShowInvoiceDialog(true)}>
+                  <FileText className="w-4 h-4 mr-2" /> Request Payment (Invoice)
+                </Button>
                 <Button variant="outline" className="w-full" onClick={() => setShowManualDialog(true)}>
                   <Banknote className="w-4 h-4 mr-2" /> Record Manual Payment
                 </Button>
                 {latestCompletedPayment ? (
-                  <SendInvoiceButton
+                  <SendReceiptButton
                     paymentId={latestCompletedPayment.payment_id}
                     size="default"
                     className="w-full"
-                    label="Email Invoice & Statement"
-                    sendingLabel="Sending invoice…"
+                    label="Email Receipt & Statement"
+                    sendingLabel="Sending receipt…"
                   />
                 ) : (
                   <p className="text-[11px] text-muted-foreground text-center px-2">
-                    An invoice can be emailed once a payment is completed.
+                    A receipt can be emailed once a payment is completed.
                   </p>
                 )}
                 {hasWaiver ? (
@@ -1046,6 +1051,22 @@ export function EnrolledStudentDetail() {
           </div>
         </div>
       </Dialog>
+
+      {/* Invoice dialog */}
+      <IssueInvoiceDialog
+        open={showInvoiceDialog}
+        onClose={() => setShowInvoiceDialog(false)}
+        studentName={studentName}
+        studentEmail={studentEmail}
+        studentUid={studentUid}
+        programId={enrollment?.program ?? enrollment?.program_id}
+        outstandingBalance={Math.max(0, balance)}
+        onIssued={() => {
+          qc.invalidateQueries({ queryKey: ['payments', 'enrollment', studentEmail] })
+          qc.invalidateQueries({ queryKey: ['admin', 'student-detail', studentUid] })
+          setLeftTab('finance')
+        }}
+      />
 
       {/* Manual reconciliation dialog */}
       <RecordManualPaymentDialog

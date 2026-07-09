@@ -64,6 +64,32 @@ class ManualPaymentEntrySerializer(serializers.Serializer):
         return attrs
 
 
+class IssueInvoiceSerializer(serializers.Serializer):
+    """Admin request for a student to pay an amount — an instalment under their plan.
+
+    Identifies the student the same way as ``ManualPaymentEntrySerializer``: directly
+    by ``student_uid``, or indirectly by ``application_id``.
+    """
+    student_uid = serializers.UUIDField(required=False)
+    application_id = serializers.UUIDField(required=False)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    due_date = serializers.DateField(required=False, allow_null=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+    # Defaults to the student's account email; overridable when they ask for a copy elsewhere.
+    email = serializers.EmailField(required=False, allow_blank=True)
+    program_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Enter a valid invoice amount')
+        return value
+
+    def validate(self, attrs):
+        if not attrs.get('student_uid') and not attrs.get('application_id'):
+            raise serializers.ValidationError('Provide either student_uid or application_id.')
+        return attrs
+
+
 class ManualPaymentRequestSerializer(serializers.ModelSerializer):
     student_uid = serializers.SerializerMethodField()
     student_name = serializers.SerializerMethodField()

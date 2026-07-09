@@ -1,0 +1,18 @@
+{# Brand header shared by every emailed PDF. `title` names the document; `meta_*` are optional lines under it. #}
+<table class="header">
+  <tr>
+    <td>
+      {% if logo_data_uri %}
+        <img class="logo" src="{{ logo_data_uri }}" alt="Nexa Academy">
+      {% else %}
+        <div class="brand-fallback">Nexa<span> Academy</span></div>
+      {% endif %}
+      <div class="brand-sub">nexaacademy.co.ke &middot; {{ admissions_email }}</div>
+    </td>
+    <td class="doc-title">
+      <h1>{{ title }}</h1>
+      {% if meta_1 %}<div class="doc-meta">{{ meta_1|safe }}</div>{% endif %}
+      {% if meta_2 %}<div class="doc-meta">{{ meta_2 }}</div>{% endif %}
+    </td>
+  </tr>
+</table>

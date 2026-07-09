@@ -9,7 +9,7 @@ import { Separator } from '../../components/ui/separator'
 import { Textarea } from '../../components/ui/textarea'
 import { Dialog } from '../../components/ui/dialog'
 import { DepositProgress } from '../../components/DepositProgress'
-import { SendInvoiceButton } from '../../components/SendInvoiceButton'
+import { SendReceiptButton } from '../../components/SendReceiptButton'
 import { AlertCircle, Banknote, CheckCircle2, CreditCard, History, Loader2, RefreshCw, Send, WalletCards } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
@@ -1025,9 +1025,9 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
                                 </button>
                               )}
                               {matchingPayment?.status === 'completed' && (
-                                <SendInvoiceButton
+                                <SendReceiptButton
                                   paymentId={matchingPayment.payment_id}
-                                  label="Invoice"
+                                  label="Receipt"
                                   className="h-7 px-2 text-[11px]"
                                 />
                               )}

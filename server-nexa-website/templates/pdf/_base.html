@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: A4;
+    margin: 16mm 15mm 20mm 15mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 8.5px;
+      color: #a0aec0;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    color: #1a202c;
+    font-size: 11.5px;
+    line-height: 1.45;
+    margin: 0;
+  }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  .header { width: 100%; border-bottom: 2.5px solid #141a42; padding-bottom: 14px; margin-bottom: 22px; }
+  .header td { vertical-align: top; border: none; padding: 0; }
+  .logo { height: 34px; }
+  .brand-fallback { font-size: 21px; font-weight: 800; color: #141a42; letter-spacing: -0.3px; }
+  .brand-fallback span { color: #00bf63; }
+  .brand-sub { font-size: 9.5px; color: #718096; margin-top: 5px; }
+  .doc-title { text-align: right; }
+  .doc-title h1 { margin: 0; font-size: 19px; letter-spacing: 2.5px; color: #141a42; text-transform: uppercase; font-weight: 800; }
+  .doc-meta { font-size: 9.5px; color: #4a5568; margin-top: 3px; }
+  .doc-meta strong { color: #1a202c; font-weight: 600; }
+
+  /* ── Parties ────────────────────────────────────────────── */
+  .parties { width: 100%; margin-bottom: 20px; }
+  .parties td { vertical-align: top; border: none; padding: 0; width: 50%; }
+  .parties td + td { padding-left: 24px; }
+  .label { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.7px; color: #718096; font-weight: 700; margin-bottom: 5px; }
+  .value { font-size: 12px; color: #1a202c; }
+  .value.strong { font-weight: 600; }
+  .value + .value { margin-top: 1px; }
+
+  /* ── Hero banners ───────────────────────────────────────── */
+  .banner { border-radius: 7px; padding: 14px 18px; margin-bottom: 22px; }
+  .banner .caption { font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.7px; font-weight: 700; }
+  .banner .amount { font-size: 25px; font-weight: 800; color: #141a42; letter-spacing: -0.5px; margin-top: 2px; }
+  .banner .note { font-size: 9.5px; color: #718096; margin-top: 3px; }
+  .banner-paid { background: #f0faf4; border: 1px solid #c6f6d5; }
+  .banner-paid .caption { color: #276749; }
+  .banner-due { background: #fffaf0; border: 1px solid #fbd38d; }
+  .banner-due .caption { color: #975a16; }
+  .banner-settled { background: #f0faf4; border: 1px solid #c6f6d5; }
+  .banner-settled .caption { color: #276749; }
+  .banner-settled .amount { color: #276749; }
+  .banner-neutral { background: #f7fafc; border: 1px solid #e2e8f0; }
+  .banner-neutral .caption { color: #4a5568; }
+
+  /* ── Tables ─────────────────────────────────────────────── */
+  table.data { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+  table.data th {
+    background: #141a42; color: #fff; font-size: 8.5px; text-transform: uppercase;
+    letter-spacing: 0.7px; text-align: left; padding: 8px 11px; font-weight: 700;
+  }
+  table.data th.num, table.data td.num { text-align: right; }
+  table.data td { padding: 8px 11px; border-bottom: 1px solid #e2e8f0; font-size: 11px; }
+  table.data tbody tr { page-break-inside: avoid; }
+  table.data tbody tr:nth-child(even) { background: #f8fafc; }
+  .muted { color: #718096; font-size: 9.5px; }
+  .credit { color: #276749; font-weight: 600; }
+  .row-unapplied td { color: #a0aec0; font-style: italic; }
+
+  /* ── Totals ─────────────────────────────────────────────── */
+  table.totals { width: 58%; margin-left: auto; border-collapse: collapse; page-break-inside: avoid; }
+  table.totals td { padding: 5px 11px; border: none; font-size: 11.5px; }
+  table.totals td.num { text-align: right; }
+  table.totals tr.discount td { color: #276749; }
+  table.totals tr.grand td {
+    border-top: 2px solid #141a42; font-size: 13.5px; font-weight: 800;
+    color: #141a42; padding-top: 8px;
+  }
+
+  /* ── Page structure ─────────────────────────────────────── */
+  /* Page 1's body reserves most of the printable height so its footer settles near
+     the foot of the page instead of stranding mid-page under a short receipt.
+     Held in normal flow deliberately: WeasyPrint resolves `bottom` on an absolute
+     child against the parent's content height, ignoring the parent's min-height,
+     and it does not honour `margin-top:auto` on flex items. Kept a few mm short of
+     the 261mm printable height so the footer can never spill onto a blank page. */
+  .page-one > .page-body { min-height: 236mm; }
+  .page-two { page-break-before: always; }
+  .section-title { font-size: 12.5px; font-weight: 700; color: #141a42; margin: 0 0 9px; }
+  .paybox { border: 1px solid #e2e8f0; border-radius: 7px; padding: 13px 16px; margin-top: 20px; page-break-inside: avoid; }
+  .paybox .label { margin-bottom: 6px; }
+  .paybox p { margin: 0 0 3px; font-size: 10.5px; color: #4a5568; }
+
+  .footer {
+    margin-top: 26px; border-top: 1px solid #e2e8f0; padding-top: 11px;
+    font-size: 9px; color: #a0aec0; text-align: center;
+  }
+
+  /* ── Invoice-specific ───────────────────────────────────── */
+  .banner-invoice { background: #fffaf0; border: 1px solid #fbd38d; }
+  .banner-invoice .caption { color: #975a16; }
+  .terms { font-size: 10px; color: #718096; margin-top: 18px; page-break-inside: avoid; }
+</style>
+</head>
+<body>
+{% block content %}{% endblock %}
+</body>
+</html>

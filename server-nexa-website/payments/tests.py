@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 from django.test import TestCase
@@ -9,7 +9,7 @@ from applications.models import Application
 from payments.models import Payment, ManualPaymentRequest
 
 
-class InvoicePdfTest(TestCase):
+class ReceiptPdfTest(TestCase):
     """The PDF is a real render — no mocks — so template breakage fails loudly here
     rather than silently shipping an email with no attachment."""
 
@@ -50,42 +50,42 @@ class InvoicePdfTest(TestCase):
         page count cannot be recovered by scanning the output bytes."""
         from weasyprint import HTML
         from django.template.loader import render_to_string
-        from payments.invoices import build_invoice_context
-        ctx = build_invoice_context(self.payment, reconciliation, amount=self.payment.amount)
-        return len(HTML(string=render_to_string('invoices/invoice.html', ctx)).render().pages)
+        from payments.receipts import build_receipt_context
+        ctx = build_receipt_context(self.payment, reconciliation, amount=self.payment.amount)
+        return len(HTML(string=render_to_string('receipts/receipt.html', ctx)).render().pages)
 
     def test_renders_a_two_page_pdf(self):
-        from payments.invoices import render_invoice_pdf
+        from payments.receipts import render_receipt_pdf
         reconciliation = self._reconciliation()
-        pdf = render_invoice_pdf(self.payment, reconciliation, amount=self.payment.amount)
-        self.assertIsNotNone(pdf, 'invoice PDF failed to render')
+        pdf = render_receipt_pdf(self.payment, reconciliation, amount=self.payment.amount)
+        self.assertIsNotNone(pdf, 'receipt PDF failed to render')
         self.assertTrue(pdf.startswith(b'%PDF'))
         self.assertEqual(self._page_count(reconciliation), 2)
 
     def test_logo_is_embedded_as_a_data_uri(self):
-        from payments.invoices import _logo_data_uri
-        uri = _logo_data_uri()
-        self.assertTrue(uri.startswith('data:image/png;base64,'), 'invoice logo asset is missing')
+        from payments.pdf import logo_data_uri
+        uri = logo_data_uri()
+        self.assertTrue(uri.startswith('data:image/png;base64,'), 'receipt logo asset is missing')
 
     def test_settled_account_is_not_flagged_when_no_fees_posted(self):
-        from payments.invoices import build_invoice_context
+        from payments.receipts import build_receipt_context
         empty = self._reconciliation(
             total_fee=Decimal('0'), total_discount=Decimal('0'), effective_fee=Decimal('0'),
             amount_paid=Decimal('0'), amount_remaining=Decimal('0'), items=[], ledger=[],
         )
-        ctx = build_invoice_context(self.payment, empty, amount=self.payment.amount)
+        ctx = build_receipt_context(self.payment, empty, amount=self.payment.amount)
         self.assertFalse(ctx['has_fees'])
         self.assertFalse(ctx['is_settled'])
 
     def test_settled_account_is_flagged_when_balance_cleared(self):
-        from payments.invoices import build_invoice_context
+        from payments.receipts import build_receipt_context
         settled = self._reconciliation(amount_paid=Decimal('108000.00'), amount_remaining=Decimal('0'))
-        ctx = build_invoice_context(self.payment, settled, amount=self.payment.amount)
+        ctx = build_receipt_context(self.payment, settled, amount=self.payment.amount)
         self.assertTrue(ctx['is_settled'])
 
     def test_ledger_rows_carry_onto_the_statement(self):
-        from payments.invoices import build_invoice_context
-        ctx = build_invoice_context(self.payment, self._reconciliation(), amount=self.payment.amount)
+        from payments.receipts import build_receipt_context
+        ctx = build_receipt_context(self.payment, self._reconciliation(), amount=self.payment.amount)
         self.assertEqual(len(ctx['ledger']), 1)
         row = ctx['ledger'][0]
         self.assertEqual(row['credit'], 'KSh 10,000.00')
@@ -160,7 +160,7 @@ class FinalizePaymentTotalTest(TestCase):
         self.assertEqual(fixed_total, Decimal('10000'))
 
 
-@patch('payments.views.render_invoice_pdf', return_value=None)
+@patch('payments.views.render_receipt_pdf', return_value=None)
 @patch('payments.views.send_html_email')
 class ManualReconciliationTest(TestCase):
     def setUp(self):
@@ -231,7 +231,7 @@ class ManualReconciliationTest(TestCase):
         self.assertEqual(req.status, 'pending')
 
 
-@patch('payments.views.render_invoice_pdf', return_value=None)
+@patch('payments.views.render_receipt_pdf', return_value=None)
 @patch('payments.views.send_html_email')
 class RecordManualFromApplicationTest(TestCase):
     """The application page identifies the payer by application, not by account uid."""
@@ -315,13 +315,13 @@ class RecordManualFromApplicationTest(TestCase):
         self.assertEqual(enrollment.balance, Decimal('90000'))
 
 
-@patch('payments.views.render_invoice_pdf', return_value=b'%PDF-fake')
+@patch('payments.views.render_receipt_pdf', return_value=b'%PDF-fake')
 @patch('payments.views.send_html_email')
-class SendInvoiceTest(TestCase):
+class SendReceiptTest(TestCase):
     def setUp(self):
         self.student = User.objects.create_user(
             email='invstudent@test.com', password='pass12345',
-            role='student', display_name='Invoice Student',
+            role='student', display_name="Receipt Student",
         )
         self.other = User.objects.create_user(
             email='other@test.com', password='pass12345',
@@ -335,13 +335,13 @@ class SendInvoiceTest(TestCase):
 
     def _make_payment(self, status='completed'):
         return Payment.objects.create(
-            student=self.student, student_name='Invoice Student',
+            student=self.student, student_name='Receipt Student',
             student_email='invstudent@test.com', amount=Decimal('9000'),
             payment_method='KCB', payment_reference='INV-1', status=status,
         )
 
     def _url(self, payment):
-        return f'/api/payments/{payment.payment_id}/send_invoice/'
+        return f'/api/payments/{payment.payment_id}/send_receipt/'
 
     def test_admin_send_emails_student_and_admissions(self, email_mock, _pdf):
         payment = self._make_payment()
@@ -399,7 +399,7 @@ class SendInvoiceTest(TestCase):
         self.assertEqual(res.status_code, 400)
         email_mock.assert_not_called()
 
-    def test_student_cannot_send_another_students_invoice(self, email_mock, _pdf):
+    def test_student_cannot_send_another_students_receipt(self, email_mock, _pdf):
         payment = self._make_payment()
         self.client.force_authenticate(self.other)
         res = self.client.post(self._url(payment), {}, format='json')
@@ -408,7 +408,7 @@ class SendInvoiceTest(TestCase):
         email_mock.assert_not_called()
 
     def test_no_email_is_sent_when_the_pdf_fails_to_render(self, email_mock, pdf_mock):
-        """A failed render must not produce an email claiming an invoice was attached."""
+        """A failed render must not produce an email claiming a receipt was attached."""
         pdf_mock.return_value = None
         payment = self._make_payment()
         self.client.force_authenticate(self.admin)
@@ -418,13 +418,13 @@ class SendInvoiceTest(TestCase):
         self.assertIn('could not be generated', res.data['error'])
         email_mock.assert_not_called()
 
-    def test_automatic_invoice_still_sends_when_the_pdf_fails(self, email_mock, pdf_mock):
+    def test_automatic_receipt_still_sends_when_the_pdf_fails(self, email_mock, pdf_mock):
         """The post-payment email must never be blocked by a broken PDF render."""
-        from payments.views import _send_payment_invoice
+        from payments.views import _send_payment_receipt
         pdf_mock.return_value = None
         payment = self._make_payment()
 
-        _send_payment_invoice(payment, amount=payment.amount)
+        _send_payment_receipt(payment, amount=payment.amount)
 
         self.assertEqual(email_mock.call_count, 2)
         self.assertIsNone(email_mock.call_args.kwargs['attachments'])
@@ -504,3 +504,132 @@ class FeeWaiverTest(TestCase):
             {'discount_type': 'amount', 'discount_value': '15000'}, format='json',
         )
         self.assertIn(res.status_code, (403, 404))
+
+
+@patch('payments.views.render_invoice_pdf', return_value=b'%PDF-invoice')
+@patch('payments.views.send_html_email')
+class IssueInvoiceTest(TestCase):
+    """Issuing an invoice records a pending Payment and emails a PDF requesting money."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            email='billme@test.com', password='pass12345',
+            role='student', display_name='Bill Me',
+        )
+        self.admin = User.objects.create_user(
+            email='billadmin@test.com', password='pass12345',
+            role='admin', display_name='Admin',
+        )
+        self.client = APIClient()
+
+    def _post(self, body, user=None):
+        self.client.force_authenticate(user or self.admin)
+        return self.client.post('/api/payments/issue_invoice/', body, format='json')
+
+    def test_creates_a_pending_payment_and_emails_the_pdf(self, email_mock, _pdf):
+        res = self._post({
+            'student_uid': str(self.student.uid), 'amount': '36000',
+            'due_date': '2026-08-01', 'description': 'Instalment 2 of 3',
+        })
+        self.assertEqual(res.status_code, 201)
+
+        payment = Payment.objects.get(payment_id=res.data['payment_id'])
+        self.assertEqual(payment.status, 'pending')
+        self.assertEqual(payment.amount, Decimal('36000'))
+        self.assertEqual(payment.description, 'Instalment 2 of 3')
+        self.assertIsNotNone(payment.due_date)
+        self.assertTrue(payment.payment_reference.startswith('INV-'))
+
+        self.assertEqual(email_mock.call_count, 1)
+        call = email_mock.call_args
+        self.assertEqual(call.kwargs['recipient_email'], 'billme@test.com')
+        attachments = call.kwargs['attachments']
+        self.assertEqual(attachments[0][1], b'%PDF-invoice')
+        self.assertEqual(attachments[0][2], 'application/pdf')
+
+    def test_pending_invoice_does_not_count_as_revenue(self, _email, _pdf):
+        """A pending invoice must not inflate paid totals."""
+        self._post({'student_uid': str(self.student.uid), 'amount': '36000'})
+        self.student.refresh_from_db()
+        self.assertEqual(self.student.total_fee_paid or Decimal('0'), Decimal('0'))
+
+    def test_email_override_is_honoured(self, email_mock, _pdf):
+        res = self._post({
+            'student_uid': str(self.student.uid), 'amount': '5000',
+            'email': 'guardian@test.com',
+        })
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.data['emailed_to'], 'guardian@test.com')
+        self.assertEqual(email_mock.call_args.kwargs['recipient_email'], 'guardian@test.com')
+
+    def test_invoice_can_be_issued_from_an_application(self, _email, _pdf):
+        app = Application.objects.create(
+            user=self.student, full_name='Bill Me', email='billme@test.com',
+            phone='0700000000', program='software-engineering', program_name='Software Engineering',
+        )
+        res = self._post({'application_id': str(app.id), 'amount': '5000'})
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(Payment.objects.get(payment_id=res.data['payment_id']).student, self.student)
+
+    def test_no_pending_payment_is_left_behind_when_the_pdf_fails(self, email_mock, pdf_mock):
+        """A failed render must not leave a phantom charge the student never heard about."""
+        pdf_mock.return_value = None
+        res = self._post({'student_uid': str(self.student.uid), 'amount': '36000'})
+
+        self.assertEqual(res.status_code, 502)
+        self.assertEqual(Payment.objects.count(), 0)
+        email_mock.assert_not_called()
+
+    def test_no_pending_payment_is_left_behind_when_the_email_fails(self, email_mock, _pdf):
+        email_mock.side_effect = RuntimeError('smtp down')
+        res = self._post({'student_uid': str(self.student.uid), 'amount': '36000'})
+
+        self.assertEqual(res.status_code, 502)
+        self.assertEqual(Payment.objects.count(), 0)
+
+    def test_zero_amount_is_rejected(self, email_mock, _pdf):
+        res = self._post({'student_uid': str(self.student.uid), 'amount': '0'})
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(Payment.objects.count(), 0)
+        email_mock.assert_not_called()
+
+    def test_student_cannot_issue_an_invoice(self, email_mock, _pdf):
+        res = self._post({'student_uid': str(self.student.uid), 'amount': '5000'}, user=self.student)
+        self.assertIn(res.status_code, (403, 404))
+        self.assertEqual(Payment.objects.count(), 0)
+        email_mock.assert_not_called()
+
+
+class InvoicePdfRenderTest(TestCase):
+    """Real render, no mocks — a broken invoice template fails here, not in an email."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            email='invpdf@test.com', password='pass12345',
+            role='student', display_name='Invoice Pdf',
+        )
+        self.payment = Payment.objects.create(
+            student=self.student, student_name='Invoice Pdf', student_email='invpdf@test.com',
+            amount=Decimal('36000.00'), payment_method='Bank Transfer',
+            payment_reference='INV-ABC12345', status='pending', source='manual',
+            due_date=timezone.now(), description='Instalment 2 of 3',
+        )
+
+    def test_renders_a_single_page_invoice(self):
+        from payments.invoices import render_invoice_pdf
+        pdf = render_invoice_pdf(self.payment, {'amount_remaining': Decimal('68000.00')})
+        self.assertIsNotNone(pdf, 'invoice PDF failed to render')
+        self.assertTrue(pdf.startswith(b'%PDF'))
+
+    def test_invoice_number_is_the_payment_reference(self):
+        """One identifier on the document, so a student cannot quote the wrong one."""
+        from payments.invoices import build_invoice_context
+        ctx = build_invoice_context(self.payment, {})
+        self.assertEqual(ctx['invoice_number'], 'INV-ABC12345')
+        self.assertEqual(ctx['reference'], 'INV-ABC12345')
+
+    def test_overdue_is_flagged(self):
+        from payments.invoices import build_invoice_context
+        self.payment.due_date = timezone.now() - timedelta(days=1)
+        ctx = build_invoice_context(self.payment, {})
+        self.assertTrue(ctx['is_overdue'])

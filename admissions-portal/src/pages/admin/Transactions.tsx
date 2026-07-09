@@ -12,7 +12,7 @@ import { Select } from '../../components/ui/select'
 import { Input } from '../../components/ui/input'
 import { Dialog } from '../../components/ui/dialog'
 import { Separator } from '../../components/ui/separator'
-import { SendInvoiceButton } from '../../components/SendInvoiceButton'
+import { SendReceiptButton } from '../../components/SendReceiptButton'
 import * as api from '../../lib/api'
 import { formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -396,11 +396,11 @@ export function Transactions() {
               )}
               {selected.status === 'completed' && (
                 <div className="pt-1">
-                  <SendInvoiceButton
+                  <SendReceiptButton
                     paymentId={pid}
                     size="default"
                     className="w-full"
-                    label="Email invoice to student"
+                    label="Email receipt to student"
                   />
                 </div>
               )}

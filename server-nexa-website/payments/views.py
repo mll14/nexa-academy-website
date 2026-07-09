@@ -18,8 +18,10 @@ from .serializers import (
     ProcessPaymentSerializer,
     ManualPaymentEntrySerializer,
     ManualPaymentRequestSerializer,
+    IssueInvoiceSerializer,
 )
 from .reconciliation import payment_reconciliation_for_student, serialize_reconciliation
+from .receipts import render_receipt_pdf
 from .invoices import render_invoice_pdf
 from programs.models import Program, Enrollment
 from accounts.permissions import IsAdminUser, HasAppPermission
@@ -85,33 +87,37 @@ def _send_manager_deposit_notification(payment, amount=None, program=None, payme
     )
 
 
+class ReceiptPdfError(Exception):
+    """The receipt PDF could not be rendered for a caller that requires it."""
+
+
 class InvoicePdfError(Exception):
-    """The invoice PDF could not be rendered for a caller that requires it."""
+    """The invoice PDF could not be rendered."""
 
 
-def _send_payment_invoice(payment, amount=None, program=None, payment_type='payment',
+def _send_payment_receipt(payment, amount=None, program=None, payment_type='payment',
                           recipients=None, require_pdf=False):
-    """Email the invoice (with PDF attached) to the student and admissions.
+    """Email the receipt (with PDF attached) to the student and admissions.
 
     ``recipients`` overrides the default student + admissions pair — a student
-    re-sending their own invoice should not also notify admissions.
+    re-sending their own receipt should not also notify admissions.
 
     ``require_pdf`` aborts before sending anything if the PDF fails to render. The
     automatic post-payment email leaves this off, because a broken render must never
-    block a payment; an explicit "email the invoice" action turns it on, so nobody is
-    told an invoice was sent when the attachment is missing.
+    block a payment; an explicit "email the receipt" action turns it on, so nobody is
+    told a receipt was sent when the attachment is missing.
     """
     student = payment.student
     program = program or payment.program
     amount = Decimal(str(amount if amount is not None else payment.amount))
     reconciliation = payment_reconciliation_for_student(student)
-    pdf_bytes = render_invoice_pdf(
+    pdf_bytes = render_receipt_pdf(
         payment, reconciliation, amount=amount, program=program, payment_type=payment_type,
     )
     if require_pdf and not pdf_bytes:
-        raise InvoicePdfError(f'invoice PDF render returned no bytes for payment {payment.payment_id}')
-    invoice_attachments = (
-        [(f"nexa-invoice-{str(payment.payment_id)[:8]}.pdf", pdf_bytes, 'application/pdf')]
+        raise ReceiptPdfError(f'receipt PDF render returned no bytes for payment {payment.payment_id}')
+    receipt_attachments = (
+        [(f"nexa-receipt-{str(payment.payment_id)[:8]}.pdf", pdf_bytes, 'application/pdf')]
         if pdf_bytes else None
     )
     context = {
@@ -128,18 +134,83 @@ def _send_payment_invoice(payment, amount=None, program=None, payment_type='paym
         'fee_balance': f"KSh {Decimal(str(reconciliation['amount_remaining'])):,.2f}",
         'frontend_url': settings.FRONTEND_URL,
         'admissions_url': settings.ADMISSIONS_PORTAL_URL,
-        'header_label': 'Payment Invoice',
-        'preview_text': f"Payment invoice for {student.display_name or student.email}",
+        'header_label': 'Payment Receipt',
+        'preview_text': f"Payment receipt for {student.display_name or student.email}",
     }
     recipients = recipients or [student.email, _admissions_notification_email()]
     for recipient in dict.fromkeys(email for email in recipients if email):
         send_html_email(
-            subject='Payment Invoice - Nexa Academy',
+            subject='Payment Receipt - Nexa Academy',
             template_name='payment_confirmation.html',
             context=context,
             recipient_email=recipient,
-            attachments=invoice_attachments,
+            attachments=receipt_attachments,
         )
+
+
+def _resolve_payment_student(data, action='this action'):
+    """Resolve the payer from ``student_uid`` or ``application_id``.
+
+    Returns ``(student, application, error_response)``. The application page has no
+    account uid, and an applicant may have applied before holding an account, so fall
+    back to matching the account by email.
+    """
+    from accounts.models import User
+
+    if data.get('student_uid'):
+        student = User.objects.filter(uid=data['student_uid']).first()
+        if not student:
+            return None, None, Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+        return student, None, None
+
+    application = Application.objects.filter(id=data['application_id']).first()
+    if not application:
+        return None, None, Response({'error': 'Application not found'}, status=status.HTTP_404_NOT_FOUND)
+
+    student = application.user or User.objects.filter(email__iexact=application.email).first()
+    if not student:
+        return None, application, Response(
+            {'error': f"{application.full_name} has no student account yet. "
+                      f"Create their account before {action}."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return student, application, None
+
+
+def _send_invoice_email(payment, reconciliation, recipient_email):
+    """Render the invoice PDF and email it. Raises InvoicePdfError if the render fails.
+
+    Unlike the receipt, an invoice has no value without its PDF — it exists to state an
+    amount due — so a failed render aborts before anything is sent.
+    """
+    pdf_bytes = render_invoice_pdf(payment, reconciliation, amount=payment.amount)
+    if not pdf_bytes:
+        raise InvoicePdfError(f'invoice PDF render returned no bytes for payment {payment.payment_id}')
+
+    student = payment.student
+    due_date = timezone.localtime(payment.due_date) if payment.due_date else None
+    context = {
+        'display_name': student.display_name or payment.student_name,
+        'student_name': student.display_name or payment.student_name,
+        'student_email': recipient_email,
+        'amount': f"KSh {Decimal(str(payment.amount)):,.2f}",
+        'reference': payment.payment_reference or str(payment.payment_id),
+        'program_name': payment.program_name or (payment.program.name if payment.program else ''),
+        'description': payment.description or 'Programme fee instalment',
+        'due_date': due_date.strftime('%d %B %Y') if due_date else '',
+        'balance': f"KSh {Decimal(str(reconciliation.get('amount_remaining') or 0)):,.2f}",
+        'frontend_url': settings.FRONTEND_URL,
+        'admissions_url': settings.ADMISSIONS_PORTAL_URL,
+        'header_label': 'Invoice',
+        'preview_text': f"Invoice for {payment.amount} from Nexa Academy",
+    }
+    send_html_email(
+        subject=f"Invoice {str(payment.payment_id).split('-')[0].upper()} - Nexa Academy",
+        template_name='invoice_issued.html',
+        context=context,
+        recipient_email=recipient_email,
+        attachments=[(f"nexa-invoice-{str(payment.payment_id)[:8]}.pdf", pdf_bytes, 'application/pdf')],
+    )
 
 
 def _recalculate_student_totals(student):
@@ -251,7 +322,7 @@ def record_manual_payment(
     Shared by the admin direct-entry action and the approval of a student
     ManualPaymentRequest. Mirrors the confirm() flow: create the Payment, update the
     enrollment, recompute student totals, promote the application, write history +
-    notification, and email the invoice (with PDF) + manager alert.
+    notification, and email the receipt (with PDF) + manager alert.
     """
     amount = Decimal(str(amount))
 
@@ -328,9 +399,9 @@ def record_manual_payment(
             pass
 
     try:
-        _send_payment_invoice(payment, amount=amount, program=program, payment_type=payment_type)
+        _send_payment_receipt(payment, amount=amount, program=program, payment_type=payment_type)
     except Exception as exc:
-        logger.error('payment invoice email failed for manual payment %s: %s', payment.payment_id, exc)
+        logger.error('payment receipt email failed for manual payment %s: %s', payment.payment_id, exc)
 
     try:
         _send_manager_deposit_notification(payment, amount=amount, program=program, payment_type=payment_type)
@@ -542,7 +613,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
                         )
 
                         try:
-                            _send_payment_invoice(
+                            _send_payment_receipt(
                                 payment,
                                 amount=Decimal(str(amount)),
                                 program=prog,
@@ -688,9 +759,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 logger.error('manager deposit notification failed for payment %s: %s', payment.payment_id, exc)
 
             try:
-                _send_payment_invoice(payment, amount=payment.amount, program=payment.program)
+                _send_payment_receipt(payment, amount=payment.amount, program=payment.program)
             except Exception as exc:
-                logger.error('payment invoice email failed for payment %s: %s', payment.payment_id, exc)
+                logger.error('payment receipt email failed for payment %s: %s', payment.payment_id, exc)
 
         return Response(PaymentSerializer(payment).data)
 
@@ -785,14 +856,14 @@ class PaymentViewSet(viewsets.ModelViewSet):
             )
 
             try:
-                _send_payment_invoice(
+                _send_payment_receipt(
                     payment,
                     amount=amount,
                     program=program,
                     payment_type=metadata.get('payment_type', 'payment'),
                 )
             except Exception as exc:
-                logger.error('payment invoice email failed for payment %s: %s', payment.payment_id, exc)
+                logger.error('payment receipt email failed for payment %s: %s', payment.payment_id, exc)
 
             try:
                 _send_manager_deposit_notification(
@@ -956,9 +1027,9 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 pass
 
             try:
-                _send_payment_invoice(payment, amount=payment.amount, program=prog)
+                _send_payment_receipt(payment, amount=payment.amount, program=prog)
             except Exception as exc:
-                logger.error('payment invoice email failed for payment %s: %s', payment.payment_id, exc)
+                logger.error('payment receipt email failed for payment %s: %s', payment.payment_id, exc)
 
             try:
                 _send_manager_deposit_notification(payment, amount=payment.amount, program=prog)
@@ -1147,29 +1218,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
         Body: { student_uid | application_id, amount, payment_method, payment_date?,
                 reference?, provider_message?, program_id?, description? }
         """
-        from accounts.models import User
-
         serializer = ManualPaymentEntrySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        application = None
-        if data.get('student_uid'):
-            student = User.objects.filter(uid=data['student_uid']).first()
-            if not student:
-                return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            application = Application.objects.filter(id=data['application_id']).first()
-            if not application:
-                return Response({'error': 'Application not found'}, status=status.HTTP_404_NOT_FOUND)
-            # The applicant may have applied before holding an account, so fall back to email.
-            student = application.user or User.objects.filter(email__iexact=application.email).first()
-            if not student:
-                return Response(
-                    {'error': f"{application.full_name} has no student account yet. "
-                              "Create their account before recording a payment."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+        student, application, error = _resolve_payment_student(data, action='recording a payment')
+        if error:
+            return error
 
         program = resolve_program(data.get('program_id'))
         if not program and application:
@@ -1189,24 +1244,112 @@ class PaymentViewSet(viewsets.ModelViewSet):
         )
         return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, HasAppPermission('transactions.manage')])
+    def issue_invoice(self, request):
+        """
+        Admin: invoice a student for an amount they owe (an instalment under their plan).
+
+        Body: { student_uid | application_id, amount, due_date?, description?, email?,
+                program_id? }
+
+        Records the invoice as a pending Payment so it shows up in transactions and can
+        be settled through the normal Paystack or manual-reconciliation flows, then
+        emails the student a PDF invoice.
+        """
+        serializer = IssueInvoiceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        student, application, error = _resolve_payment_student(data, action='issuing an invoice')
+        if error:
+            return error
+
+        program = resolve_program(data.get('program_id'))
+        if not program and application:
+            program = resolve_program(application.program)
+
+        recipient_email = (data.get('email') or '').strip() or student.email
+        if not recipient_email:
+            return Response(
+                {'error': 'This student has no email address to send the invoice to.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        due_date = data.get('due_date')
+        due_dt = timezone.make_aware(datetime.combine(due_date, datetime.min.time())) if due_date else None
+
+        payment = Payment.objects.create(
+            student=student,
+            student_name=student.display_name,
+            student_email=student.email,
+            amount=data['amount'],
+            payment_method='Bank Transfer',
+            payment_reference=f"INV-{uuid.uuid4().hex[:8].upper()}",
+            status='pending',
+            source='manual',
+            recorded_by=request.user.email,
+            due_date=due_dt,
+            description=data.get('description', '') or 'Programme fee instalment',
+            program=program,
+            program_name=program.name if program else '',
+        )
+
+        reconciliation = payment_reconciliation_for_student(student)
+        try:
+            _send_invoice_email(payment, reconciliation, recipient_email)
+        except InvoicePdfError as exc:
+            # No invoice without its PDF — drop the pending row rather than leave a
+            # phantom charge the student was never told about.
+            logger.error('invoice PDF unavailable, rolling back payment %s: %s', payment.payment_id, exc)
+            payment.delete()
+            return Response(
+                {'error': 'The invoice PDF could not be generated, so no invoice was issued.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        except Exception as exc:
+            logger.error('invoice email failed, rolling back payment %s: %s', payment.payment_id, exc, exc_info=True)
+            payment.delete()
+            return Response(
+                {'error': 'Could not email the invoice. No invoice was issued.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        try:
+            Notification.objects.create(
+                user=student,
+                type='payment',
+                title='New Invoice',
+                message=f"You have been invoiced KSh {Decimal(str(payment.amount)):,.2f}"
+                        + (f", due {due_dt:%d %b %Y}." if due_dt else "."),
+                link='/student/payments',
+            )
+        except Exception:
+            logger.exception('Failed to notify student about invoice %s', payment.payment_id)
+
+        logger.info('Invoice %s issued to %s by %s', payment.payment_id, recipient_email, request.user.email)
+        return Response(
+            {**PaymentSerializer(payment).data, 'emailed_to': recipient_email},
+            status=status.HTTP_201_CREATED,
+        )
+
     @action(detail=True, methods=['post'])
-    def send_invoice(self, request, pk=None):
-        """Re-send the PDF invoice for a completed payment.
+    def send_receipt(self, request, pk=None):
+        """Re-send the PDF receipt for a completed payment.
 
         Admins send to the student and admissions; a student re-sending their own
-        invoice only emails themselves. ``get_queryset`` already scopes non-admins
+        receipt only emails themselves. ``get_queryset`` already scopes non-admins
         to their own payments, so this can only ever target a payment they own.
         """
         payment = self.get_object()
 
         if payment.status != 'completed':
             return Response(
-                {'error': 'An invoice can only be sent for a completed payment.'},
+                {'error': 'A receipt can only be sent for a completed payment.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         if not payment.student or not payment.student.email:
             return Response(
-                {'error': 'This payment has no student email to send the invoice to.'},
+                {'error': 'This payment has no student email to send the receipt to.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1214,7 +1357,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
         recipients = None if is_admin else [payment.student.email]
 
         try:
-            _send_payment_invoice(
+            _send_payment_receipt(
                 payment,
                 amount=payment.amount,
                 program=payment.program,
@@ -1222,22 +1365,22 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 recipients=recipients,
                 require_pdf=True,
             )
-        except InvoicePdfError as exc:
-            logger.error('invoice PDF unavailable for payment %s: %s', payment.payment_id, exc)
+        except ReceiptPdfError as exc:
+            logger.error('receipt PDF unavailable for payment %s: %s', payment.payment_id, exc)
             return Response(
-                {'error': 'The invoice PDF could not be generated, so no email was sent.'},
+                {'error': 'The receipt PDF could not be generated, so no email was sent.'},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
         except Exception as exc:
-            logger.error('invoice resend failed for payment %s: %s', payment.payment_id, exc, exc_info=True)
+            logger.error('receipt resend failed for payment %s: %s', payment.payment_id, exc, exc_info=True)
             return Response(
-                {'error': 'Could not send the invoice email. Please try again.'},
+                {'error': 'Could not send the receipt email. Please try again.'},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        logger.info('Invoice for payment %s re-sent by %s', payment.payment_id, request.user.email)
+        logger.info('Receipt for payment %s re-sent by %s', payment.payment_id, request.user.email)
         return Response({
-            'detail': f'Invoice emailed to {payment.student.email}.',
+            'detail': f'Receipt emailed to {payment.student.email}.',
             'recipients': recipients or [payment.student.email, _admissions_notification_email()],
         })
 

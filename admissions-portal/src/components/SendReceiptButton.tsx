@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { Button } from './ui/button'
 import * as api from '../lib/api'
 
-interface SendInvoiceButtonProps {
+interface SendReceiptButtonProps {
   paymentId: string
   label?: string
   sendingLabel?: string
@@ -14,21 +14,22 @@ interface SendInvoiceButtonProps {
 }
 
 /**
- * Emails the PDF invoice for a completed payment. Admins send to the student and
- * admissions; students re-send only to themselves. Callers should render this
- * only for payments with status `completed` — the server rejects the rest.
+ * Emails the PDF receipt (payment receipt + balance statement) for a completed
+ * payment. Admins send to the student and admissions; students re-send only to
+ * themselves. Callers should render this only for payments with status
+ * `completed` — the server rejects the rest.
  */
-export function SendInvoiceButton({
+export function SendReceiptButton({
   paymentId,
-  label = 'Email invoice',
+  label = 'Email receipt',
   sendingLabel = 'Sending…',
   variant = 'outline',
   size = 'sm',
   className,
-}: SendInvoiceButtonProps) {
+}: SendReceiptButtonProps) {
   const sendMutation = useMutation({
-    mutationFn: () => api.sendPaymentInvoice(paymentId),
-    onSuccess: (res) => toast.success(res.detail ?? 'Invoice emailed'),
+    mutationFn: () => api.sendPaymentReceipt(paymentId),
+    onSuccess: (res) => toast.success(res.detail ?? 'Receipt emailed'),
     onError: (e: Error) => toast.error(e.message),
   })
 
