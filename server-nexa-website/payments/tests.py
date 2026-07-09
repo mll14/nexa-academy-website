@@ -9,6 +9,97 @@ from applications.models import Application
 from payments.models import Payment, ManualPaymentRequest
 
 
+class InvoicePdfTest(TestCase):
+    """The PDF is a real render — no mocks — so template breakage fails loudly here
+    rather than silently shipping an email with no attachment."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            email='pdf@test.com', password='pass12345',
+            role='student', display_name='Pdf Student',
+        )
+        self.payment = Payment.objects.create(
+            student=self.student, student_name='Pdf Student', student_email='pdf@test.com',
+            amount=Decimal('10000.00'), payment_method='KCB', payment_reference='KCB-1',
+            status='completed', source='manual', confirmed_at=timezone.now(),
+        )
+
+    def _reconciliation(self, **overrides):
+        data = {
+            'total_fee': Decimal('120000.00'),
+            'total_discount': Decimal('12000.00'),
+            'effective_fee': Decimal('108000.00'),
+            'amount_paid': Decimal('40000.00'),
+            'amount_remaining': Decimal('68000.00'),
+            'items': [{
+                'program_name': 'Software Engineering', 'payment_plan': '3 Installments',
+                'total_fee': Decimal('120000.00'), 'amount_paid': Decimal('40000.00'),
+                'amount_remaining': Decimal('68000.00'),
+            }],
+            'ledger': [{
+                'date': timezone.now(), 'type': 'payment', 'description': 'Deposit',
+                'reference': 'PSTK-1', 'status': 'completed', 'debit': Decimal('0'),
+                'credit': Decimal('10000.00'), 'balance': Decimal('98000.00'), 'applied': True,
+            }],
+        }
+        data.update(overrides)
+        return data
+
+    def _page_count(self, reconciliation):
+        """Lay the document out and count pages. PDF objects are compressed, so the
+        page count cannot be recovered by scanning the output bytes."""
+        from weasyprint import HTML
+        from django.template.loader import render_to_string
+        from payments.invoices import build_invoice_context
+        ctx = build_invoice_context(self.payment, reconciliation, amount=self.payment.amount)
+        return len(HTML(string=render_to_string('invoices/invoice.html', ctx)).render().pages)
+
+    def test_renders_a_two_page_pdf(self):
+        from payments.invoices import render_invoice_pdf
+        reconciliation = self._reconciliation()
+        pdf = render_invoice_pdf(self.payment, reconciliation, amount=self.payment.amount)
+        self.assertIsNotNone(pdf, 'invoice PDF failed to render')
+        self.assertTrue(pdf.startswith(b'%PDF'))
+        self.assertEqual(self._page_count(reconciliation), 2)
+
+    def test_logo_is_embedded_as_a_data_uri(self):
+        from payments.invoices import _logo_data_uri
+        uri = _logo_data_uri()
+        self.assertTrue(uri.startswith('data:image/png;base64,'), 'invoice logo asset is missing')
+
+    def test_settled_account_is_not_flagged_when_no_fees_posted(self):
+        from payments.invoices import build_invoice_context
+        empty = self._reconciliation(
+            total_fee=Decimal('0'), total_discount=Decimal('0'), effective_fee=Decimal('0'),
+            amount_paid=Decimal('0'), amount_remaining=Decimal('0'), items=[], ledger=[],
+        )
+        ctx = build_invoice_context(self.payment, empty, amount=self.payment.amount)
+        self.assertFalse(ctx['has_fees'])
+        self.assertFalse(ctx['is_settled'])
+
+    def test_settled_account_is_flagged_when_balance_cleared(self):
+        from payments.invoices import build_invoice_context
+        settled = self._reconciliation(amount_paid=Decimal('108000.00'), amount_remaining=Decimal('0'))
+        ctx = build_invoice_context(self.payment, settled, amount=self.payment.amount)
+        self.assertTrue(ctx['is_settled'])
+
+    def test_ledger_rows_carry_onto_the_statement(self):
+        from payments.invoices import build_invoice_context
+        ctx = build_invoice_context(self.payment, self._reconciliation(), amount=self.payment.amount)
+        self.assertEqual(len(ctx['ledger']), 1)
+        row = ctx['ledger'][0]
+        self.assertEqual(row['credit'], 'KSh 10,000.00')
+        self.assertEqual(row['debit'], '')  # zero debits render as an em dash, not "KSh 0.00"
+
+    def test_long_ledger_overflows_to_extra_pages(self):
+        rows = [{
+            'date': timezone.now(), 'type': 'payment', 'description': f'Installment {i}',
+            'reference': f'PSTK-{i}', 'status': 'completed', 'debit': Decimal('0'),
+            'credit': Decimal('1000.00'), 'balance': Decimal('1000.00'), 'applied': True,
+        } for i in range(40)]
+        self.assertGreater(self._page_count(self._reconciliation(ledger=rows)), 2)
+
+
 class FinalizePaymentTotalTest(TestCase):
     def setUp(self):
         self.student = User.objects.create_user(
@@ -262,6 +353,22 @@ class SendInvoiceTest(TestCase):
         self.assertIn('invstudent@test.com', res.data['recipients'])
         self.assertEqual(email_mock.call_count, 2)
 
+    def test_every_recipient_receives_the_pdf(self, email_mock, _pdf):
+        """Both the student's copy and admissions' copy must carry the attachment."""
+        payment = self._make_payment()
+        self.client.force_authenticate(self.admin)
+        self.client.post(self._url(payment), {}, format='json')
+
+        self.assertEqual(email_mock.call_count, 2)
+        recipients = set()
+        for call in email_mock.call_args_list:
+            recipients.add(call.kwargs['recipient_email'])
+            attachments = call.kwargs['attachments']
+            self.assertEqual(len(attachments), 1)
+            self.assertEqual(attachments[0][1], b'%PDF-fake')
+            self.assertEqual(attachments[0][2], 'application/pdf')
+        self.assertEqual(len(recipients), 2)
+
     def test_student_resend_only_emails_themselves(self, email_mock, _pdf):
         payment = self._make_payment()
         self.client.force_authenticate(self.student)
@@ -299,6 +406,28 @@ class SendInvoiceTest(TestCase):
 
         self.assertEqual(res.status_code, 404)
         email_mock.assert_not_called()
+
+    def test_no_email_is_sent_when_the_pdf_fails_to_render(self, email_mock, pdf_mock):
+        """A failed render must not produce an email claiming an invoice was attached."""
+        pdf_mock.return_value = None
+        payment = self._make_payment()
+        self.client.force_authenticate(self.admin)
+        res = self.client.post(self._url(payment), {}, format='json')
+
+        self.assertEqual(res.status_code, 502)
+        self.assertIn('could not be generated', res.data['error'])
+        email_mock.assert_not_called()
+
+    def test_automatic_invoice_still_sends_when_the_pdf_fails(self, email_mock, pdf_mock):
+        """The post-payment email must never be blocked by a broken PDF render."""
+        from payments.views import _send_payment_invoice
+        pdf_mock.return_value = None
+        payment = self._make_payment()
+
+        _send_payment_invoice(payment, amount=payment.amount)
+
+        self.assertEqual(email_mock.call_count, 2)
+        self.assertIsNone(email_mock.call_args.kwargs['attachments'])
 
 
 class FeeWaiverTest(TestCase):

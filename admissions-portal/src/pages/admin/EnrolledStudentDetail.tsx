@@ -256,7 +256,13 @@ function FinanceTab({
                     </span>
                     <span className="text-[10px] text-muted-foreground">{formatDate(p.created_at)}</span>
                     {p.status === 'completed' && (
-                      <SendInvoiceButton paymentId={p.payment_id} className="h-7 px-2.5 text-[11px]" />
+                      <SendInvoiceButton
+                        paymentId={p.payment_id}
+                        variant="ghost"
+                        label="Invoice"
+                        sendingLabel="Sending…"
+                        className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-primary"
+                      />
                     )}
                   </div>
                 </div>
@@ -404,6 +410,9 @@ export function EnrolledStudentDetail() {
   })
 
   const reconciliation: FinancialReconciliation | null = studentDetail?.reconciliation ?? null
+
+  // Payments come back newest-first, so the first completed one is the latest receipt.
+  const latestCompletedPayment = payments.find((p) => p.status === 'completed')
 
   // Find the enrolled application (for notes)
   const enrolledApplication = studentDetail?.applications?.find((a) => a.status === 'enrolled')
@@ -893,6 +902,19 @@ export function EnrolledStudentDetail() {
                 <Button variant="outline" className="w-full" onClick={() => setShowManualDialog(true)}>
                   <Banknote className="w-4 h-4 mr-2" /> Record Manual Payment
                 </Button>
+                {latestCompletedPayment ? (
+                  <SendInvoiceButton
+                    paymentId={latestCompletedPayment.payment_id}
+                    size="default"
+                    className="w-full"
+                    label="Email Invoice & Statement"
+                    sendingLabel="Sending invoice…"
+                  />
+                ) : (
+                  <p className="text-[11px] text-muted-foreground text-center px-2">
+                    An invoice can be emailed once a payment is completed.
+                  </p>
+                )}
                 {hasWaiver ? (
                   <div className="rounded-xl bg-primary/5 border border-primary/20 px-3.5 py-3 space-y-2">
                     <div className="flex items-center justify-between">

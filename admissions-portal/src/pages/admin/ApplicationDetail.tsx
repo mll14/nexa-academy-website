@@ -121,6 +121,8 @@ function PaymentsTab({
 }) {
   const paid  = payments.filter((p) => p.status === 'completed').reduce((sum, p) => sum + Number(p.amount), 0)
   const total = payments.reduce((sum, p) => sum + Number(p.amount), 0)
+  // Payments come back newest-first, so the first completed one is the latest receipt.
+  const latestCompleted = payments.find((p) => p.status === 'completed')
   const fullTarget = estimatedFees ?? 0
   const depositMet = paid >= DEPOSIT_THRESHOLD
   const fullyPaid  = fullTarget > 0 && paid >= fullTarget
@@ -152,6 +154,14 @@ function PaymentsTab({
             <Button size="sm" variant="outline" className="text-xs h-7 px-3" onClick={onRecordManualPayment}>
               <Banknote className="w-3 h-3 mr-1.5" /> Record Manual Payment
             </Button>
+            {latestCompleted && (
+              <SendInvoiceButton
+                paymentId={latestCompleted.payment_id}
+                label="Email Invoice"
+                sendingLabel="Sending…"
+                className="text-xs h-7 px-3"
+              />
+            )}
             {alreadyEnrolled ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
                 <BadgeCheck className="w-3.5 h-3.5" /> Enrolled
@@ -268,7 +278,13 @@ function PaymentsTab({
                   </span>
                   <span className="text-[10px] text-muted-foreground">{formatDate(p.created_at)}</span>
                   {p.status === 'completed' && (
-                    <SendInvoiceButton paymentId={p.payment_id} className="h-7 px-2.5 text-[11px]" />
+                    <SendInvoiceButton
+                      paymentId={p.payment_id}
+                      variant="ghost"
+                      label="Invoice"
+                      sendingLabel="Sending…"
+                      className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-primary"
+                    />
                   )}
                 </div>
               </div>

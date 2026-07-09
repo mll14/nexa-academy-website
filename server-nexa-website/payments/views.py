@@ -85,11 +85,21 @@ def _send_manager_deposit_notification(payment, amount=None, program=None, payme
     )
 
 
-def _send_payment_invoice(payment, amount=None, program=None, payment_type='payment', recipients=None):
+class InvoicePdfError(Exception):
+    """The invoice PDF could not be rendered for a caller that requires it."""
+
+
+def _send_payment_invoice(payment, amount=None, program=None, payment_type='payment',
+                          recipients=None, require_pdf=False):
     """Email the invoice (with PDF attached) to the student and admissions.
 
     ``recipients`` overrides the default student + admissions pair — a student
     re-sending their own invoice should not also notify admissions.
+
+    ``require_pdf`` aborts before sending anything if the PDF fails to render. The
+    automatic post-payment email leaves this off, because a broken render must never
+    block a payment; an explicit "email the invoice" action turns it on, so nobody is
+    told an invoice was sent when the attachment is missing.
     """
     student = payment.student
     program = program or payment.program
@@ -98,6 +108,8 @@ def _send_payment_invoice(payment, amount=None, program=None, payment_type='paym
     pdf_bytes = render_invoice_pdf(
         payment, reconciliation, amount=amount, program=program, payment_type=payment_type,
     )
+    if require_pdf and not pdf_bytes:
+        raise InvoicePdfError(f'invoice PDF render returned no bytes for payment {payment.payment_id}')
     invoice_attachments = (
         [(f"nexa-invoice-{str(payment.payment_id)[:8]}.pdf", pdf_bytes, 'application/pdf')]
         if pdf_bytes else None
@@ -1208,6 +1220,13 @@ class PaymentViewSet(viewsets.ModelViewSet):
                 program=payment.program,
                 payment_type='manual' if payment.source == 'manual' else 'payment',
                 recipients=recipients,
+                require_pdf=True,
+            )
+        except InvoicePdfError as exc:
+            logger.error('invoice PDF unavailable for payment %s: %s', payment.payment_id, exc)
+            return Response(
+                {'error': 'The invoice PDF could not be generated, so no email was sent.'},
+                status=status.HTTP_502_BAD_GATEWAY,
             )
         except Exception as exc:
             logger.error('invoice resend failed for payment %s: %s', payment.payment_id, exc, exc_info=True)
