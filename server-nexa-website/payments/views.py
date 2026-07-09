@@ -85,7 +85,12 @@ def _send_manager_deposit_notification(payment, amount=None, program=None, payme
     )
 
 
-def _send_payment_invoice(payment, amount=None, program=None, payment_type='payment'):
+def _send_payment_invoice(payment, amount=None, program=None, payment_type='payment', recipients=None):
+    """Email the invoice (with PDF attached) to the student and admissions.
+
+    ``recipients`` overrides the default student + admissions pair — a student
+    re-sending their own invoice should not also notify admissions.
+    """
     student = payment.student
     program = program or payment.program
     amount = Decimal(str(amount if amount is not None else payment.amount))
@@ -114,7 +119,7 @@ def _send_payment_invoice(payment, amount=None, program=None, payment_type='paym
         'header_label': 'Payment Invoice',
         'preview_text': f"Payment invoice for {student.display_name or student.email}",
     }
-    recipients = [student.email, _admissions_notification_email()]
+    recipients = recipients or [student.email, _admissions_notification_email()]
     for recipient in dict.fromkeys(email for email in recipients if email):
         send_html_email(
             subject='Payment Invoice - Nexa Academy',
@@ -144,6 +149,10 @@ def resolve_program(program_identifier):
         return Program.objects.filter(program_id=uuid.UUID(str(program_identifier))).first()
     except (ValueError, TypeError):
         program_slug = str(program_identifier).strip().lower()
+        program = Program.objects.filter(slug__iexact=program_slug).first()
+        if program:
+            return program
+        # Legacy aliases predating Program.slug.
         if program_slug in ('software-engineering', 'fullstack', 'software_engineering'):
             return (
                 Program.objects.filter(name__icontains='Software Engineering').first()
@@ -1123,8 +1132,8 @@ class PaymentViewSet(viewsets.ModelViewSet):
     def record_manual(self, request):
         """
         Admin: record a payment made outside the LMS (KCB transfer, cash, etc.).
-        Body: { student_uid, amount, payment_method, payment_date?, reference?,
-                provider_message?, program_id?, description? }
+        Body: { student_uid | application_id, amount, payment_method, payment_date?,
+                reference?, provider_message?, program_id?, description? }
         """
         from accounts.models import User
 
@@ -1132,12 +1141,28 @@ class PaymentViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        try:
-            student = User.objects.get(uid=data['student_uid'])
-        except User.DoesNotExist:
-            return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+        application = None
+        if data.get('student_uid'):
+            student = User.objects.filter(uid=data['student_uid']).first()
+            if not student:
+                return Response({'error': 'Student not found'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            application = Application.objects.filter(id=data['application_id']).first()
+            if not application:
+                return Response({'error': 'Application not found'}, status=status.HTTP_404_NOT_FOUND)
+            # The applicant may have applied before holding an account, so fall back to email.
+            student = application.user or User.objects.filter(email__iexact=application.email).first()
+            if not student:
+                return Response(
+                    {'error': f"{application.full_name} has no student account yet. "
+                              "Create their account before recording a payment."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         program = resolve_program(data.get('program_id'))
+        if not program and application:
+            program = resolve_program(application.program)
+
         payment = record_manual_payment(
             student=student,
             amount=data['amount'],
@@ -1151,6 +1176,51 @@ class PaymentViewSet(viewsets.ModelViewSet):
             payment_type='manual',
         )
         return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def send_invoice(self, request, pk=None):
+        """Re-send the PDF invoice for a completed payment.
+
+        Admins send to the student and admissions; a student re-sending their own
+        invoice only emails themselves. ``get_queryset`` already scopes non-admins
+        to their own payments, so this can only ever target a payment they own.
+        """
+        payment = self.get_object()
+
+        if payment.status != 'completed':
+            return Response(
+                {'error': 'An invoice can only be sent for a completed payment.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not payment.student or not payment.student.email:
+            return Response(
+                {'error': 'This payment has no student email to send the invoice to.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        is_admin = getattr(request.user, 'role', None) == 'admin'
+        recipients = None if is_admin else [payment.student.email]
+
+        try:
+            _send_payment_invoice(
+                payment,
+                amount=payment.amount,
+                program=payment.program,
+                payment_type='manual' if payment.source == 'manual' else 'payment',
+                recipients=recipients,
+            )
+        except Exception as exc:
+            logger.error('invoice resend failed for payment %s: %s', payment.payment_id, exc, exc_info=True)
+            return Response(
+                {'error': 'Could not send the invoice email. Please try again.'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        logger.info('Invoice for payment %s re-sent by %s', payment.payment_id, request.user.email)
+        return Response({
+            'detail': f'Invoice emailed to {payment.student.email}.',
+            'recipients': recipients or [payment.student.email, _admissions_notification_email()],
+        })
 
 
 class ManualPaymentRequestViewSet(viewsets.ModelViewSet):

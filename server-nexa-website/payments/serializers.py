@@ -35,20 +35,33 @@ class PaymentSerializer(serializers.ModelSerializer):
 
 
 class ManualPaymentEntrySerializer(serializers.Serializer):
-    """Admin direct entry of an off-platform payment."""
-    student_uid = serializers.UUIDField()
+    """Admin direct entry of an off-platform payment.
+
+    The student is identified either directly by ``student_uid`` (enrolled-student
+    page) or indirectly by ``application_id`` (application page), where the view
+    resolves the applicant's account by FK or by email.
+    """
+    student_uid = serializers.UUIDField(required=False)
+    application_id = serializers.UUIDField(required=False)
     amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     payment_method = serializers.ChoiceField(choices=Payment.PAYMENT_METHOD_CHOICES)
     payment_date = serializers.DateField(required=False)
     reference = serializers.CharField(required=False, allow_blank=True)
     provider_message = serializers.CharField(required=False, allow_blank=True)
-    program_id = serializers.UUIDField(required=False, allow_null=True)
+    # A UUID from the enrolled-student page or a program slug from the application
+    # page — the view hands both to resolve_program().
+    program_id = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     description = serializers.CharField(required=False, allow_blank=True)
 
     def validate_amount(self, value):
         if value <= 0:
             raise serializers.ValidationError('Enter a valid payment amount')
         return value
+
+    def validate(self, attrs):
+        if not attrs.get('student_uid') and not attrs.get('application_id'):
+            raise serializers.ValidationError('Provide either student_uid or application_id.')
+        return attrs
 
 
 class ManualPaymentRequestSerializer(serializers.ModelSerializer):

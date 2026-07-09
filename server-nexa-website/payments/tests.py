@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
 from accounts.models import User
+from applications.models import Application
 from payments.models import Payment, ManualPaymentRequest
 
 
@@ -137,6 +138,167 @@ class ManualReconciliationTest(TestCase):
         self.assertIn(res.status_code, (403, 404))
         req.refresh_from_db()
         self.assertEqual(req.status, 'pending')
+
+
+@patch('payments.views.render_invoice_pdf', return_value=None)
+@patch('payments.views.send_html_email')
+class RecordManualFromApplicationTest(TestCase):
+    """The application page identifies the payer by application, not by account uid."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(
+            email='applicant@test.com', password='pass12345',
+            role='student', display_name='Applicant',
+        )
+        self.admin = User.objects.create_user(
+            email='appadmin@test.com', password='pass12345',
+            role='admin', display_name='Admin',
+        )
+        self.client = APIClient()
+
+    def _make_application(self, email, user=None):
+        return Application.objects.create(
+            user=user, full_name='Applicant', email=email, phone='0700000000',
+            program='software-engineering', program_name='Software Engineering',
+        )
+
+    def _post(self, body):
+        self.client.force_authenticate(self.admin)
+        return self.client.post('/api/payments/record_manual/', body, format='json')
+
+    def test_records_payment_for_application_linked_by_fk(self, _email, _pdf):
+        app = self._make_application('applicant@test.com', user=self.student)
+        res = self._post({
+            'application_id': str(app.id), 'amount': '6000',
+            'payment_method': 'KCB', 'payment_date': '2026-07-01',
+        })
+        self.assertEqual(res.status_code, 201)
+        payment = Payment.objects.get(payment_id=res.data['payment_id'])
+        self.assertEqual(payment.student, self.student)
+        self.assertEqual(payment.amount, Decimal('6000'))
+        self.assertEqual(payment.status, 'completed')
+
+    def test_resolves_account_by_email_when_application_has_no_user(self, _email, _pdf):
+        """Applications submitted before the applicant held an account have user=None."""
+        app = self._make_application('Applicant@Test.com', user=None)
+        res = self._post({
+            'application_id': str(app.id), 'amount': '2500', 'payment_method': 'Cash',
+        })
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(Payment.objects.get(payment_id=res.data['payment_id']).student, self.student)
+
+    def test_rejects_application_with_no_account(self, _email, _pdf):
+        app = self._make_application('nobody@test.com', user=None)
+        res = self._post({
+            'application_id': str(app.id), 'amount': '2500', 'payment_method': 'Cash',
+        })
+        self.assertEqual(res.status_code, 400)
+        self.assertIn('no student account', res.data['error'])
+        self.assertEqual(Payment.objects.count(), 0)
+
+    def test_requires_a_payer_identifier(self, _email, _pdf):
+        res = self._post({'amount': '2500', 'payment_method': 'Cash'})
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(Payment.objects.count(), 0)
+
+    def test_application_program_slug_resolves_and_updates_enrollment(self, _email, _pdf):
+        """The application page sends a program slug, not a UUID."""
+        from programs.models import Enrollment, Program
+        program = Program.objects.create(
+            slug='software-engineering', name='Software Engineering',
+            price=Decimal('100000'), status='active',
+        )
+        app = self._make_application('applicant@test.com', user=self.student)
+
+        res = self._post({
+            'application_id': str(app.id), 'amount': '10000',
+            'payment_method': 'KCB', 'program_id': 'software-engineering',
+        })
+        self.assertEqual(res.status_code, 201)
+
+        payment = Payment.objects.get(payment_id=res.data['payment_id'])
+        self.assertEqual(payment.program, program)
+
+        enrollment = Enrollment.objects.get(student=self.student, program=program)
+        self.assertEqual(enrollment.amount_paid, Decimal('10000'))
+        self.assertEqual(enrollment.balance, Decimal('90000'))
+
+
+@patch('payments.views.render_invoice_pdf', return_value=b'%PDF-fake')
+@patch('payments.views.send_html_email')
+class SendInvoiceTest(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            email='invstudent@test.com', password='pass12345',
+            role='student', display_name='Invoice Student',
+        )
+        self.other = User.objects.create_user(
+            email='other@test.com', password='pass12345',
+            role='student', display_name='Other Student',
+        )
+        self.admin = User.objects.create_user(
+            email='invadmin@test.com', password='pass12345',
+            role='admin', display_name='Admin',
+        )
+        self.client = APIClient()
+
+    def _make_payment(self, status='completed'):
+        return Payment.objects.create(
+            student=self.student, student_name='Invoice Student',
+            student_email='invstudent@test.com', amount=Decimal('9000'),
+            payment_method='KCB', payment_reference='INV-1', status=status,
+        )
+
+    def _url(self, payment):
+        return f'/api/payments/{payment.payment_id}/send_invoice/'
+
+    def test_admin_send_emails_student_and_admissions(self, email_mock, _pdf):
+        payment = self._make_payment()
+        self.client.force_authenticate(self.admin)
+        res = self.client.post(self._url(payment), {}, format='json')
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.data['recipients']), 2)
+        self.assertIn('invstudent@test.com', res.data['recipients'])
+        self.assertEqual(email_mock.call_count, 2)
+
+    def test_student_resend_only_emails_themselves(self, email_mock, _pdf):
+        payment = self._make_payment()
+        self.client.force_authenticate(self.student)
+        res = self.client.post(self._url(payment), {}, format='json')
+
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data['recipients'], ['invstudent@test.com'])
+        self.assertEqual(email_mock.call_count, 1)
+        self.assertEqual(email_mock.call_args.kwargs['recipient_email'], 'invstudent@test.com')
+
+    def test_pdf_is_attached(self, email_mock, _pdf):
+        payment = self._make_payment()
+        self.client.force_authenticate(self.admin)
+        self.client.post(self._url(payment), {}, format='json')
+
+        attachments = email_mock.call_args.kwargs['attachments']
+        self.assertEqual(len(attachments), 1)
+        filename, content, mimetype = attachments[0]
+        self.assertTrue(filename.endswith('.pdf'))
+        self.assertEqual(content, b'%PDF-fake')
+        self.assertEqual(mimetype, 'application/pdf')
+
+    def test_incomplete_payment_is_rejected(self, email_mock, _pdf):
+        payment = self._make_payment(status='pending')
+        self.client.force_authenticate(self.admin)
+        res = self.client.post(self._url(payment), {}, format='json')
+
+        self.assertEqual(res.status_code, 400)
+        email_mock.assert_not_called()
+
+    def test_student_cannot_send_another_students_invoice(self, email_mock, _pdf):
+        payment = self._make_payment()
+        self.client.force_authenticate(self.other)
+        res = self.client.post(self._url(payment), {}, format='json')
+
+        self.assertEqual(res.status_code, 404)
+        email_mock.assert_not_called()
 
 
 class FeeWaiverTest(TestCase):

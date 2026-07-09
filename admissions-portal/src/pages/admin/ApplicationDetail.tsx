@@ -20,6 +20,8 @@ import { SlotPicker } from '../../components/SlotPicker'
 import type { InterviewType } from '../../components/SlotPicker'
 import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
 import { EmailEditor } from '../../components/admin/EmailEditor'
+import { RecordManualPaymentDialog } from '../../components/admin/RecordManualPaymentDialog'
+import { SendInvoiceButton } from '../../components/SendInvoiceButton'
 import * as api from '../../lib/api'
 import { statusText, statusBadgeClass, formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -107,6 +109,7 @@ function PaymentsTab({
   onMarkEnrolled,
   enrolling,
   onRequestPaymentLink,
+  onRecordManualPayment,
 }: {
   payments: Payment[]
   estimatedFees: number | null
@@ -114,6 +117,7 @@ function PaymentsTab({
   onMarkEnrolled: () => void
   enrolling: boolean
   onRequestPaymentLink: () => void
+  onRecordManualPayment: () => void
 }) {
   const paid  = payments.filter((p) => p.status === 'completed').reduce((sum, p) => sum + Number(p.amount), 0)
   const total = payments.reduce((sum, p) => sum + Number(p.amount), 0)
@@ -144,6 +148,9 @@ function PaymentsTab({
           <div className="flex items-center gap-2 flex-wrap">
             <Button size="sm" variant="outline" className="text-xs h-7 px-3" onClick={onRequestPaymentLink}>
               <CreditCard className="w-3 h-3 mr-1.5" /> Take Payment
+            </Button>
+            <Button size="sm" variant="outline" className="text-xs h-7 px-3" onClick={onRecordManualPayment}>
+              <Banknote className="w-3 h-3 mr-1.5" /> Record Manual Payment
             </Button>
             {alreadyEnrolled ? (
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-success/10 text-success border border-success/20">
@@ -241,7 +248,7 @@ function PaymentsTab({
         <div className="rounded-2xl border border-border bg-card overflow-hidden">
           <div className="divide-y divide-border">
             {payments.map((p) => (
-              <div key={p.id} className="flex items-start justify-between gap-3 px-4 py-3.5 hover:bg-muted/30 transition-colors">
+              <div key={p.payment_id} className="flex items-start justify-between gap-3 px-4 py-3.5 hover:bg-muted/30 transition-colors">
                 <div className="flex items-start gap-3 min-w-0">
                   <div className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center shrink-0 mt-0.5">
                     {statusIcon(p.status)}
@@ -260,6 +267,9 @@ function PaymentsTab({
                     {statusIcon(p.status)} {p.status}
                   </span>
                   <span className="text-[10px] text-muted-foreground">{formatDate(p.created_at)}</span>
+                  {p.status === 'completed' && (
+                    <SendInvoiceButton paymentId={p.payment_id} className="h-7 px-2.5 text-[11px]" />
+                  )}
                 </div>
               </div>
             ))}
@@ -286,6 +296,7 @@ export function ApplicationDetail() {
   const [showPayLinkDialog, setShowPayLinkDialog] = useState(false)
   const [payLinkAmount, setPayLinkAmount] = useState('')
   const [payLinkDescription, setPayLinkDescription] = useState('')
+  const [showManualDialog, setShowManualDialog] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
 
   const { data: app, isLoading, error } = useQuery({
@@ -655,6 +666,7 @@ export function ApplicationDetail() {
                 onMarkEnrolled={() => updateMutation.mutate('enrolled')}
                 enrolling={updateMutation.isPending}
                 onRequestPaymentLink={() => setShowPayLinkDialog(true)}
+                onRecordManualPayment={() => setShowManualDialog(true)}
               />
             )}
 
@@ -1077,6 +1089,20 @@ export function ApplicationDetail() {
           </div>
         </div>
       </div>
+
+      {/* Manual reconciliation dialog */}
+      <RecordManualPaymentDialog
+        open={showManualDialog}
+        onClose={() => setShowManualDialog(false)}
+        studentName={app.full_name}
+        applicationId={app.id}
+        programId={app.program}
+        onRecorded={() => {
+          qc.invalidateQueries({ queryKey: ['payments', 'application', app.email] })
+          qc.invalidateQueries({ queryKey: ['admin', 'application', id] })
+          setLeftTab('payments')
+        }}
+      />
 
       {/* Send payment link dialog */}
       <Dialog

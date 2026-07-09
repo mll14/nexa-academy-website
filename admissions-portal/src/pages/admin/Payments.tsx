@@ -16,6 +16,7 @@ import { Dialog } from '../../components/ui/dialog'
 import { Separator } from '../../components/ui/separator'
 import { Label } from '../../components/ui/label'
 import { Textarea } from '../../components/ui/textarea'
+import { SendInvoiceButton } from '../../components/SendInvoiceButton'
 import * as api from '../../lib/api'
 import { formatDate, formatFullDateTime } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -380,6 +381,16 @@ function TransactionsTab() {
                     <RefreshCw className={`w-4 h-4 mr-2 ${recheckingId === pid ? 'animate-spin' : ''}`} />
                     {recheckingId === pid ? 'Checking…' : 'Recheck payment status'}
                   </Button>
+                </div>
+              )}
+              {selected.status === 'completed' && (
+                <div className="pt-1">
+                  <SendInvoiceButton
+                    paymentId={pid}
+                    size="default"
+                    className="w-full"
+                    label="Email invoice to student"
+                  />
                 </div>
               )}
               {selected.receipt_url && (

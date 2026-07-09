@@ -17,6 +17,8 @@ import { Dialog } from '../../components/ui/dialog'
 import { Select } from '../../components/ui/select'
 import { AdminNotesPanel } from '../../components/admin/AdminNotesPanel'
 import { EmailEditor } from '../../components/admin/EmailEditor'
+import { RecordManualPaymentDialog } from '../../components/admin/RecordManualPaymentDialog'
+import { SendInvoiceButton } from '../../components/SendInvoiceButton'
 import * as api from '../../lib/api'
 import { formatDate } from '../../lib/utils'
 import toast from 'react-hot-toast'
@@ -234,7 +236,7 @@ function FinanceTab({
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="divide-y divide-border">
               {payments.map((p) => (
-                <div key={p.id} className="flex items-start justify-between gap-3 px-4 py-3.5 hover:bg-muted/30 transition-colors">
+                <div key={p.payment_id} className="flex items-start justify-between gap-3 px-4 py-3.5 hover:bg-muted/30 transition-colors">
                   <div className="flex items-start gap-3 min-w-0">
                     <div className="w-8 h-8 rounded-xl bg-muted flex items-center justify-center shrink-0 mt-0.5">
                       {paymentStatusIcon(p.status)}
@@ -253,6 +255,9 @@ function FinanceTab({
                       {paymentStatusIcon(p.status)} {p.status}
                     </span>
                     <span className="text-[10px] text-muted-foreground">{formatDate(p.created_at)}</span>
+                    {p.status === 'completed' && (
+                      <SendInvoiceButton paymentId={p.payment_id} className="h-7 px-2.5 text-[11px]" />
+                    )}
                   </div>
                 </div>
               ))}
@@ -365,13 +370,7 @@ export function EnrolledStudentDetail() {
   const [payDescription, setPayDescription] = useState('')
   const [payLoading, setPayLoading] = useState(false)
 
-  const todayIso = new Date().toISOString().slice(0, 10)
   const [showManualDialog, setShowManualDialog] = useState(false)
-  const [manualAmount, setManualAmount] = useState('')
-  const [manualMethod, setManualMethod] = useState('Bank Transfer')
-  const [manualDate, setManualDate] = useState(todayIso)
-  const [manualReference, setManualReference] = useState('')
-  const [manualMessage, setManualMessage] = useState('')
 
   const [showWaiverDialog, setShowWaiverDialog] = useState(false)
   const [waiverType, setWaiverType] = useState<'percentage' | 'amount'>('percentage')
@@ -416,35 +415,6 @@ export function EnrolledStudentDetail() {
       qc.invalidateQueries({ queryKey: ['admin', 'enrollments'] })
       setNewStatus('')
       toast.success('Enrollment status updated')
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
-
-  const resetManualForm = () => {
-    setManualAmount('')
-    setManualMethod('Bank Transfer')
-    setManualDate(todayIso)
-    setManualReference('')
-    setManualMessage('')
-  }
-
-  const recordManualMutation = useMutation({
-    mutationFn: () => api.recordManualPayment({
-      studentUid,
-      amount: Number(manualAmount),
-      paymentMethod: manualMethod,
-      paymentDate: manualDate,
-      reference: manualReference,
-      providerMessage: manualMessage,
-      programId: enrollment?.program ?? enrollment?.program_id,
-    }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['payments', 'enrollment', studentEmail] })
-      qc.invalidateQueries({ queryKey: ['admin', 'student-detail', studentUid] })
-      setShowManualDialog(false)
-      resetManualForm()
-      setLeftTab('finance')
-      toast.success('Manual payment recorded — invoice emailed to student')
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -1056,76 +1026,18 @@ export function EnrolledStudentDetail() {
       </Dialog>
 
       {/* Manual reconciliation dialog */}
-      <Dialog
+      <RecordManualPaymentDialog
         open={showManualDialog}
-        onClose={() => { setShowManualDialog(false); resetManualForm() }}
-        title="Record Manual Payment"
-        description={`Record a payment ${studentName} made outside the LMS (KCB transfer, cash, etc.). This posts a completed payment and emails a PDF invoice.`}
-        className="max-w-sm"
-      >
-        <div className="space-y-4 pt-1">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Amount (KSh) *</label>
-              <Input
-                type="number"
-                value={manualAmount}
-                onChange={(e) => setManualAmount(e.target.value)}
-                placeholder="e.g. 10000"
-                min="1"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Method *</label>
-              <Select
-                value={manualMethod}
-                onChange={setManualMethod}
-                options={[
-                  { value: 'Bank Transfer', label: 'Bank Transfer' },
-                  { value: 'KCB', label: 'KCB Bank Transfer' },
-                  { value: 'Cash', label: 'Cash' },
-                  { value: 'M-Pesa', label: 'M-Pesa' },
-                ]}
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Payment date *</label>
-              <Input type="date" value={manualDate} onChange={(e) => setManualDate(e.target.value)} max={todayIso} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Reference</label>
-              <Input
-                value={manualReference}
-                onChange={(e) => setManualReference(e.target.value)}
-                placeholder="e.g. KCB txn ref"
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Provider message</label>
-            <textarea
-              className="w-full min-h-20 rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
-              value={manualMessage}
-              onChange={(e) => setManualMessage(e.target.value)}
-              placeholder="Paste the bank/service confirmation message (optional)"
-            />
-          </div>
-          <div className="flex gap-3 pt-1">
-            <Button
-              className="flex-1"
-              disabled={recordManualMutation.isPending || !manualAmount || Number(manualAmount) <= 0 || !manualDate}
-              onClick={() => recordManualMutation.mutate()}
-            >
-              {recordManualMutation.isPending ? 'Recording…' : <><Banknote className="w-4 h-4 mr-1.5" /> Record Payment</>}
-            </Button>
-            <Button variant="outline" onClick={() => { setShowManualDialog(false); resetManualForm() }}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      </Dialog>
+        onClose={() => setShowManualDialog(false)}
+        studentName={studentName}
+        studentUid={studentUid}
+        programId={enrollment?.program ?? enrollment?.program_id}
+        onRecorded={() => {
+          qc.invalidateQueries({ queryKey: ['payments', 'enrollment', studentEmail] })
+          qc.invalidateQueries({ queryKey: ['admin', 'student-detail', studentUid] })
+          setLeftTab('finance')
+        }}
+      />
 
       {/* Fee waiver dialog */}
       <Dialog

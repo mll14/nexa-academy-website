@@ -126,8 +126,14 @@ export async function adminSendPaymentLink(data: {
 
 // ─── Manual reconciliation ──────────────────────────────────────────────────
 
+/**
+ * Record an off-platform payment. Identify the payer with `studentUid` when the
+ * account is known, or `applicationId` when working from an application whose
+ * account the server resolves by FK or email.
+ */
 export async function recordManualPayment(data: {
-  studentUid: string;
+  studentUid?: string;
+  applicationId?: string;
   amount: number;
   paymentMethod: string;
   paymentDate?: string;
@@ -140,6 +146,7 @@ export async function recordManualPayment(data: {
     method: "POST",
     body: JSON.stringify({
       student_uid: data.studentUid,
+      application_id: data.applicationId,
       amount: data.amount,
       payment_method: data.paymentMethod,
       payment_date: data.paymentDate,
@@ -149,6 +156,13 @@ export async function recordManualPayment(data: {
       description: data.description ?? "",
     }),
   });
+}
+
+/** Re-send the PDF invoice email for a completed payment. */
+export async function sendPaymentInvoice(
+  paymentId: string,
+): Promise<{ detail: string; recipients: string[] }> {
+  return req(`/payments/${paymentId}/send_invoice/`, { method: "POST" });
 }
 
 export async function getManualPaymentRequests(
