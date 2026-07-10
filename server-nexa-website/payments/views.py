@@ -1,7 +1,8 @@
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.utils import timezone
 from django.db import transaction
@@ -28,6 +29,9 @@ from accounts.permissions import IsAdminUser, HasAppPermission
 from notifications.models import Notification
 from .paystack import PaystackProvider
 import uuid
+import hmac
+import hashlib
+import json
 import logging
 from applications.models import Application, ApplicationLog
 
@@ -1555,3 +1559,63 @@ class ManualPaymentRequestViewSet(viewsets.ModelViewSet):
 
         self._send_decision_email(manual_request)
         return Response(self.get_serializer(manual_request).data)
+
+
+class PaystackWebhookView(APIView):
+    """
+    Receive Paystack webhook events so payments confirm themselves the moment the
+    money clears — the student no longer has to sit through (or retry) client-side
+    verification, and payments made outside the popup (e.g. a resumed transaction)
+    still reconcile.
+
+    Paystack signs every payload with HMAC-SHA512 over the raw body using our
+    secret key; anything that doesn't match is rejected. Authentic events always
+    get a 2xx (even ones we intentionally ignore) so Paystack stops retrying, but
+    transient processing failures return 5xx so Paystack retries later.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        secret = getattr(settings, 'PAYSTACK_SECRET_KEY', '') or ''
+        if not secret:
+            logger.error('paystack webhook: PAYSTACK_SECRET_KEY not configured')
+            return Response(status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        raw_body = request.body
+        signature = request.META.get('HTTP_X_PAYSTACK_SIGNATURE', '')
+        expected = hmac.new(secret.encode('utf-8'), raw_body, hashlib.sha512).hexdigest()
+        if not signature or not hmac.compare_digest(expected, signature):
+            logger.warning('paystack webhook: invalid or missing signature')
+            return Response({'error': 'invalid signature'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            event = json.loads(raw_body.decode('utf-8'))
+        except (ValueError, UnicodeDecodeError):
+            return Response({'error': 'invalid payload'}, status=status.HTTP_400_BAD_REQUEST)
+
+        event_type = event.get('event', '')
+        data = event.get('data') or {}
+        reference = data.get('reference')
+
+        # Only a successful charge affects a balance. Acknowledge everything else
+        # so Paystack does not keep retrying events we intentionally ignore.
+        if event_type != 'charge.success' or not reference:
+            return Response({'status': 'ignored'}, status=status.HTTP_200_OK)
+
+        try:
+            payment = Payment.objects.get(payment_reference=reference)
+        except Payment.DoesNotExist:
+            logger.warning('paystack webhook: no payment for reference %s', reference)
+            return Response({'status': 'unmatched'}, status=status.HTTP_200_OK)
+
+        if payment.status == 'completed':
+            return Response({'status': 'already_completed'}, status=status.HTTP_200_OK)
+
+        try:
+            PaymentViewSet()._finalize_successful_payment(payment, data, data.get('amount', 0))
+        except Exception as exc:
+            logger.error('paystack webhook: finalize failed for ref %s: %s', reference, exc, exc_info=True)
+            return Response({'error': 'processing failed'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'status': 'ok'}, status=status.HTTP_200_OK)

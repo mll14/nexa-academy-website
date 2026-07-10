@@ -373,6 +373,8 @@ function QuickPayCard({
       try {
         paystack.newTransaction({
           key: publicKey,
+          // Surface M-Pesa first — it's how most Kenyan students pay.
+          channels: ['mobile_money', 'card', 'bank', 'bank_transfer'],
           email: userEmail ?? '',
           amount: entered * 100,
           currency: 'KES',

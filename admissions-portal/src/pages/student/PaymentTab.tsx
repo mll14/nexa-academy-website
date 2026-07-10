@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card, CardContent } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
@@ -153,6 +153,10 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
   const [verifyError, setVerifyError] = useState<string | null>(null)
   const [reconciliationModalOpen, setReconciliationModalOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState<PaymentCategory>('overview')
+  // Land students straight on the Pay tab when they owe money, so paying is the
+  // default action instead of something they have to hunt for. Runs once, after
+  // fee data loads, and never fights a manual tab switch afterwards.
+  const autoSelectedTabRef = useRef(false)
 
   const todayIso = new Date().toISOString().slice(0, 10)
   const [manualRequests, setManualRequests] = useState<ManualPaymentRequest[]>([])
@@ -190,6 +194,14 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
       .then(setManualRequests)
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (autoSelectedTabRef.current) return
+    // Wait until fee data has actually loaded before choosing the landing tab.
+    if (totalFee <= 0) return
+    autoSelectedTabRef.current = true
+    if (!isFullyPaid && balance > 0) setActiveCategory('pay')
+  }, [totalFee, isFullyPaid, balance])
 
   useEffect(() => {
     if (installmentAmount > 0 && !amount && balance > 0) {
@@ -257,6 +269,9 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
       const paystack = new PaystackPop()
       paystack.newTransaction({
         key: publicKey,
+        // Surface M-Pesa first — it's how most Kenyan students pay — while still
+        // allowing card and bank transfer.
+        channels: ['mobile_money', 'card', 'bank', 'bank_transfer'],
         ...(data.access_code
           ? { access_code: data.access_code }
           : {
@@ -412,6 +427,16 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
 
       {activeCategory === 'overview' && (
         <div className="space-y-5">
+          {!isFullyPaid && balance > 0 && (
+            <Button
+              onClick={() => setActiveCategory('pay')}
+              className="w-full gap-2 h-12 text-base"
+            >
+              <CreditCard className="w-4 h-4" />
+              Pay KSh {Math.min(selectedPlan.per, balance).toLocaleString()} now
+            </Button>
+          )}
+
           <DepositProgress depositedAmount={depositedAmount} applicationStatus={applicationStatus} totalFee={totalFee} />
 
           <Card>
