@@ -1,0 +1,24 @@
+{# Shared "How to pay" block for invoices, receipts and statements.
+   Paystack is presented first as the primary method because it reconciles the
+   payment and issues the receipt automatically. The M-Pesa Paybill details come
+   from settings via pdf.payment_details(). Expects: frontend_url, admissions_email,
+   reference, pay_paybill, pay_bank, pay_account_number, pay_account_name. #}
+<div class="paybox">
+  <div class="label">How to pay</div>
+  <p><strong>Option 1 &mdash; Pay online (recommended).</strong> Sign in to your student
+     dashboard{% if frontend_url %} at {{ frontend_url }}{% endif %} and choose
+     <strong>Make a Payment</strong>. Pay by M-Pesa or card through Paystack: your balance
+     updates instantly, this payment is reconciled automatically and your receipt is
+     emailed to you the moment it clears &mdash; no confirmation message needed.</p>
+  <p><strong>Option 2 &mdash; M-Pesa Lipa na M-Pesa (Paybill).</strong> On your phone open
+     <em>M-Pesa &rarr; Lipa na M-Pesa &rarr; Pay Bill</em>, then enter:</p>
+  <p style="margin-left:12px;">
+     Business No. (Paybill): <strong>{{ pay_paybill }}</strong> ({{ pay_bank }})<br>
+     Account No.: <strong>{{ pay_account_number }}</strong><br>
+     Amount: the sum you wish to pay<br>
+     <span class="muted">Funds are received by {{ pay_account_name }}.</span></p>
+  <p>If you pay by Paybill, bank transfer or cash, forward the M-Pesa or bank confirmation
+     message to {{ admissions_email }}{% if reference %}, quoting reference
+     <strong>{{ reference }}</strong>{% endif %}, or submit it from the
+     <strong>Record a payment</strong> tab on your dashboard so we can post it to your account.</p>
+</div>

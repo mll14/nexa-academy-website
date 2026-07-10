@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
 
-from .pdf import logo_data_uri, money, render_pdf
+from .pdf import logo_data_uri, money, payment_details, render_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ def build_invoice_context(payment, reconciliation=None, amount=None):
 
     outstanding = Decimal(str(reconciliation.get('amount_remaining') or 0))
     return {
+        **payment_details(),
         'logo_data_uri': logo_data_uri(),
         'invoice_number': invoice_number,
         'invoice_no_html': mark_safe(f'No. <strong>{escape(invoice_number)}</strong>'),

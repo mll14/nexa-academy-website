@@ -6,6 +6,7 @@ import { Button } from '../ui/button'
 import { Dialog } from '../ui/dialog'
 import { Input } from '../ui/input'
 import { Select } from '../ui/select'
+import { PaymentInstructions } from '../PaymentInstructions'
 import * as api from '../../lib/api'
 
 const PAYMENT_METHODS = [
@@ -93,6 +94,7 @@ export function RecordManualPaymentDialog({
       className="max-w-sm"
     >
       <div className="space-y-4 pt-1">
+        <PaymentInstructions showOnline={false} />
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Amount (KSh) *</label>

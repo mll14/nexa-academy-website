@@ -10,6 +10,7 @@ import { Textarea } from '../../components/ui/textarea'
 import { Dialog } from '../../components/ui/dialog'
 import { DepositProgress } from '../../components/DepositProgress'
 import { SendReceiptButton } from '../../components/SendReceiptButton'
+import { PaymentInstructions } from '../../components/PaymentInstructions'
 import { AlertCircle, Banknote, CheckCircle2, CreditCard, History, Loader2, RefreshCw, Send, WalletCards } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import * as api from '../../lib/api'
@@ -493,6 +494,18 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
               )}
             </CardContent>
           </Card>
+
+          {!isFullyPaid && (
+            <Card>
+              <CardContent className="p-6 space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-primary" />
+                  How to pay your fees
+                </h3>
+                <PaymentInstructions />
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
@@ -870,6 +883,8 @@ export function PaymentTab({ enrollment, payments, onPaymentDone, applicationSta
                   </p>
                 </div>
               </div>
+
+              <PaymentInstructions showOnline={false} />
               <Separator />
 
               <div className="grid sm:grid-cols-2 gap-3">

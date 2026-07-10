@@ -15,7 +15,7 @@ from django.utils import timezone
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
 
-from .pdf import logo_data_uri, money, render_pdf
+from .pdf import logo_data_uri, money, payment_details, render_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,7 @@ def build_receipt_context(payment, reconciliation, amount=None, program=None, pa
     receipt_number = str(payment.payment_id).split('-')[0].upper()
     issued_at = timezone.localtime(payment.confirmed_at or payment.payment_date or timezone.now())
     return {
+        **payment_details(),
         'logo_data_uri': logo_data_uri(),
         'receipt_number': receipt_number,
         'receipt_no_html': mark_safe(f'No. <strong>{escape(receipt_number)}</strong>'),

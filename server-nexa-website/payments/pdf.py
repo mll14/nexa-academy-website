@@ -16,6 +16,20 @@ def money(value):
     return f"KSh {Decimal(str(value or 0)):,.2f}"
 
 
+def payment_details():
+    """Off-platform payment coordinates (M-Pesa Paybill via KCB) for PDF contexts.
+
+    Every PDF that tells a student how to pay pulls the numbers from one place, so a
+    change to the Paybill or account never leaves a stale figure on a document.
+    """
+    return {
+        'pay_paybill': getattr(settings, 'PAYMENT_MPESA_PAYBILL', '522522'),
+        'pay_account_number': getattr(settings, 'PAYMENT_MPESA_ACCOUNT_NUMBER', '1316088286'),
+        'pay_account_name': getattr(settings, 'PAYMENT_MPESA_ACCOUNT_NAME', 'Moonlight Software Systems'),
+        'pay_bank': getattr(settings, 'PAYMENT_MPESA_BANK', 'KCB'),
+    }
+
+
 @lru_cache(maxsize=1)
 def logo_data_uri():
     """Base64-encode the logo so the PDF never depends on static serving or the network.

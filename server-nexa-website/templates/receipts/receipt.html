@@ -137,11 +137,7 @@
   </table>
 
   {% if has_fees and not is_settled %}
-  <div class="paybox">
-    <div class="label">How to pay your balance</div>
-    <p>Pay online from your student dashboard{% if frontend_url %} at {{ frontend_url }}{% endif %}, or pay by bank transfer or M-Pesa and share the confirmation with admissions.</p>
-    <p>Payments made outside the platform are reconciled to your account once confirmed.</p>
-  </div>
+  {% include "pdf/_paybox.html" %}
   {% endif %}
 
   <div class="footer">

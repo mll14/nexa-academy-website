@@ -75,12 +75,7 @@
 </p>
 {% endif %}
 
-<div class="paybox">
-  <div class="label">How to pay</div>
-  <p>Pay online from your student dashboard{% if frontend_url %} at {{ frontend_url }}{% endif %} using card or M-Pesa.</p>
-  <p>You may also pay by bank transfer or M-Pesa and send the confirmation message to {{ admissions_email }}, quoting reference <strong>{{ reference }}</strong>.</p>
-  <p>Payments made outside the platform are reconciled to your account once confirmed.</p>
-</div>
+{% include "pdf/_paybox.html" %}
 </div>{# /.page-body #}
 
 <div class="footer">

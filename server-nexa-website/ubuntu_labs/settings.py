@@ -213,6 +213,14 @@ PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
 PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
 GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
 
+# Off-platform payment coordinates (M-Pesa Lipa na M-Pesa Paybill, settled via KCB).
+# Shown on invoices, receipts, statements and the student/admin dashboards so a
+# student can pay by Paybill when they cannot pay online through Paystack.
+PAYMENT_MPESA_PAYBILL = config('PAYMENT_MPESA_PAYBILL', default='522522')
+PAYMENT_MPESA_ACCOUNT_NUMBER = config('PAYMENT_MPESA_ACCOUNT_NUMBER', default='1316088286')
+PAYMENT_MPESA_ACCOUNT_NAME = config('PAYMENT_MPESA_ACCOUNT_NAME', default='Moonlight Software Systems')
+PAYMENT_MPESA_BANK = config('PAYMENT_MPESA_BANK', default='KCB')
+
 # reCAPTCHA secret key for server-side verification
 RECAPTCHA_SECRET_KEY = config('RECAPTCHA_SECRET_KEY', default='')
 RECAPTCHA_V3_ACTION = config('RECAPTCHA_V3_ACTION', default='application_submit')
