@@ -38,6 +38,10 @@ class KeycloakAdminError(Exception):
     """A Keycloak Admin API call failed. Never swallow — it means the two stores diverged."""
 
 
+class KeycloakSessionNotFound(KeycloakAdminError):
+    """The requested session does not belong to the user (or no longer exists)."""
+
+
 def is_configured() -> bool:
     """True when the admin client can actually talk to Keycloak."""
     return bool(settings.KEYCLOAK_SERVER_URL and settings.KEYCLOAK_ADMIN_CLIENT_SECRET)
@@ -251,8 +255,16 @@ def logout_all(user) -> None:
 
 
 def delete_session(user, session_id: str) -> None:
-    """Revoke a single Keycloak session. `resolve_user_id` asserts the session's owner."""
-    resolve_user_id(user)  # ensures the caller has a linked Keycloak account
+    """
+    Revoke a single Keycloak session **that belongs to this user**.
+
+    `DELETE /sessions/{id}` is a realm-wide admin endpoint — it will terminate *any*
+    session by id — so we must confirm the id is one of this user's own sessions first.
+    Without that check any authenticated user could revoke anyone else's session (IDOR).
+    """
+    owned = {s.get('id') for s in list_sessions(user)}
+    if session_id not in owned:
+        raise KeycloakSessionNotFound('Session not found.')
     resp = _request('DELETE', f'/sessions/{quote(session_id)}')
     if resp.status_code not in (204, 200, 404):
         raise KeycloakAdminError(f'Could not revoke the session ({resp.status_code}).')
