@@ -1311,7 +1311,11 @@ class LoginSessionRevokeView(APIView):
     def post(self, request, session_id):
         if keycloak_admin.is_configured():
             try:
+                # delete_session verifies the session belongs to request.user before
+                # issuing the realm-wide DELETE, so this cannot revoke another user's session.
                 keycloak_admin.delete_session(request.user, str(session_id))
+            except keycloak_admin.KeycloakSessionNotFound:
+                return Response({'error': 'Session not found.'}, status=status.HTTP_404_NOT_FOUND)
             except keycloak_admin.KeycloakAdminError as exc:
                 return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
             # Keep the Django row (if any) consistent for the audit trail.

@@ -108,6 +108,12 @@ class KeycloakJWTAuthentication(authentication.BaseAuthentication):
             self._sync_role(user, payload)
             return user
 
+        # Linking or creating by email is only safe if Keycloak has verified that address.
+        # An unverified email could be attacker-controlled — linking it to an existing
+        # Django account (or provisioning a new one) would be account takeover.
+        if email and not payload.get('email_verified', False):
+            raise AuthenticationFailed('Email address is not verified.')
+
         # First request for a user that exists in Django but wasn't linked yet
         # (e.g. created in Keycloak before the migration script backfilled the sub).
         if email:

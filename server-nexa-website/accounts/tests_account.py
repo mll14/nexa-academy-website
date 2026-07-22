@@ -390,3 +390,33 @@ class AccountControlsTests(AccountTestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.status, 'deleted')
         self.assertFalse(self.user.is_active)
+
+
+# ── Session revoke ownership (IDOR guard) ─────────────────────────────────────
+
+class SessionRevokeSecurityTests(TestCase):
+    """`DELETE /sessions/{id}` is realm-wide, so revoke must confirm ownership first."""
+
+    def setUp(self):
+        from accounts import keycloak_admin
+        self.keycloak_admin = keycloak_admin
+
+    @patch('accounts.keycloak_admin._request')
+    @patch('accounts.keycloak_admin.list_sessions', return_value=[{'id': 'mine'}])
+    def test_delete_session_refuses_a_foreign_session(self, _list, mock_request):
+        from accounts.keycloak_admin import KeycloakSessionNotFound
+        user = User.objects.create_user(email='a@example.com', password='x',
+                                        display_name='A', keycloak_sub='kc-a')
+        with self.assertRaises(KeycloakSessionNotFound):
+            self.keycloak_admin.delete_session(user, 'someone-elses-session')
+        # The realm-wide DELETE must never be issued for a session the user doesn't own.
+        mock_request.assert_not_called()
+
+    @patch('accounts.keycloak_admin._request')
+    @patch('accounts.keycloak_admin.list_sessions', return_value=[{'id': 'mine'}])
+    def test_delete_session_allows_an_owned_session(self, _list, mock_request):
+        mock_request.return_value = type('R', (), {'status_code': 204})()
+        user = User.objects.create_user(email='b@example.com', password='x',
+                                        display_name='B', keycloak_sub='kc-b')
+        self.keycloak_admin.delete_session(user, 'mine')
+        mock_request.assert_called_once()
