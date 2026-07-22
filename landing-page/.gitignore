@@ -4,6 +4,7 @@ node_modules/
 .pnp.js
 .next/
 out/
+.open-next/
 .env
 .env.local
 .env.*.local
