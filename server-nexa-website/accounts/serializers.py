@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import AppPermission, Role, AuditLog
+from .models import AppPermission, Role, AuditLog, Guardian, NotificationPreference
 
 User = get_user_model()
 
@@ -87,11 +87,47 @@ class StaffUserSerializer(serializers.ModelSerializer):
         return instance
 
 
+def mask_id_number(value: str) -> str:
+    """
+    Show only the last 4 characters of a national ID / passport number.
+
+    `id_number` is PII that the portal rarely needs in full once captured — masking it in
+    API responses keeps it out of browser memory, logs, and screenshots. The unmasked value
+    stays in the database for admissions verification.
+    """
+    if not value:
+        return ''
+    tail = value[-4:]
+    return f"{'•' * max(len(value) - 4, 0)}{tail}"
+
+
+PERSONAL_FIELDS = [
+    'first_name', 'middle_name', 'last_name',
+    'date_of_birth', 'gender', 'nationality', 'phone', 'alt_phone',
+]
+ADDRESS_FIELDS = ['country', 'county', 'city', 'postal_address']
+
+
 class MyProfileSerializer(serializers.ModelSerializer):
+    """
+    Self-service profile write surface (PATCH /api/auth/my-profile/).
+
+    `email` is accepted but the view must sync it to Keycloak — it doubles as the Keycloak
+    username, and changing it here alone would leave the user signing in with the old one.
+    """
+    id_number = serializers.SerializerMethodField()
+    age = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = User
-        fields = ['display_name', 'email', 'phone', 'photo_url', 'google_linked']
-        read_only_fields = ['google_linked']
+        fields = [
+            'display_name', 'email', 'photo_url', 'google_linked', 'id_number', 'age',
+            *PERSONAL_FIELDS, *ADDRESS_FIELDS,
+        ]
+        read_only_fields = ['google_linked', 'id_number', 'age', 'display_name']
+
+    def get_id_number(self, obj):
+        return mask_id_number(obj.id_number)
 
     def validate_email(self, value):
         value = value.strip().lower()
@@ -102,6 +138,46 @@ class MyProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('A user with this email already exists.')
         return value
 
+    def validate_date_of_birth(self, value):
+        from django.utils import timezone
+        if value and value > timezone.localdate():
+            raise serializers.ValidationError('Date of birth cannot be in the future.')
+        return value
+
+
+class GuardianSerializer(serializers.ModelSerializer):
+    relationship_display = serializers.CharField(source='get_relationship_display', read_only=True)
+
+    class Meta:
+        model = Guardian
+        fields = [
+            'id', 'full_name', 'relationship', 'relationship_display', 'phone', 'email',
+            'occupation', 'is_primary', 'is_emergency_contact', 'is_bill_payer',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'relationship_display', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        # A guardian is only reachable if there is some way to contact them.
+        phone = attrs.get('phone', getattr(self.instance, 'phone', ''))
+        email = attrs.get('email', getattr(self.instance, 'email', ''))
+        if not phone and not email:
+            raise serializers.ValidationError(
+                'Provide at least a phone number or an email address for the guardian.'
+            )
+        return attrs
+
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationPreference
+        fields = [
+            'email_enabled', 'sms_enabled', 'in_app_enabled',
+            'application_updates', 'interview_reminders', 'payment_updates',
+            'program_announcements', 'newsletter', 'updated_at',
+        ]
+        read_only_fields = ['updated_at']
+
 
 class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
@@ -110,10 +186,12 @@ class UserSerializer(serializers.ModelSerializer):
     feeBalance = serializers.DecimalField(source='fee_balance', max_digits=10, decimal_places=2, read_only=True)
     totalFeePaid = serializers.DecimalField(source='total_fee_paid', max_digits=10, decimal_places=2, read_only=True)
     displayName = serializers.CharField(source='display_name', read_only=True)
-    idNumber = serializers.CharField(source='id_number', read_only=True, required=False)
+    idNumber = serializers.SerializerMethodField()
+    id_number = serializers.SerializerMethodField()
     createdAt = serializers.DateTimeField(source='created_at', read_only=True)
     effectivePermissions = serializers.SerializerMethodField()
     staffRole = serializers.SerializerMethodField()
+    age = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = User
@@ -121,14 +199,34 @@ class UserSerializer(serializers.ModelSerializer):
             'uid', 'email', 'display_name', 'displayName', 'phone', 'photo_url',
             'role', 'status', 'fee_balance', 'feeBalance', 'total_fee_paid', 'totalFeePaid',
             'id_number', 'idNumber', 'created_at', 'createdAt', 'password',
-            'effectivePermissions', 'staffRole', 'google_linked',
+            'effectivePermissions', 'staffRole', 'google_linked', 'age',
+            *PERSONAL_FIELDS, *ADDRESS_FIELDS,
         ]
         read_only_fields = [
             'uid', 'role', 'status', 'fee_balance', 'feeBalance',
             'total_fee_paid', 'totalFeePaid',
-            'display_name', 'displayName', 'id_number', 'idNumber',
+            'display_name', 'displayName', 'id_number', 'idNumber', 'age',
             'created_at', 'createdAt', 'effectivePermissions', 'staffRole',
+            *PERSONAL_FIELDS, *ADDRESS_FIELDS,
         ]
+
+    def _id_number(self, obj):
+        """
+        Full ID only for admins (admissions must verify it); masked for everyone else,
+        including the owner — they already know their own number, and an unmasked value
+        in the student payload is an avoidable PII leak.
+        """
+        request = self.context.get('request')
+        viewer = getattr(request, 'user', None) if request else None
+        if viewer is not None and getattr(viewer, 'role', None) == 'admin':
+            return obj.id_number
+        return mask_id_number(obj.id_number)
+
+    def get_idNumber(self, obj):
+        return self._id_number(obj)
+
+    def get_id_number(self, obj):
+        return self._id_number(obj)
 
     def get_effectivePermissions(self, obj):
         return obj.get_effective_permissions()

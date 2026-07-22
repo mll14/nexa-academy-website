@@ -17,9 +17,11 @@ from django.core.cache import cache
 from django.utils import timezone
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from urllib.parse import urlencode
-from .serializers import UserSerializer, EmailTokenObtainPairSerializer, AppPermissionSerializer, RoleSerializer, StaffUserSerializer, MyProfileSerializer, AuditLogSerializer
-from .models import AppPermission, Role, AuditLog, TwoFADevice, LoginSession
+from .serializers import UserSerializer, EmailTokenObtainPairSerializer, AppPermissionSerializer, RoleSerializer, StaffUserSerializer, MyProfileSerializer, AuditLogSerializer, GuardianSerializer, NotificationPreferenceSerializer
+from .models import AppPermission, Role, AuditLog, TwoFADevice, LoginSession, Guardian, NotificationPreference
+from . import keycloak_admin
 import hashlib
+from datetime import datetime
 import pyotp, qrcode
 from io import BytesIO
 import base64
@@ -291,7 +293,8 @@ class StudentDetailView(generics.RetrieveAPIView):
         payments = Payment.objects.filter(student=user).order_by('-payment_date')
         enrollments = Enrollment.objects.select_related('program').filter(student=user)
         return Response({
-            'user': UserSerializer(user).data,
+            'user': UserSerializer(user, context={'request': request}).data,
+            'guardians': GuardianSerializer(user.guardians.all(), many=True).data,
             'applications': ApplicationSerializer(applications, many=True).data,
             'payments': PaymentSerializer(payments, many=True).data,
             'enrollments': EnrollmentSerializer(enrollments, many=True).data,
@@ -718,38 +721,366 @@ class UploadPhotoView(APIView):
         return Response({'photo_url': url})
 
 
+class AccountCredentialsView(APIView):
+    """
+    GET /api/auth/account/credentials/ — what sign-in methods this account actually has.
+
+    The Security tab needs this to stop lying: a Google-only user has no password, so it
+    must offer *Set password* rather than a change form asking for one they never had.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        data = {
+            'keycloak_managed': keycloak_admin.is_configured(),
+            'has_password': True,
+            'keycloak_otp': False,
+            'google_linked': bool(request.user.google_linked),
+            'account_console_url': '',
+        }
+        if not keycloak_admin.is_configured():
+            data['has_password'] = request.user.has_usable_password()
+            return Response(data)
+
+        data['account_console_url'] = keycloak_admin.account_console_url()
+        try:
+            credentials = keycloak_admin.list_credentials(request.user)
+        except keycloak_admin.KeycloakAdminError:
+            # Not fatal — the tab still renders; we just cannot refine the copy.
+            logger.warning('Could not read Keycloak credentials for %s',
+                           request.user.email, exc_info=True)
+            return Response(data)
+
+        types = {c.get('type') for c in credentials}
+        data['has_password'] = 'password' in types
+        data['keycloak_otp'] = 'otp' in types
+        return Response(data)
+
+
 class ChangePasswordView(APIView):
-    """POST /api/auth/change-password/ — change the authenticated user's password."""
+    """
+    POST /api/auth/change-password/ — change the authenticated user's password.
+
+    Once Keycloak is configured it, not Django, verifies passwords at login. Writing only
+    the Django hash here would return a success toast while the old password kept working,
+    so the new password is written to Keycloak and the Django hash is kept in step behind it.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         current_password = request.data.get('current_password', '')
         new_password = request.data.get('new_password', '')
+        user = request.user
 
-        if not current_password or not new_password:
-            return Response({'error': 'current_password and new_password are required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if not request.user.check_password(current_password):
-            return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not new_password:
+            return Response({'error': 'new_password is required.'},
+                            status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            validate_password(new_password, request.user)
+            validate_password(new_password, user)
         except DjangoValidationError as exc:
             return Response({'error': exc.messages[0]}, status=status.HTTP_400_BAD_REQUEST)
 
-        request.user.set_password(new_password)
-        request.user.save(update_fields=['password'])
+        if not keycloak_admin.is_configured():
+            if not current_password or not user.check_password(current_password):
+                return Response({'error': 'Current password is incorrect.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            user.set_password(new_password)
+            user.save(update_fields=['password'])
+            return Response({'detail': 'Password updated successfully.'})
+
+        try:
+            # Social-only accounts have no password to confirm — they are *setting* a first
+            # one, and their authenticated session is the proof of identity.
+            has_password = keycloak_admin.has_password_credential(user)
+            if has_password:
+                if not current_password:
+                    return Response({'error': 'current_password is required.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+                if not keycloak_admin.verify_password(user.email, current_password):
+                    return Response({'error': 'Current password is incorrect.'},
+                                    status=status.HTTP_400_BAD_REQUEST)
+
+            keycloak_admin.set_password(user, new_password)
+        except keycloak_admin.KeycloakAdminError as exc:
+            logger.error('Password change failed for %s: %s', user.email, exc)
+            return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        # Mirror into Django so the two stores agree and a Keycloak rollback still works.
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+        create_audit_log(
+            request, 'change_password', 'user', str(user.uid), {'email': user.email},
+        )
         return Response({'detail': 'Password updated successfully.'})
 
 
 class UpdateMyProfileView(APIView):
-    """PATCH /api/auth/my-profile/ — update the authenticated user's own profile fields."""
+    """
+    PATCH /api/auth/my-profile/ — update the authenticated user's own profile fields.
+
+    Email and name are *authentication* facts in Keycloak (email doubles as the username),
+    so they are pushed there first. If Keycloak rejects the change, Django is not committed
+    — a half-applied change would leave the user signing in with an address the portal no
+    longer shows.
+    """
     permission_classes = [permissions.IsAuthenticated]
 
     def patch(self, request):
-        serializer = MyProfileSerializer(request.user, data=request.data, partial=True)
+        user = request.user
+        serializer = MyProfileSerializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        old_email = user.email
+        new_email = serializer.validated_data.get('email', old_email)
+        email_changed = new_email != old_email
+
+        name_fields = {'first_name', 'middle_name', 'last_name'}
+        name_changed = bool(name_fields & set(serializer.validated_data))
+
+        if keycloak_admin.is_configured() and (email_changed or name_changed):
+            kc_fields = {}
+            if email_changed:
+                kc_fields.update(email=new_email, username=new_email, emailVerified=True)
+            if name_changed:
+                first = serializer.validated_data.get('first_name', user.first_name)
+                last = serializer.validated_data.get('last_name', user.last_name)
+                # Keycloak marks firstName/lastName required; an empty value raises
+                # VERIFY_PROFILE and locks the account out of the direct-grant login.
+                if first:
+                    kc_fields['firstName'] = first
+                if last:
+                    kc_fields['lastName'] = last
+            try:
+                keycloak_admin.update_user(user, **kc_fields)
+            except keycloak_admin.KeycloakAdminError as exc:
+                logger.error('Keycloak profile sync failed for %s: %s', old_email, exc)
+                return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        serializer.save()
+
+        if email_changed:
+            create_audit_log(
+                request, 'change_email', 'user', str(user.uid),
+                {'from': old_email, 'to': new_email},
+            )
+        return Response(UserSerializer(user, context={'request': request}).data)
+
+
+# ── Guardians ─────────────────────────────────────────────────────────────────
+
+class GuardianViewSet(viewsets.ModelViewSet):
+    """
+    /api/auth/guardians/ — the authenticated user's own guardians / emergency contacts.
+
+    Optional per user; mainly used by younger applicants where the guardian is often also
+    the bill payer.
+    """
+    serializer_class = GuardianSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        return Guardian.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        guardian = serializer.save(user=self.request.user)
+        self._enforce_single_primary(guardian)
+        # A brand-new bill payer has never been told they're on the hook for the fees.
+        if guardian.is_bill_payer and guardian.email:
+            self._send_bill_payer_intro(guardian)
+
+    def perform_update(self, serializer):
+        was_bill_payer = serializer.instance.is_bill_payer
+        old_email = serializer.instance.email
+        guardian = serializer.save()
+        self._enforce_single_primary(guardian)
+        # Intro the guardian when they *become* the bill payer, or when an existing bill
+        # payer's email is corrected — either way a new address needs the payment details.
+        newly_billing = guardian.is_bill_payer and not was_bill_payer
+        email_changed = guardian.is_bill_payer and guardian.email and guardian.email != old_email
+        if guardian.email and (newly_billing or email_changed):
+            self._send_bill_payer_intro(guardian)
+
+    def _enforce_single_primary(self, guardian):
+        """Exactly one primary contact — promoting one demotes the rest."""
+        if guardian.is_primary:
+            Guardian.objects.filter(user=guardian.user).exclude(pk=guardian.pk).update(
+                is_primary=False
+            )
+
+    def _send_bill_payer_intro(self, guardian):
+        """
+        Send a bill-payer guardian the current fee position and how to pay.
+
+        Best-effort: a guardian's contact details are saved regardless — a mail failure
+        must never make the PATCH look like it failed. Ongoing invoices/receipts are CC'd
+        to bill payers separately in the payments app.
+        """
+        from payments.reconciliation import payment_reconciliation_for_student
+        from decimal import Decimal
+
+        student = guardian.user
+        try:
+            recon = payment_reconciliation_for_student(student)
+            enrollment = student.enrollments.select_related('program').first()
+            program = enrollment.program if enrollment else None
+            send_html_email(
+                subject=f"You now receive {student.display_name}'s fee payments - Nexa Academy",
+                template_name='guardian_bill_payer.html',
+                context={
+                    'guardian_name': guardian.full_name,
+                    'student_name': student.display_name or student.email,
+                    'program_name': getattr(program, 'name', '') if program else '',
+                    'balance': f"KSh {Decimal(str(recon['amount_remaining'])):,.2f}",
+                    'total_paid': f"KSh {Decimal(str(recon['amount_paid'])):,.2f}",
+                    'mpesa_paybill': settings.PAYMENT_MPESA_PAYBILL,
+                    'mpesa_account_number': settings.PAYMENT_MPESA_ACCOUNT_NUMBER,
+                    'mpesa_account_name': settings.PAYMENT_MPESA_ACCOUNT_NAME,
+                    'mpesa_bank': settings.PAYMENT_MPESA_BANK,
+                    'header_label': 'Fee Payments',
+                    'preview_text': f"You're set up to pay {student.display_name}'s fees.",
+                },
+                recipient_email=guardian.email,
+            )
+        except Exception:
+            logger.exception('Failed to send bill-payer intro to guardian %s', guardian.id)
+
+
+# ── Notification preferences ──────────────────────────────────────────────────
+
+class NotificationPreferenceView(APIView):
+    """
+    GET/PATCH /api/auth/notification-preferences/ — the user's own messaging opt-ins.
+
+    Created lazily on first read so every existing user gets the defaults without a
+    data migration.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _prefs(self, user):
+        prefs, _ = NotificationPreference.objects.get_or_create(user=user)
+        return prefs
+
+    def get(self, request):
+        return Response(NotificationPreferenceSerializer(self._prefs(request.user)).data)
+
+    def patch(self, request):
+        serializer = NotificationPreferenceSerializer(
+            self._prefs(request.user), data=request.data, partial=True
+        )
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(UserSerializer(request.user).data)
+        return Response(serializer.data)
+
+    def put(self, request):
+        return self.patch(request)
+
+
+# ── Account controls (deactivate / export / delete) ───────────────────────────
+
+def _reauthenticate(user, password) -> bool:
+    """
+    Confirm the caller really is the account owner before a destructive change.
+
+    Verifies against Keycloak when it owns auth (the Django hash may be stale); falls back
+    to the Django hash otherwise. Social-only accounts have no password to check, so an
+    authenticated session is accepted as proof on its own.
+    """
+    if keycloak_admin.is_configured():
+        try:
+            if not keycloak_admin.has_password_credential(user):
+                return True
+        except keycloak_admin.KeycloakAdminError:
+            pass  # fall through to a password check rather than letting an outage block delete
+        return bool(password) and keycloak_admin.verify_password(user.email, password)
+    if not user.has_usable_password():
+        return True
+    return bool(password) and user.check_password(password)
+
+
+class AccountExportView(APIView):
+    """GET /api/auth/account/export/ — the user's own data as a JSON download."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        create_audit_log(request, 'export_account', 'user', str(request.user.uid),
+                         {'email': request.user.email})
+        # Admins see the full id_number in the serializer; pass the request through so the
+        # owner's export shows their own real id_number, not the masked form.
+        context = {'request': request}
+        data = {
+            'account': UserSerializer(request.user, context=context).data,
+            'guardians': GuardianSerializer(request.user.guardians.all(), many=True).data,
+            'notification_preferences': NotificationPreferenceSerializer(
+                NotificationPreference.objects.get_or_create(user=request.user)[0]
+            ).data,
+            'exported_at': timezone.now().isoformat(),
+        }
+        response = Response(data)
+        response['Content-Disposition'] = 'attachment; filename="nexa-account-export.json"'
+        return response
+
+
+class AccountDeactivateView(APIView):
+    """
+    POST /api/auth/account/deactivate/ — the user suspends their own account.
+
+    Reversible: an admin can re-enable. Mirrored to Keycloak so a suspended account can no
+    longer authenticate — a Django-only flag would still let them log in via the BFF.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if not _reauthenticate(user, request.data.get('password', '')):
+            return Response({'error': 'Password confirmation failed.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if keycloak_admin.is_configured():
+            try:
+                keycloak_admin.set_enabled(user, False)
+            except keycloak_admin.KeycloakAdminError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        user.is_active = False
+        user.status = 'suspended'
+        user.save(update_fields=['is_active', 'status'])
+        create_audit_log(request, 'deactivate_account', 'user', str(user.uid),
+                         {'email': user.email})
+        return Response({'detail': 'Your account has been deactivated.'})
+
+
+class AccountDeleteView(APIView):
+    """
+    DELETE /api/auth/account/ — the user deletes their own account.
+
+    Soft delete: the row is kept (payments, applications and audit history reference it) but
+    marked deleted, deactivated, and disabled in Keycloak so it can never authenticate again.
+    A hard delete is deliberately not done here — it would orphan financial records.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request):
+        user = request.user
+        if not _reauthenticate(user, request.data.get('password', '')):
+            return Response({'error': 'Password confirmation failed.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if keycloak_admin.is_configured():
+            try:
+                keycloak_admin.set_enabled(user, False)
+                keycloak_admin.logout_all(user)
+            except keycloak_admin.KeycloakAdminError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        user.is_active = False
+        user.status = 'deleted'
+        user.save(update_fields=['is_active', 'status'])
+        create_audit_log(request, 'delete_account', 'user', str(user.uid),
+                         {'email': user.email})
+        return Response({'detail': 'Your account has been deleted.'},
+                        status=status.HTTP_200_OK)
 
 
 # ─── Audit Logs ──────────────────────────────────────────────────────────────
@@ -838,6 +1169,8 @@ class TwoFAVerifyView(APIView):
         device.enabled = True
         device.confirmed_at = timezone.now()
         device.save()
+        create_audit_log(request, 'enable_2fa', 'user', str(request.user.uid),
+                         {'email': request.user.email})
         return Response({'enabled': True})
 
 
@@ -852,6 +1185,8 @@ class TwoFADisableView(APIView):
         if not pyotp.TOTP(device.secret).verify(code, valid_window=1):
             return Response({'error': 'Invalid code.'}, status=status.HTTP_400_BAD_REQUEST)
         device.delete()
+        create_audit_log(request, 'disable_2fa', 'user', str(request.user.uid),
+                         {'email': request.user.email})
         return Response({'enabled': False})
 
 
@@ -897,10 +1232,60 @@ class TwoFACompleteLoginView(APIView):
 
 # ── Login session list & revoke ───────────────────────────────────────────────
 
+def _keycloak_sessions(request):
+    """
+    Real Keycloak sessions for the authenticated user.
+
+    Under the BFF, Keycloak — not `LoginSession` — owns the session. Listing Django rows
+    would show sessions that no longer exist and hide ones that do, and "revoke" would not
+    actually sign anyone out.
+    """
+    sessions = keycloak_admin.list_sessions(request.user)
+    current_sid = ''
+    if isinstance(request.auth, dict):
+        current_sid = str(request.auth.get('sid') or request.auth.get('session_state') or '')
+
+    data = []
+    for s in sessions:
+        # Keycloak reports epoch milliseconds.
+        start = s.get('start')
+        last = s.get('lastAccess')
+        data.append({
+            'id': s.get('id'),
+            'ip_address': s.get('ipAddress'),
+            # Keycloak does not return a User-Agent; surface the client that owns the
+            # session instead so the row is still identifiable.
+            'user_agent': ', '.join(s.get('clients', {}).values()) or None,
+            'created_at': _epoch_ms_to_iso(start),
+            'last_seen_at': _epoch_ms_to_iso(last) or _epoch_ms_to_iso(start),
+            'is_current': bool(current_sid) and s.get('id') == current_sid,
+        })
+    return data
+
+
+def _epoch_ms_to_iso(value):
+    """Keycloak reports session timestamps as epoch milliseconds."""
+    if not value:
+        return None
+    return datetime.fromtimestamp(
+        value / 1000, tz=timezone.get_current_timezone()
+    ).isoformat()
+
+
 class LoginSessionListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        if keycloak_admin.is_configured():
+            try:
+                return Response(_keycloak_sessions(request))
+            except keycloak_admin.KeycloakAdminError:
+                logger.warning('Could not read Keycloak sessions for %s',
+                               request.user.email, exc_info=True)
+                # Fall through to the Django rows rather than showing an error panel.
+
+        # request.auth is a SimpleJWT AccessToken (legacy) or the Keycloak payload dict —
+        # both support .get(); the Keycloak dict simply has no 'session_id' key.
         current_session_id = str(request.auth.get('session_id', '')) if request.auth else ''
         sessions = LoginSession.objects.filter(user=request.user, is_revoked=False).order_by('-last_seen_at', '-created_at')
         # Update last_seen_at for the current session
@@ -924,7 +1309,18 @@ class LoginSessionRevokeView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, session_id):
+        if keycloak_admin.is_configured():
+            try:
+                keycloak_admin.delete_session(request.user, str(session_id))
+            except keycloak_admin.KeycloakAdminError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+            # Keep the Django row (if any) consistent for the audit trail.
+            LoginSession.objects.filter(id=session_id, user=request.user).update(is_revoked=True)
+            return Response({'detail': 'Session revoked.'})
+
         session = get_object_or_404(LoginSession, id=session_id, user=request.user, is_revoked=False)
+        # request.auth is a SimpleJWT AccessToken (legacy) or the Keycloak payload dict —
+        # both support .get(); the Keycloak dict simply has no 'session_id' key.
         current_session_id = str(request.auth.get('session_id', '')) if request.auth else ''
         if str(session.id) == current_session_id:
             return Response({'error': 'Cannot revoke the current session. Log out instead.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -939,3 +1335,29 @@ class LoginSessionRevokeView(APIView):
         session.is_revoked = True
         session.save(update_fields=['is_revoked'])
         return Response({'detail': 'Session revoked.'})
+
+
+class LogoutAllSessionsView(APIView):
+    """POST /api/auth/sessions/logout-all/ — sign out of every device, for real."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if keycloak_admin.is_configured():
+            try:
+                keycloak_admin.logout_all(request.user)
+            except keycloak_admin.KeycloakAdminError as exc:
+                return Response({'error': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        for session in LoginSession.objects.filter(user=request.user, is_revoked=False):
+            if session.refresh_jti:
+                try:
+                    outstanding = OutstandingToken.objects.get(jti=session.refresh_jti)
+                    BlacklistedToken.objects.get_or_create(token=outstanding)
+                except OutstandingToken.DoesNotExist:
+                    pass
+            session.is_revoked = True
+            session.save(update_fields=['is_revoked'])
+
+        create_audit_log(request, 'logout_all_sessions', 'user', str(request.user.uid),
+                         {'email': request.user.email})
+        return Response({'detail': 'Signed out of all sessions.'})

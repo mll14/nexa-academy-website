@@ -1,7 +1,17 @@
 import { tokens, setStoredUser } from "../auth";
 import type { User } from "../../types";
-import type { AppPermission, Role, StaffUser } from "../../types";
-import { req, ApiError } from "./core";
+import type {
+  AppPermission, Role, StaffUser,
+  AccountCredentials, Guardian, NotificationPreferences,
+} from "../../types";
+import { req, ApiError, BASE } from "./core";
+import { isKeycloak } from "../../config/authProvider";
+
+// Option 3: in Keycloak mode the same custom UI posts to the Django BFF endpoints, which
+// broker Keycloak. In django mode it uses the native auth endpoints. Response shapes match.
+const LOGIN_URL = isKeycloak ? "/auth/keycloak/login/" : "/auth/login/";
+const TWOFA_COMPLETE_URL = isKeycloak ? "/auth/keycloak/2fa/complete/" : "/auth/2fa/complete-login/";
+const LOGOUT_URL = isKeycloak ? "/auth/keycloak/logout/" : "/auth/logout/";
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 
@@ -13,13 +23,30 @@ export async function updateProfile(data: Partial<User>): Promise<User> {
   return req<User>("/auth/profile/", { method: "PUT", body: JSON.stringify(data) });
 }
 
-export async function updateMyProfile(data: {
-  display_name?: string;
-  email?: string;
-  phone?: string;
-  photo_url?: string;
-  google_linked?: boolean;
-}): Promise<User> {
+/**
+ * Self-service profile update.
+ *
+ * `email` and the name parts are authentication facts in Keycloak (email doubles as the
+ * username), so the server pushes them there before committing — a 502 here means the
+ * change was rejected upstream and nothing was saved.
+ */
+export async function updateMyProfile(data: Partial<{
+  email: string;
+  photo_url: string;
+  google_linked: boolean;
+  first_name: string;
+  middle_name: string;
+  last_name: string;
+  date_of_birth: string | null;
+  gender: string;
+  nationality: string;
+  phone: string;
+  alt_phone: string;
+  country: string;
+  county: string;
+  city: string;
+  postal_address: string;
+}>): Promise<User> {
   return req<User>("/auth/my-profile/", { method: "PATCH", body: JSON.stringify(data) });
 }
 
@@ -45,7 +72,7 @@ export type LoginResult =
 
 export async function login(email: string, password: string): Promise<LoginResult> {
   const res = await req<{ access: string } | { requires_2fa: true; temp_token: string }>(
-    "/auth/login/",
+    LOGIN_URL,
     { method: "POST", body: JSON.stringify({ email, password }) },
   );
   if ("requires_2fa" in res && res.requires_2fa) {
@@ -62,7 +89,7 @@ export async function completeTwoFALogin(
   temp_token: string,
   code: string,
 ): Promise<{ user: User }> {
-  const res = await req<{ access: string }>("/auth/2fa/complete-login/", {
+  const res = await req<{ access: string }>(TWOFA_COMPLETE_URL, {
     method: "POST",
     body: JSON.stringify({ temp_token, code }),
   });
@@ -77,7 +104,7 @@ export async function adminLogin(
   password: string,
 ): Promise<{ user: User } | { requires_2fa: true; temp_token: string }> {
   const res = await req<{ access: string } | { requires_2fa: true; temp_token: string }>(
-    "/auth/login/",
+    LOGIN_URL,
     { method: "POST", body: JSON.stringify({ email, password }) },
   );
   if ("requires_2fa" in res && res.requires_2fa) {
@@ -113,16 +140,103 @@ export async function googleLogin(googleToken: string): Promise<GoogleLoginResul
 
 export async function logout(): Promise<void> {
   try {
-    await req("/auth/logout/", { method: "POST", body: JSON.stringify({}) });
+    await req(LOGOUT_URL, { method: "POST", body: JSON.stringify({}) });
   } finally {
     tokens.clear();
   }
 }
 
-export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+/**
+ * Change (or, for social-only accounts, set) the password.
+ *
+ * `currentPassword` is omitted when the account has no password credential yet — the
+ * server confirms that against Keycloak rather than trusting the client.
+ */
+export async function changePassword(
+  currentPassword: string | null,
+  newPassword: string,
+): Promise<void> {
   await req("/auth/change-password/", {
     method: "POST",
-    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    body: JSON.stringify({
+      ...(currentPassword ? { current_password: currentPassword } : {}),
+      new_password: newPassword,
+    }),
+  });
+}
+
+export async function getAccountCredentials(): Promise<AccountCredentials> {
+  return req<AccountCredentials>("/auth/account/credentials/");
+}
+
+// ── Guardians ─────────────────────────────────────────────────────────────────
+
+export type GuardianInput = Omit<
+  Guardian,
+  "id" | "relationship_display" | "created_at" | "updated_at"
+>;
+
+export async function getGuardians(): Promise<Guardian[]> {
+  const res = await req<Guardian[] | { results: Guardian[] }>("/auth/guardians/");
+  return Array.isArray(res) ? res : (res.results ?? []);
+}
+
+export async function createGuardian(data: Partial<GuardianInput>): Promise<Guardian> {
+  return req<Guardian>("/auth/guardians/", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function updateGuardian(
+  id: string,
+  data: Partial<GuardianInput>,
+): Promise<Guardian> {
+  return req<Guardian>(`/auth/guardians/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteGuardian(id: string): Promise<void> {
+  await req(`/auth/guardians/${id}/`, { method: "DELETE" });
+}
+
+// ── Notification preferences ──────────────────────────────────────────────────
+
+export async function getNotificationPreferences(): Promise<NotificationPreferences> {
+  return req<NotificationPreferences>("/auth/notification-preferences/");
+}
+
+export async function updateNotificationPreferences(
+  data: Partial<NotificationPreferences>,
+): Promise<NotificationPreferences> {
+  return req<NotificationPreferences>("/auth/notification-preferences/", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+// ── Account controls ──────────────────────────────────────────────────────────
+
+export async function exportMyAccount(): Promise<Blob> {
+  // The export endpoint sets a download disposition; fetch it as a blob to save to file.
+  const res = await fetch(`${BASE}/auth/account/export/`, {
+    headers: tokens.access ? { Authorization: `Bearer ${tokens.access}` } : {},
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error("Could not export your account data.");
+  return res.blob();
+}
+
+export async function deactivateMyAccount(password?: string): Promise<void> {
+  await req("/auth/account/deactivate/", {
+    method: "POST",
+    body: JSON.stringify(password ? { password } : {}),
+  });
+}
+
+export async function deleteMyAccount(password?: string): Promise<void> {
+  await req("/auth/account/", {
+    method: "DELETE",
+    body: JSON.stringify(password ? { password } : {}),
   });
 }
 
@@ -172,6 +286,11 @@ export async function getLoginSessions(): Promise<LoginSession[]> {
 
 export async function revokeLoginSession(id: string): Promise<void> {
   await req(`/auth/sessions/${id}/revoke/`, { method: "POST" });
+}
+
+/** Terminates every session, including the current one — the caller must then sign out. */
+export async function logoutAllSessions(): Promise<void> {
+  await req("/auth/sessions/logout-all/", { method: "POST" });
 }
 
 // ── Roles & Permissions ───────────────────────────────────────────────────────

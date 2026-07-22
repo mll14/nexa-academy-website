@@ -50,6 +50,29 @@ def _admissions_portal_url(path=''):
     return f"{base}{path}"
 
 
+def bill_payer_guardian_emails(student):
+    """
+    Email addresses of the student's bill-payer guardians.
+
+    A guardian flagged ``is_bill_payer`` is the person actually settling the fees, so every
+    billing document (invoice, receipt, payment request) that reaches the student must reach
+    them too — that is the whole point of the flag. Kept here beside the senders, and tolerant
+    of the relation not existing, so a resolution failure can never block a payment email.
+    """
+    if student is None:
+        return []
+    try:
+        return [
+            email for email in student.guardians
+            .filter(is_bill_payer=True)
+            .values_list('email', flat=True)
+            if email
+        ]
+    except Exception:
+        logger.exception('Could not resolve bill-payer guardians for %s', getattr(student, 'email', student))
+        return []
+
+
 def _payment_application_for_student(student, program=None):
     qs = Application.objects.filter(Q(user=student) | Q(email__iexact=student.email))
     if program:
@@ -142,6 +165,9 @@ def _send_payment_receipt(payment, amount=None, program=None, payment_type='paym
         'preview_text': f"Payment receipt for {student.display_name or student.email}",
     }
     recipients = recipients or [student.email, _admissions_notification_email()]
+    # The bill payer always receives the receipt, whoever triggered the send (even a
+    # student re-sending only to themselves) — they are the one who paid.
+    recipients = [*recipients, *bill_payer_guardian_emails(student)]
     for recipient in dict.fromkeys(email for email in recipients if email):
         send_html_email(
             subject='Payment Receipt - Nexa Academy',
@@ -186,6 +212,9 @@ def _send_invoice_email(payment, reconciliation, recipient_email):
 
     Unlike the receipt, an invoice has no value without its PDF — it exists to state an
     amount due — so a failed render aborts before anything is sent.
+
+    Returns the full list of addresses the invoice was sent to: the student (or the
+    explicit recipient) plus any bill-payer guardians, so the caller can report it back.
     """
     pdf_bytes = render_invoice_pdf(payment, reconciliation, amount=payment.amount)
     if not pdf_bytes:
@@ -208,13 +237,19 @@ def _send_invoice_email(payment, reconciliation, recipient_email):
         'header_label': 'Invoice',
         'preview_text': f"Invoice for {payment.amount} from Nexa Academy",
     }
-    send_html_email(
-        subject=f"Invoice {str(payment.payment_id).split('-')[0].upper()} - Nexa Academy",
-        template_name='invoice_issued.html',
-        context=context,
-        recipient_email=recipient_email,
-        attachments=[(f"nexa-invoice-{str(payment.payment_id)[:8]}.pdf", pdf_bytes, 'application/pdf')],
+    attachments = [(f"nexa-invoice-{str(payment.payment_id)[:8]}.pdf", pdf_bytes, 'application/pdf')]
+    recipients = dict.fromkeys(
+        email for email in (recipient_email, *bill_payer_guardian_emails(student)) if email
     )
+    for recipient in recipients:
+        send_html_email(
+            subject=f"Invoice {str(payment.payment_id).split('-')[0].upper()} - Nexa Academy",
+            template_name='invoice_issued.html',
+            context={**context, 'student_email': recipient},
+            recipient_email=recipient,
+            attachments=attachments,
+        )
+    return list(recipients)
 
 
 def _recalculate_student_totals(student):
@@ -1300,7 +1335,7 @@ class PaymentViewSet(viewsets.ModelViewSet):
 
         reconciliation = payment_reconciliation_for_student(student)
         try:
-            _send_invoice_email(payment, reconciliation, recipient_email)
+            invoiced_to = _send_invoice_email(payment, reconciliation, recipient_email)
         except InvoicePdfError as exc:
             # No invoice without its PDF — drop the pending row rather than leave a
             # phantom charge the student was never told about.
@@ -1330,9 +1365,11 @@ class PaymentViewSet(viewsets.ModelViewSet):
         except Exception:
             logger.exception('Failed to notify student about invoice %s', payment.payment_id)
 
-        logger.info('Invoice %s issued to %s by %s', payment.payment_id, recipient_email, request.user.email)
+        logger.info('Invoice %s issued to %s by %s', payment.payment_id,
+                    ', '.join(invoiced_to), request.user.email)
         return Response(
-            {**PaymentSerializer(payment).data, 'emailed_to': recipient_email},
+            {**PaymentSerializer(payment).data,
+             'emailed_to': recipient_email, 'recipients': invoiced_to},
             status=status.HTTP_201_CREATED,
         )
 

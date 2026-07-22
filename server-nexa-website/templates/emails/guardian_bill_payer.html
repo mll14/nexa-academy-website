@@ -1,0 +1,32 @@
+{% extends "emails/base_email.html" %}
+{% block subject %}You now receive {{ student_name }}'s fee payments — Nexa Academy{% endblock %}
+{% block content %}
+<p style="margin:0 0 4px;font-size:11px;color:#00bf63;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;">Fee Payments</p>
+<h2 style="margin:0 0 16px;font-size:22px;font-weight:800;color:#1a202c;line-height:1.3;">Hi {{ guardian_name }}, you're set up to pay {{ student_name }}'s fees.</h2>
+<p style="margin:0 0 24px;font-size:15px;color:#4a5568;line-height:1.7;">
+  {{ student_name }} listed you as the person settling their fees at Nexa Academy. From now
+  on you'll receive the same invoices and receipts they do, so you always have a copy of
+  what's due and what's been paid.
+</p>
+
+<div style="background:#f0faf4;border-radius:10px;padding:20px 24px;margin-bottom:24px;border:1px solid #c6f6d5;">
+  <p style="margin:0 0 10px;font-size:11px;color:#276749;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">Current Balance</p>
+  <p style="margin:0 0 6px;font-size:24px;font-weight:800;color:#1a202c;">{{ balance }}</p>
+  {% if program_name %}<p style="margin:0 0 4px;font-size:14px;color:#4a5568;">Programme: <strong>{{ program_name }}</strong></p>{% endif %}
+  <p style="margin:0;font-size:13px;color:#718096;">Paid so far: {{ total_paid }}</p>
+</div>
+
+<div style="background:#f7f9fc;border-radius:10px;padding:16px 20px;margin-bottom:24px;border:1px solid #e2e8f0;">
+  <p style="margin:0 0 10px;font-size:11px;color:#4a5568;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;">How to pay (M-Pesa)</p>
+  <p style="margin:0 0 4px;font-size:14px;color:#4a5568;">Paybill: <strong>{{ mpesa_paybill }}</strong> ({{ mpesa_bank }})</p>
+  <p style="margin:0 0 4px;font-size:14px;color:#4a5568;">Account number: <strong>{{ mpesa_account_number }}</strong></p>
+  <p style="margin:0;font-size:13px;color:#718096;">Account name: {{ mpesa_account_name }}</p>
+</div>
+
+<p style="margin:0 0 24px;font-size:14px;color:#4a5568;line-height:1.7;">
+  You can also pay by card or bank transfer — every invoice we email includes a secure
+  Paystack link. Please use {{ student_name }}'s name as the payment reference.
+</p>
+
+<p style="margin:0;font-size:13px;color:#718096;">Questions? <a href="mailto:admissions@nexaacademy.co.ke" style="color:#141a42;">admissions@nexaacademy.co.ke</a> &middot; <a href="tel:+254713067311" style="color:#141a42;">+254713067311</a></p>
+{% endblock %}

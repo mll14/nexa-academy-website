@@ -20,6 +20,7 @@ const ResetPassword = lazy(() => import("./pages/ResetPassword").then(m => ({ de
 const Apply = lazy(() => import("./pages/Apply").then(m => ({ default: m.Apply })));
 const Unsubscribe = lazy(() => import("./pages/Unsubscribe").then(m => ({ default: m.Unsubscribe })));
 const AcceptInvite = lazy(() => import("./pages/AcceptInvite").then(m => ({ default: m.AcceptInvite })));
+const AuthCallback = lazy(() => import("./pages/AuthCallback").then(m => ({ default: m.AuthCallback })));
 
 const StudentDashboard = lazy(() => import("./pages/student/Dashboard").then(m => ({ default: m.StudentDashboard })));
 const StudentApplication = lazy(() => import("./pages/student/Dashboard").then(m => ({ default: m.StudentApplication })));
@@ -191,6 +192,17 @@ const unsubscribeRoute = createRoute({
     reason: typeof s.reason === "string" ? s.reason : undefined,
   }),
   component: Unsubscribe,
+});
+
+const authCallbackRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/auth/callback",
+  validateSearch: (s: Record<string, unknown>) => ({
+    code: typeof s.code === "string" ? s.code : undefined,
+    error: typeof s.error === "string" ? s.error : undefined,
+    state: typeof s.state === "string" ? s.state : undefined,
+  }),
+  component: AuthCallback,
 });
 
 const acceptInviteRoute = createRoute({
@@ -508,6 +520,7 @@ const routeTree = rootRoute.addChildren([
   applyRoute,
   unsubscribeRoute,
   acceptInviteRoute,
+  authCallbackRoute,
   studentLayoutRoute.addChildren([
     studentDashboardRoute,
     studentApplicationRoute,

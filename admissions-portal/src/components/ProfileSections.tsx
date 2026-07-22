@@ -5,9 +5,11 @@ import { useState, useEffect } from 'react'
 import {
   changePassword,
   get2FAStatus, setup2FA, verify2FA, disable2FA,
-  getLoginSessions, revokeLoginSession, updateMyProfile,
+  getLoginSessions, revokeLoginSession, logoutAllSessions,
+  getAccountCredentials, updateMyProfile,
 } from '../lib/api'
 import type { LoginSession } from '../lib/api'
+import type { AccountCredentials } from '../types'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Label } from './ui/label'
@@ -31,16 +33,18 @@ export function SettingsCard({
   description,
   badge,
   noPadding = false,
+  className,
   children,
 }: {
   title: string
   description?: string
   badge?: React.ReactNode
   noPadding?: boolean
+  className?: string
   children: React.ReactNode
 }) {
   return (
-    <div className="border border-border rounded-2xl overflow-hidden">
+    <div className={cn('border border-border rounded-2xl overflow-hidden', className)}>
       <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between gap-4">
         <div>
           <p className="text-sm font-semibold">{title}</p>
@@ -59,7 +63,14 @@ export function SettingsCard({
 
 // ── Password ──────────────────────────────────────────────────────────────────
 
-export function PasswordSection() {
+/**
+ * Change — or, for social-only accounts, *set* — the sign-in password.
+ *
+ * `hasPassword` comes from the server reading the account's actual Keycloak credentials.
+ * Accounts created through Google have none, so asking them for a "current password" they
+ * never had would guarantee a failure they cannot explain.
+ */
+export function PasswordSection({ hasPassword = true }: { hasPassword?: boolean }) {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -73,9 +84,9 @@ export function PasswordSection() {
     if (next.length < 8) { toast.error('Password must be at least 8 characters.'); return }
     setSaving(true)
     try {
-      await changePassword(current, next)
+      await changePassword(hasPassword ? current : null, next)
       setCurrent(''); setNext(''); setConfirm('')
-      toast.success('Password updated.')
+      toast.success(hasPassword ? 'Password updated.' : 'Password set.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to update password.')
     } finally {
@@ -85,26 +96,33 @@ export function PasswordSection() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="ps-current">Current Password</Label>
-        <div className="relative">
-          <Input
-            id="ps-current"
-            type={showCurrent ? 'text' : 'password'}
-            value={current}
-            onChange={e => setCurrent(e.target.value)}
-            placeholder="Your current password"
-            required
-            className="pr-10"
-          />
-          <button type="button" tabIndex={-1}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            onClick={() => setShowCurrent(v => !v)}
-          >
-            {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
+      {!hasPassword && (
+        <p className="text-sm text-muted-foreground">
+          You sign in with Google. Set a password to also sign in with your email address.
+        </p>
+      )}
+      {hasPassword && (
+        <div className="space-y-1.5">
+          <Label htmlFor="ps-current">Current Password</Label>
+          <div className="relative">
+            <Input
+              id="ps-current"
+              type={showCurrent ? 'text' : 'password'}
+              value={current}
+              onChange={e => setCurrent(e.target.value)}
+              placeholder="Your current password"
+              required
+              className="pr-10"
+            />
+            <button type="button" tabIndex={-1}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowCurrent(v => !v)}
+            >
+              {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor="ps-new">New Password</Label>
         <div className="relative">
@@ -141,8 +159,14 @@ export function PasswordSection() {
         )}
       </div>
       <div className="flex justify-end pt-1">
-        <Button type="submit" disabled={saving || !current || !next || !confirm} size="sm">
-          {saving ? 'Updating…' : 'Update Password'}
+        <Button
+          type="submit"
+          disabled={saving || (hasPassword && !current) || !next || !confirm}
+          size="sm"
+        >
+          {saving
+            ? (hasPassword ? 'Updating…' : 'Setting…')
+            : (hasPassword ? 'Update Password' : 'Set Password')}
         </Button>
       </div>
     </form>
@@ -225,7 +249,16 @@ export function GoogleSection() {
 
 type TwoFAStep = 'idle' | 'setup' | 'disabling'
 
-export function TwoFASection() {
+/**
+ * Two-factor authentication.
+ *
+ * Enrolment stays in this UI and is backed by the portal's own TOTP device, because
+ * Keycloak's Admin API has no endpoint for enrolling a TOTP credential — that is only
+ * possible inside Keycloak's own browser flow. Keycloak still enforces its own OTP on
+ * social/redirect sign-ins, so when the account *also* carries a Keycloak OTP credential
+ * we say so and link to the console that manages it, rather than silently ignoring it.
+ */
+export function TwoFASection({ credentials }: { credentials?: AccountCredentials | null }) {
   const [enabled, setEnabled] = useState(false)
   const [loadingStatus, setLoadingStatus] = useState(true)
   const [step, setStep] = useState<TwoFAStep>('idle')
@@ -310,6 +343,23 @@ export function TwoFASection() {
       description="Add an extra layer of security using Google Authenticator or any TOTP app."
       badge={badge}
     >
+      {credentials?.keycloak_otp && credentials.account_console_url && (
+        <div className="mb-5 rounded-xl border border-border bg-muted/30 px-4 py-3">
+          <p className="text-sm font-medium">You also have OTP set up on your Nexa ID</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            It applies when you sign in with Google or another provider.{' '}
+            <a
+              href={credentials.account_console_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium"
+            >
+              Manage it in Nexa ID
+            </a>
+          </p>
+        </div>
+      )}
+
       {loadingStatus ? (
         <p className="text-xs text-muted-foreground">Loading…</p>
       ) : step === 'idle' ? (
@@ -421,15 +471,32 @@ export function TwoFASection() {
 // ── Security tab ──────────────────────────────────────────────────────────────
 
 export function SecurityTab() {
+  const [credentials, setCredentials] = useState<AccountCredentials | null>(null)
+
+  useEffect(() => {
+    // A failure here is not fatal — the tab falls back to assuming a password exists,
+    // which is correct for every account except the social-only ones.
+    getAccountCredentials().then(setCredentials).catch(() => {})
+  }, [])
+
+  const hasPassword = credentials?.has_password ?? true
+
   return (
     <div className="space-y-4">
-      <SettingsCard title="Password" description="Change your sign-in password.">
-        <PasswordSection />
+      <SettingsCard
+        title={hasPassword ? 'Password' : 'Set a Password'}
+        description={
+          hasPassword
+            ? 'Change your sign-in password.'
+            : 'Add a password so you can sign in without Google.'
+        }
+      >
+        <PasswordSection hasPassword={hasPassword} />
       </SettingsCard>
       <SettingsCard title="Google Sign-In" description="Connect your Google account to enable one-click sign-in.">
         <GoogleSection />
       </SettingsCard>
-      <TwoFASection />
+      <TwoFASection credentials={credentials} />
     </div>
   )
 }
@@ -462,10 +529,12 @@ function isMobile(ua: string | null): boolean {
 }
 
 export function SessionsTab() {
+  const { logout } = useAuth()
   const [sessions, setSessions] = useState<LoginSession[]>([])
   const [loading, setLoading] = useState(true)
   const [revoking, setRevoking] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState(false)
+  const [signingOutAll, setSigningOutAll] = useState(false)
 
   useEffect(() => {
     getLoginSessions()
@@ -473,6 +542,20 @@ export function SessionsTab() {
       .catch(() => setUnavailable(true))
       .finally(() => setLoading(false))
   }, [])
+
+  const handleLogoutAll = async () => {
+    setSigningOutAll(true)
+    try {
+      await logoutAllSessions()
+      toast.success('Signed out of all devices.')
+      // This session was terminated too — clear local state rather than leaving the app
+      // holding an access token the server no longer honours.
+      await logout()
+    } catch {
+      toast.error('Failed to sign out of all devices.')
+      setSigningOutAll(false)
+    }
+  }
 
   const handleRevoke = async (id: string) => {
     setRevoking(id)
@@ -530,6 +613,23 @@ export function SessionsTab() {
           {otherSessions.map(session => (
             <SessionRow key={session.id} session={session} revoking={revoking} onRevoke={handleRevoke} />
           ))}
+        </div>
+      )}
+
+      {!loading && !unavailable && sessions.length > 0 && (
+        <div className="flex items-center justify-between gap-4 px-6 py-4 border-t border-border bg-muted/20">
+          <p className="text-xs text-muted-foreground">
+            Signs you out everywhere, including this device.
+          </p>
+          <Button
+            variant="outline" size="sm"
+            onClick={handleLogoutAll}
+            disabled={signingOutAll}
+            className="text-destructive border-destructive/40 hover:bg-destructive/5 shrink-0 gap-1.5"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            {signingOutAll ? 'Signing out…' : 'Sign out everywhere'}
+          </Button>
         </div>
       )}
     </SettingsCard>

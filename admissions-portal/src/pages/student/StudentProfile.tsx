@@ -7,6 +7,13 @@ import { UnderlineTabs } from '../../components/ui/tabs'
 import { Separator } from '../../components/ui/separator'
 import { useAuth } from '../../context/AuthContext'
 import { SecurityTab, SessionsTab } from '../../components/ProfileSections'
+import {
+  PersonalDetailsSection,
+  AddressSection,
+  GuardiansSection,
+  NotificationPreferencesSection,
+  AccountControlsSection,
+} from '../../components/AccountSections'
 import * as api from '../../lib/api'
 
 interface ProfileData {
@@ -141,8 +148,10 @@ function InfoRow({
 
 const TABS = [
   { value: 'profile', label: 'Profile' },
+  { value: 'guardian', label: 'Guardian' },
   { value: 'security', label: 'Security' },
   { value: 'sessions', label: 'Sessions' },
+  { value: 'notifications', label: 'Notifications' },
 ]
 
 export function StudentProfile() {
@@ -204,10 +213,25 @@ export function StudentProfile() {
         <UnderlineTabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
 
         {activeTab === 'profile' && (
-          <ProfileTab profile={profile} />
+          <div className="space-y-4">
+            <ProfileTab profile={profile} />
+            <PersonalDetailsSection />
+            <AddressSection />
+            <AccountControlsSection />
+          </div>
+        )}
+        {activeTab === 'guardian' && (
+          <div className="pt-6">
+            <GuardiansSection />
+          </div>
         )}
         {activeTab === 'security' && <SecurityTab />}
         {activeTab === 'sessions' && <SessionsTab />}
+        {activeTab === 'notifications' && (
+          <div className="pt-6">
+            <NotificationPreferencesSection />
+          </div>
+        )}
       </div>
     </StudentLayout>
   )
