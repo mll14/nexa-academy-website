@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react'
 import * as api from '../lib/api'
 import { getStoredUser, setStoredUser, clearStoredUser, isAuthenticated as hasAccessToken } from '../lib/auth'
+import { startSocialLogin } from '../lib/socialAuth'
+import type { SocialProvider } from '../config/authProvider'
 import { router } from '../router'
 import type { User } from '../types'
 
@@ -15,6 +17,8 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<LoginResponse>
   completeTwoFALogin: (temp_token: string, code: string) => Promise<{ success: boolean; user?: User; error?: string }>
   googleLogin: (token: string) => Promise<LoginResponse>
+  /** Redirect to Keycloak for a social provider (google/microsoft/github). Option 3 only. */
+  socialLogin: (provider: SocialProvider) => Promise<void>
   logout: (redirectTo?: string) => Promise<void>
   refreshUser: () => Promise<void>
   isAdmin: () => boolean
@@ -64,9 +68,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
-      // Always attempt to exchange the httpOnly refresh cookie for a fresh
-      // access token on startup — regardless of sessionStorage state.
-      // This handles: cleared storage, new tab, post-security-audit sessions.
+      // Always attempt to exchange the httpOnly refresh cookie for a fresh access token
+      // on startup — regardless of sessionStorage state. Works for both auth modes: the
+      // cookie is a Django refresh token (django) or a Keycloak refresh token brokered by
+      // the BFF (keycloak); the API layer picks the right refresh endpoint.
       const restored = await api.tryRefreshToken()
       if (restored) {
         await refreshUser()
@@ -141,12 +146,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Social sign-in (Option 3): redirects to Keycloak with the provider hint, returns via
+  // /auth/callback. External IdPs can't use the BFF password flow, so this is a redirect.
+  const socialLogin = useCallback(async (provider: SocialProvider) => {
+    await startSocialLogin(provider)
+  }, [])
+
   const value = useMemo<AuthContextValue>(() => ({
     user,
     loading,
     login,
     completeTwoFALogin,
     googleLogin,
+    socialLogin,
     logout,
     refreshUser,
     isAdmin: () => user?.role === 'admin',
@@ -161,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!user.effectivePermissions) return true
       return user.effectivePermissions.includes(codename)
     },
-  }), [user, loading, login, completeTwoFALogin, googleLogin, logout, refreshUser])
+  }), [user, loading, login, completeTwoFALogin, googleLogin, socialLogin, logout, refreshUser])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

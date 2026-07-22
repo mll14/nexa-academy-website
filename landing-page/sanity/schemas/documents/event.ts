@@ -1,6 +1,6 @@
 import { defineType, defineField } from 'sanity'
 
-// Stub — events section planned for a future release.
+// Rendered at /events and /events/[slug].
 export const eventSchema = defineType({
   name: 'event',
   title: 'Event',

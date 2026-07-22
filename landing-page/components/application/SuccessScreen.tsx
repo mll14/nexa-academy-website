@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CalendarClock, CheckCircle2, ExternalLink, Mail } from 'lucide-react'
 import { FaWhatsapp, FaTelegramPlane, FaDiscord, FaLinkedinIn } from 'react-icons/fa'
 import { Card, CardContent } from '@/components/ui/Card'
 import { Separator } from '@/components/ui/Separator'
+import { Modal } from '@/components/ui/Modal'
 import { AppointmentBookingForm } from '@/app/(site)/appointments/AppointmentBookingForm'
 
 interface SuccessData {
@@ -16,6 +17,9 @@ interface SuccessData {
   start_date?: string
   estimated_fees?: number
 }
+
+/** Seconds the booking modal stays up before it bows out on its own. */
+const AUTO_DISMISS_SECONDS = 10
 
 const COMMUNITY = [
   { Icon: FaWhatsapp,      label: 'WhatsApp', sub: 'Student Group', href: 'https://chat.whatsapp.com/your-group-link', color: 'text-green-600 bg-green-100' },
@@ -33,7 +37,33 @@ export function SuccessScreen({
   onHome: () => void
   onContact: () => void
 }) {
+  const canBook = Boolean(data?.email)
+  const [bookingOpen, setBookingOpen] = useState(canBook)
+  const [secondsLeft, setSecondsLeft] = useState(AUTO_DISMISS_SECONDS)
+  const [countdownRunning, setCountdownRunning] = useState(canBook)
+  const [booked, setBooked] = useState(false)
+
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [])
+
+  // Auto-dismiss the modal after AUTO_DISMISS_SECONDS so the flow completes on
+  // its own if the applicant does nothing.
+  useEffect(() => {
+    if (!bookingOpen || !countdownRunning) return
+    if (secondsLeft <= 0) {
+      setBookingOpen(false)
+      return
+    }
+    const timer = setTimeout(() => setSecondsLeft((s) => s - 1), 1000)
+    return () => clearTimeout(timer)
+  }, [bookingOpen, countdownRunning, secondsLeft])
+
+  // Any interaction inside the modal means they're engaged — stop the clock.
+  const stopCountdown = useCallback(() => setCountdownRunning(false), [])
+
+  const openBooking = useCallback(() => {
+    setCountdownRunning(false)
+    setBookingOpen(true)
+  }, [])
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-12 space-y-8 text-center">
@@ -119,23 +149,68 @@ export function SuccessScreen({
         </Card>
       )}
 
-      {data?.email && (
+      {canBook && (
         <Card className="max-w-2xl mx-auto border border-primary/25 rounded-2xl text-left bg-primary/5">
           <CardContent className="p-5 sm:p-7 space-y-4">
             <h3 className="font-semibold flex items-center gap-2">
               <CalendarClock className="w-4 h-4 text-primary" /> Book Your Admissions Appointment
             </h3>
             <Separator />
-            <p className="text-sm text-muted-foreground">
-              This is a necessary step if you want to fast-track your application. Choose a physical or virtual appointment with the Admissions Manager so we can review your goals, answer questions, and move your application forward faster.
-            </p>
+            {booked ? (
+              <p className="text-sm text-muted-foreground flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                Your appointment is booked. Check your email for the confirmation and joining details.
+              </p>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  This is a necessary step if you want to fast-track your application. Choose a physical or virtual appointment with the Admissions Manager so we can review your goals, answer questions, and move your application forward faster.
+                </p>
+                <button
+                  onClick={openBooking}
+                  className="w-full sm:w-auto h-11 px-6 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-colors"
+                >
+                  Book my appointment
+                </button>
+              </>
+            )}
           </CardContent>
         </Card>
       )}
 
       {data?.email && (
-        <div className="text-left">
+        <Modal
+          open={bookingOpen}
+          onClose={() => setBookingOpen(false)}
+          onInteract={stopCountdown}
+          title={booked ? 'Appointment confirmed' : 'Book your admissions appointment'}
+          description={booked ? undefined : 'Fast-track your application — takes under a minute.'}
+          headerSlot={
+            countdownRunning && !booked ? (
+              <div className="mt-3 flex items-center gap-3">
+                <div className="h-1 flex-1 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-[width] duration-1000 ease-linear"
+                    style={{ width: `${(secondsLeft / AUTO_DISMISS_SECONDS) * 100}%` }}
+                  />
+                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  Continuing in {secondsLeft}s
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBookingOpen(false)}
+                  className="text-xs font-semibold text-primary hover:underline whitespace-nowrap"
+                >
+                  Skip
+                </button>
+              </div>
+            ) : null
+          }
+        >
           <AppointmentBookingForm
+            variant="modal"
+            onBooked={() => { setBooked(true); setCountdownRunning(false) }}
             section={{
               _key: 'post-application-appointment',
               _type: 'appointmentFormSection',
@@ -173,7 +248,7 @@ export function SuccessScreen({
             lockContactDetails
             successActions="none"
           />
-        </div>
+        </Modal>
       )}
 
       <div className="space-y-3">

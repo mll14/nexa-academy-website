@@ -145,6 +145,10 @@ AUTH_USER_MODEL = 'accounts.User'
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': (
+        # Keycloak-issued tokens (post-migration). Returns None for non-Keycloak
+        # tokens so the legacy class below still handles existing SimpleJWT sessions.
+        'accounts.authentication.KeycloakJWTAuthentication',
+        # Legacy DRF-SimpleJWT sessions — kept during dual-run, removed in Phase 5.
         'accounts.authentication.SessionAwareJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': [
@@ -212,6 +216,43 @@ ADMISSIONS_NOTIFICATION_EMAIL = config('ADMISSIONS_NOTIFICATION_EMAIL', default=
 PAYSTACK_PUBLIC_KEY = config('PAYSTACK_PUBLIC_KEY', default='')
 PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
 GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
+
+# ── Keycloak (unified auth) ───────────────────────────────────────────────────
+# Keycloak is the system of record for authentication. Django validates the JWTs
+# it issues against the realm's JWKS. RBAC (staff_role/permissions) stays in Django.
+# See .claude/docs/KEYCLOAK_MIGRATION_REFINED.md and KEYCLOAK_PHASE0_SETUP.md.
+from urllib.parse import quote as _url_quote
+
+KEYCLOAK_SERVER_URL = config('KEYCLOAK_SERVER_URL', default='').rstrip('/')
+KEYCLOAK_REALM = config('KEYCLOAK_REALM', default='nexa-academy-auth')
+# Client the frontend authenticates as — expected `aud`/`azp` on browser tokens.
+KEYCLOAK_AUDIENCE = config('KEYCLOAK_AUDIENCE', default='nexa-admissions-app')
+# Confidential client used only by the migration script / server-side admin calls.
+KEYCLOAK_ADMIN_CLIENT_ID = config('KEYCLOAK_ADMIN_CLIENT_ID', default='nexa-admin-automation')
+KEYCLOAK_ADMIN_CLIENT_SECRET = config('KEYCLOAK_ADMIN_CLIENT_SECRET', default='')
+
+# Derived endpoints (realm names may contain spaces → URL-encode).
+KEYCLOAK_ISSUER = (
+    f'{KEYCLOAK_SERVER_URL}/realms/{_url_quote(KEYCLOAK_REALM)}'
+    if KEYCLOAK_SERVER_URL else ''
+)
+KEYCLOAK_JWKS_URL = (
+    f'{KEYCLOAK_ISSUER}/protocol/openid-connect/certs' if KEYCLOAK_ISSUER else ''
+)
+# When empty (no KEYCLOAK_SERVER_URL configured), KeycloakJWTAuthentication is inert
+# and every request falls through to the legacy SimpleJWT class — safe by default.
+
+# BFF confidential client (Option 3): Django brokers the password Direct Access Grant
+# and social code exchange server-side with this client. Must have Client authentication
+# ON, Direct access grants ON, and Standard flow ON (for the social code exchange).
+KEYCLOAK_BFF_CLIENT_ID = config('KEYCLOAK_BFF_CLIENT_ID', default='nexa-backend-bff')
+KEYCLOAK_BFF_CLIENT_SECRET = config('KEYCLOAK_BFF_CLIENT_SECRET', default='')
+
+# Audiences KeycloakJWTAuthentication will accept. Tokens minted by the BFF client carry
+# azp=nexa-backend-bff; tokens from the SPA carry azp=nexa-admissions-app. Both are valid.
+KEYCLOAK_ALLOWED_AUDIENCES = [
+    a for a in (KEYCLOAK_AUDIENCE, KEYCLOAK_BFF_CLIENT_ID) if a
+]
 
 # Off-platform payment coordinates (M-Pesa Lipa na M-Pesa Paybill, settled via KCB).
 # Shown on invoices, receipts, statements and the student/admin dashboards so a

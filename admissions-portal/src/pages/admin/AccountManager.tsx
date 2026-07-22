@@ -1,22 +1,24 @@
 import { useRef, useState } from 'react'
 import { AdminLayout } from '../../components/AdminLayout'
 import { useAuth } from '../../context/AuthContext'
-import { updateMyProfile, uploadPhoto } from '../../lib/api'
-import { Button } from '../../components/ui/button'
-import { Input } from '../../components/ui/input'
-import { Label } from '../../components/ui/label'
-import { PhoneNumberInput } from '../../components/ui/phone-input'
-import { SettingsCard, SecurityTab, SessionsTab } from '../../components/ProfileSections'
-import { User, Shield, Monitor, Camera } from 'lucide-react'
+import { uploadPhoto } from '../../lib/api'
+import { SecurityTab, SessionsTab } from '../../components/ProfileSections'
+import {
+  PersonalDetailsSection,
+  AddressSection,
+  NotificationPreferencesSection,
+} from '../../components/AccountSections'
+import { User, Shield, Monitor, Camera, Bell } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import toast from 'react-hot-toast'
 
 // ── Sidebar tab nav ───────────────────────────────────────────────────────────
 
 const TABS = [
-  { value: 'profile',  label: 'Profile',  icon: User    },
-  { value: 'security', label: 'Security', icon: Shield  },
-  { value: 'sessions', label: 'Sessions', icon: Monitor },
+  { value: 'profile',       label: 'Profile',       icon: User    },
+  { value: 'security',      label: 'Security',      icon: Shield  },
+  { value: 'sessions',      label: 'Sessions',      icon: Monitor },
+  { value: 'notifications', label: 'Notifications', icon: Bell    },
 ] as const
 
 type Tab = typeof TABS[number]['value']
@@ -91,78 +93,11 @@ function Avatar() {
 // ── Profile tab ───────────────────────────────────────────────────────────────
 
 function ProfileTab() {
-  const { user, refreshUser } = useAuth()
-  const [name, setName]   = useState(user?.display_name ?? '')
-  const [email, setEmail] = useState(user?.email ?? '')
-  const [phone, setPhone] = useState(user?.phone ?? '')
-  const [saving, setSaving] = useState(false)
-
-  const isDirty =
-    name  !== (user?.display_name ?? '') ||
-    email !== (user?.email ?? '')        ||
-    phone !== (user?.phone ?? '')
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setSaving(true)
-    try {
-      await updateMyProfile({ display_name: name, email, phone })
-      await refreshUser()
-      toast.success('Profile updated.')
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update profile.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   return (
-    <SettingsCard
-      title="Personal Information"
-      description="Update your display name, email address, and phone number."
-    >
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="space-y-1.5">
-          <Label htmlFor="acc-name">Full Name</Label>
-          <Input
-            id="acc-name"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="Your name"
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="acc-email">Email Address</Label>
-          <Input
-            id="acc-email"
-            type="email"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="acc-phone">
-            Phone{' '}
-            <span className="text-muted-foreground font-normal text-xs">(optional)</span>
-          </Label>
-          <PhoneNumberInput
-            id="acc-phone"
-            value={phone}
-            onChange={setPhone}
-            defaultCountry="KE"
-            placeholder="7xx xxx xxx"
-          />
-        </div>
-        <div className="flex justify-end pt-1">
-          <Button type="submit" disabled={saving || !isDirty} size="sm">
-            {saving ? 'Saving…' : 'Save Changes'}
-          </Button>
-        </div>
-      </form>
-    </SettingsCard>
+    <div className="space-y-4">
+      <PersonalDetailsSection />
+      <AddressSection />
+    </div>
   )
 }
 
@@ -219,9 +154,10 @@ export function AccountManager() {
 
           {/* Tab content */}
           <div className="flex-1 min-w-0">
-            {activeTab === 'profile'  && <ProfileTab />}
-            {activeTab === 'security' && <SecurityTab />}
-            {activeTab === 'sessions' && <SessionsTab />}
+            {activeTab === 'profile'       && <ProfileTab />}
+            {activeTab === 'security'      && <SecurityTab />}
+            {activeTab === 'sessions'      && <SessionsTab />}
+            {activeTab === 'notifications' && <NotificationPreferencesSection />}
           </div>
         </div>
 

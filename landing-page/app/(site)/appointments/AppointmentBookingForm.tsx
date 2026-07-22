@@ -116,12 +116,17 @@ export function AppointmentBookingForm({
   lockedHost,
   lockContactDetails = false,
   successActions = 'default',
+  variant = 'section',
+  onBooked,
 }: {
   section: AppointmentFormSection
   initialValues?: Partial<FormState>
   lockedHost?: Host
   lockContactDetails?: boolean
   successActions?: 'default' | 'none'
+  /** 'modal' drops the section chrome and sidebar so the form fits inside a dialog. */
+  variant?: 'section' | 'modal'
+  onBooked?: () => void
 }) {
   const {
     badge = 'Schedule a Visit',
@@ -231,13 +236,18 @@ export function AppointmentBookingForm({
       recaptchaToken,
     })
     setSubmitting(false)
-    if (result.success) setDone(true)
-    else setSubmitError(result.error ?? 'Something went wrong. Please try again.')
+    if (result.success) {
+      setDone(true)
+      onBooked?.()
+    } else {
+      setSubmitError(result.error ?? 'Something went wrong. Please try again.')
+    }
   }
 
+  const isModal = variant === 'modal'
+
   if (done) {
-    return (
-      <SectionWrapper section={section} containerSize="sm" className="py-16 md:py-24">
+    const confirmation = (
         <div className="text-center">
           <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 className="w-8 h-8 text-green-600" />
@@ -260,35 +270,44 @@ export function AppointmentBookingForm({
               </a>
             </div>
           )}
-        </div>
+      </div>
+    )
+
+    if (isModal) return confirmation
+
+    return (
+      <SectionWrapper section={section} containerSize="sm" className="py-16 md:py-24">
+        {confirmation}
       </SectionWrapper>
     )
   }
 
-  return (
-    <SectionWrapper section={section} containerSize="lg">
-      {/* Section header */}
-      <div className="text-center max-w-2xl mx-auto space-y-3 mb-10">
-        {badge && (
-          <span className="inline-block px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest">
-            {badge}
-          </span>
-        )}
-        <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{headline}</h2>
-        <div className="w-16 h-0.5 bg-primary mx-auto" />
-        {subheadline && <p className="text-muted-foreground text-sm">{subheadline}</p>}
-      </div>
+  const body = (
+    <>
+      {/* Section header — the modal renders its own title in the dialog chrome */}
+      {!isModal && (
+        <div className="text-center max-w-2xl mx-auto space-y-3 mb-10">
+          {badge && (
+            <span className="inline-block px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold uppercase tracking-widest">
+              {badge}
+            </span>
+          )}
+          <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">{headline}</h2>
+          <div className="w-16 h-0.5 bg-primary mx-auto" />
+          {subheadline && <p className="text-muted-foreground text-sm">{subheadline}</p>}
+        </div>
+      )}
 
       {/* Step indicator */}
-      <div className="flex justify-center mb-8 md:mb-10">
+      <div className={`flex justify-center ${isModal ? 'mb-6' : 'mb-8 md:mb-10'}`}>
         <StepIndicator current={step + 1} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8 items-start">
+      <div className={isModal ? '' : 'grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8 items-start'}>
         {/* ── Form card ── */}
-        <div className="md:col-span-7 lg:col-span-8">
-          <Card className="border border-border rounded-2xl">
-            <CardContent className="p-5 sm:p-6 lg:p-8">
+        <div className={isModal ? '' : 'md:col-span-7 lg:col-span-8'}>
+          <Card className={isModal ? 'border-0 shadow-none bg-transparent' : 'border border-border rounded-2xl'}>
+            <CardContent className={isModal ? 'p-0' : 'p-5 sm:p-6 lg:p-8'}>
 
               {/* Step 0 — Type & Host */}
               {step === 0 && (
@@ -621,7 +640,8 @@ export function AppointmentBookingForm({
           </Card>
         </div>
 
-        {/* ── Sidebar ── */}
+        {/* ── Sidebar — omitted in the modal, where space is tight ── */}
+        {!isModal && (
         <div className="md:col-span-5 lg:col-span-4 md:sticky md:top-24 space-y-5">
           {sidebarItems.length > 0 && (
             <Card className="border border-border rounded-2xl">
@@ -691,7 +711,16 @@ export function AppointmentBookingForm({
             </CardContent>
           </Card>
         </div>
+        )}
       </div>
+    </>
+  )
+
+  if (isModal) return body
+
+  return (
+    <SectionWrapper section={section} containerSize="lg">
+      {body}
     </SectionWrapper>
   )
 }

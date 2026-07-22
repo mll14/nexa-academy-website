@@ -1,4 +1,5 @@
 import { tokens, dispatchSessionExpired } from "../auth";
+import { isKeycloak } from "../../config/authProvider";
 
 export const BASE = import.meta.env.VITE_API_URL ?? "/api";
 
@@ -25,8 +26,11 @@ export function extractMessage(data: unknown): string {
 }
 
 export async function refreshToken(): Promise<boolean> {
+  // Both modes exchange an httpOnly refresh cookie for a fresh access token; only the
+  // endpoint differs. Keycloak mode hits the BFF (Django brokers Keycloak's refresh grant).
+  const endpoint = isKeycloak ? "/auth/keycloak/refresh/" : "/auth/refresh/";
   try {
-    const res = await fetch(`${BASE}/auth/refresh/`, {
+    const res = await fetch(`${BASE}${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),

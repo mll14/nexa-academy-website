@@ -15,7 +15,7 @@ export function HeroSection({ section }: { section: HeroSectionType }) {
     >
       <div className={isSplit ? 'grid md:grid-cols-2 gap-10 lg:gap-16 items-center' : 'flex flex-col items-center text-center gap-5 sm:gap-6 max-w-3xl mx-auto'}>
         {/* Left / content column */}
-        <div className={`flex flex-col gap-5 sm:gap-6 ${isSplit ? 'text-center md:text-left items-center md:items-start' : 'items-center'}`}>
+        <div className={`flex flex-col w-full gap-5 sm:gap-6 ${isSplit ? 'text-center md:text-left items-center md:items-start' : 'items-center'}`}>
           {section.badge && <Badge>{section.badge}</Badge>}
 
           {section.headline && (
@@ -31,13 +31,16 @@ export function HeroSection({ section }: { section: HeroSectionType }) {
           )}
 
           {(section.primaryCta || section.secondaryCta) && (
-            <div className={`flex flex-wrap items-center gap-3 ${!isSplit ? 'justify-center' : ''}`}>
+            <div
+              className={`flex flex-col w-full gap-3 sm:flex-row sm:flex-wrap sm:w-auto sm:items-center ${!isSplit ? 'sm:justify-center' : ''}`}
+            >
               {section.primaryCta && (
                 <LinkButton
                   href={section.primaryCta.url}
                   variant={section.primaryCta.variant ?? 'primary'}
                   size="lg"
                   target={section.primaryCta.openInNewTab ? '_blank' : undefined}
+                  className="w-full sm:w-auto"
                 >
                   {section.primaryCta.label}
                 </LinkButton>
@@ -48,6 +51,7 @@ export function HeroSection({ section }: { section: HeroSectionType }) {
                   variant={section.secondaryCta.variant ?? 'outline'}
                   size="lg"
                   target={section.secondaryCta.openInNewTab ? '_blank' : undefined}
+                  className="w-full sm:w-auto"
                 >
                   {section.secondaryCta.label}
                 </LinkButton>

@@ -7,8 +7,16 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Card, CardContent } from '../components/ui/card'
 import { useAuth } from '../context/AuthContext'
+import { isKeycloak, SOCIAL_PROVIDERS } from '../config/authProvider'
+import { SocialIcon } from '../components/SocialIcons'
 import type { User } from '../types'
 import toast from 'react-hot-toast'
+
+const PROVIDER_LABEL: Record<string, string> = {
+  google: 'Google',
+  microsoft: 'Microsoft',
+  github: 'GitHub',
+}
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
 
@@ -27,7 +35,7 @@ function redirectForUser(user: User, navigate: ReturnType<typeof useNavigate>, r
 }
 
 export function Login() {
-  const { login, googleLogin, completeTwoFALogin } = useAuth()
+  const { login, googleLogin, socialLogin, completeTwoFALogin } = useAuth()
   const navigate = useNavigate()
   const { redirect: redirectTo } = useSearch({ from: '/login' })
   const [email, setEmail] = useState('')
@@ -231,19 +239,37 @@ export function Login() {
               </Button>
             </form>
 
-            {GOOGLE_CLIENT_ID && (
+            {(isKeycloak ? SOCIAL_PROVIDERS.length > 0 : !!GOOGLE_CLIENT_ID) && (
               <>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 h-px bg-border" />
                   <span className="text-xs text-muted-foreground">or</span>
                   <div className="flex-1 h-px bg-border" />
                 </div>
-                <GoogleLogin
-                  onSuccess={handleGoogle}
-                  onError={() => toast.error('Google login failed')}
-                  width="100%"
-                  itp_support
-                />
+                {isKeycloak ? (
+                  <div className="space-y-2">
+                    {SOCIAL_PROVIDERS.map((p) => (
+                      <Button
+                        key={p}
+                        type="button"
+                        variant="outline"
+                        className="w-full gap-2 [&_svg]:size-[18px]"
+                        disabled={loading}
+                        onClick={() => socialLogin(p)}
+                      >
+                        <SocialIcon provider={p} />
+                        Continue with {PROVIDER_LABEL[p] ?? p}
+                      </Button>
+                    ))}
+                  </div>
+                ) : (
+                  <GoogleLogin
+                    onSuccess={handleGoogle}
+                    onError={() => toast.error('Google login failed')}
+                    width="100%"
+                    itp_support
+                  />
+                )}
               </>
             )}
           </CardContent>

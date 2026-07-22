@@ -4,7 +4,6 @@ import type { Metadata } from 'next'
 import { sanityFetch } from '@/lib/sanity/client'
 import { homePageQuery, siteSettingsQuery } from '@/lib/sanity/queries'
 import { SectionRenderer } from '@/components/sections/SectionRenderer'
-import { GoogleAuthNotice } from '@/components/shared/GoogleAuthNotice'
 import { buildMetadata, serializeJsonLd } from '@/lib/seo'
 import type { HomePage, SiteSettings } from '@/types'
 
@@ -50,7 +49,6 @@ export default async function HomePage() {
         dangerouslySetInnerHTML={{ __html: serializeJsonLd(organizationSchema) }}
       />
       <SectionRenderer sections={page.sections} />
-      <GoogleAuthNotice />
     </>
   )
 }

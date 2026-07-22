@@ -259,6 +259,35 @@ export const allBlogSlugsQuery = groq`
   *[_type == "blogPost" && defined(slug.current)] { "slug": slug.current }
 `
 
+// ── Events ────────────────────────────────────────────────────────────────────
+
+export const allEventsQuery = groq`
+  *[_type == "event" && status != "cancelled"] | order(startDate desc) {
+    _id, title,
+    "slug": slug.current,
+    startDate, endDate, location, status, registrationUrl,
+    "coverImage": coverImage { ..., asset-> }
+  }
+`
+
+export const eventBySlugQuery = groq`
+  *[_type == "event" && slug.current == $slug][0] {
+    _id, title,
+    "slug": slug.current,
+    startDate, endDate, location, status, registrationUrl,
+    "coverImage": coverImage { ..., asset-> },
+    description[] {
+      ...,
+      _type == "image" => { ..., asset-> }
+    },
+    ${seoFragment}
+  }
+`
+
+export const allEventSlugsQuery = groq`
+  *[_type == "event" && defined(slug.current)] { "slug": slug.current }
+`
+
 export const siteSettingsQuery = groq`
   *[_type == "siteSettings"][0] {
     siteName,

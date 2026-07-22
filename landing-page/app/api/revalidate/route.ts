@@ -13,6 +13,7 @@ const typeToTags: Record<string, string[]> = {
   faq: ['homePage', 'pages'],
   partner: ['homePage', 'pages'],
   teamMember: ['homePage', 'pages'],
+  event: ['event'],
 }
 
 const UNAUTHORIZED = NextResponse.json({ message: 'Invalid secret' }, { status: 401 })
@@ -37,11 +38,14 @@ export async function POST(req: NextRequest) {
     const body = await req.json()
     const docType: string = body._type ?? ''
     const docId: string = body._id ?? ''
+    const docSlug: string = body.slug?.current ?? ''
 
     const tags = typeToTags[docType] ?? ['pages']
 
     if (docType === 'page' && docId) {
       revalidateTag('pages')
+      // Routes for single pages fetch under a per-slug tag (e.g. 'page-about').
+      if (docSlug) tags.push(`page-${docSlug}`)
     }
 
     tags.forEach(revalidateTag)

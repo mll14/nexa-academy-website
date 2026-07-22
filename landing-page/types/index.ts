@@ -450,6 +450,27 @@ export interface BlogPostSummary {
   coverImage?: SanityImage
 }
 
+// ─── Events ───────────────────────────────────────────────────────────────────
+
+export type EventStatus = 'upcoming' | 'ongoing' | 'past' | 'cancelled'
+
+export interface EventSummary {
+  _id: string
+  title: string
+  slug: string
+  startDate: string
+  endDate?: string
+  location?: string
+  status?: EventStatus
+  registrationUrl?: string
+  coverImage?: SanityImage
+}
+
+export interface EventDoc extends EventSummary {
+  description?: PortableTextBlock[]
+  seo?: SEO
+}
+
 // Body block types for the rich blog body
 export interface CodeBlockData {
   _key: string

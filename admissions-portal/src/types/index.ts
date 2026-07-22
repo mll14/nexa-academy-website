@@ -50,6 +50,70 @@ export interface User {
   /** null = super admin (unrestricted). Non-null = role-scoped. */
   staffRole?: Role | null
   effectivePermissions?: string[]
+
+  // Personal details
+  first_name?: string
+  middle_name?: string
+  last_name?: string
+  date_of_birth?: string | null
+  gender?: Gender | ''
+  nationality?: string
+  alt_phone?: string
+  /** Derived server-side from date_of_birth; null when unset. */
+  age?: number | null
+  /** Masked for non-admins (e.g. "••••1234"). */
+  id_number?: string
+
+  // Address
+  country?: string
+  county?: string
+  city?: string
+  postal_address?: string
+}
+
+export type Gender = 'female' | 'male' | 'other' | 'undisclosed'
+
+export type GuardianRelationship =
+  | 'parent' | 'guardian' | 'sibling' | 'spouse' | 'sponsor' | 'other'
+
+export interface Guardian {
+  id: string
+  full_name: string
+  relationship: GuardianRelationship
+  relationship_display: string
+  phone?: string
+  email?: string
+  occupation?: string
+  is_primary: boolean
+  is_emergency_contact: boolean
+  /** This guardian settles the student's fees. */
+  is_bill_payer: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface NotificationPreferences {
+  email_enabled: boolean
+  sms_enabled: boolean
+  in_app_enabled: boolean
+  application_updates: boolean
+  interview_reminders: boolean
+  payment_updates: boolean
+  program_announcements: boolean
+  newsletter: boolean
+  updated_at?: string
+}
+
+/** What sign-in methods the account actually has — drives the Security tab's copy. */
+export interface AccountCredentials {
+  /** True once Keycloak owns authentication for this deployment. */
+  keycloak_managed: boolean
+  /** False for social-only accounts, which must *set* a password rather than change one. */
+  has_password: boolean
+  /** An OTP credential enrolled in Keycloak itself (via its Account Console). */
+  keycloak_otp: boolean
+  google_linked: boolean
+  account_console_url: string
 }
 
 export interface Program {
