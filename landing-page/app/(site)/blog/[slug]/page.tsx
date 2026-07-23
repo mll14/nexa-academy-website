@@ -5,12 +5,12 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import { sanityFetch } from '@/lib/sanity/client'
-import { blogPostBySlugQuery, siteSettingsQuery } from '@/lib/sanity/queries'
+import { blogIndexPageQuery, blogPostBySlugQuery, siteSettingsQuery } from '@/lib/sanity/queries'
 import { buildMetadata, serializeJsonLd } from '@/lib/seo'
 import { urlFor } from '@/lib/sanity/image'
 import { BlogBody } from '@/components/blog/BlogBody'
 import { BlogCard } from '@/components/blog/BlogCard'
-import type { BlogPost, SiteSettings } from '@/types'
+import type { BlogIndexPage, BlogPost, SiteSettings } from '@/types'
 
 const CATEGORY_LABELS: Record<string, string> = {
   tutorial: 'Tutorial',
@@ -55,12 +55,19 @@ export default async function BlogPostPage({
   params: Promise<{ slug: string }>
 }) {
   const { slug } = await params
-  const post = await sanityFetch<BlogPost>({
-    query: blogPostBySlugQuery,
-    params: { slug },
-    tags: ['blogPost'],
-    revalidate: 300,
-  })
+  const [post, page] = await Promise.all([
+    sanityFetch<BlogPost>({
+      query: blogPostBySlugQuery,
+      params: { slug },
+      tags: ['blogPost'],
+      revalidate: 300,
+    }),
+    sanityFetch<BlogIndexPage>({
+      query: blogIndexPageQuery,
+      tags: ['blogIndexPage'],
+      revalidate: 300,
+    }),
+  ])
 
   if (!post) notFound()
 
@@ -101,7 +108,7 @@ export default async function BlogPostPage({
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
             <path d="M13 8H3M7 4L3 8l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          Back to Blog
+          {page?.backLabel ?? 'Back to Blog'}
         </Link>
 
         {/* Header */}
@@ -213,7 +220,9 @@ export default async function BlogPostPage({
         {/* Related posts */}
         {post.relatedPosts && post.relatedPosts.length > 0 && (
           <div className="border-t border-border pt-10">
-            <h2 className="text-lg font-bold text-foreground mb-6">Related Articles</h2>
+            <h2 className="text-lg font-bold text-foreground mb-6">
+              {page?.relatedHeading ?? 'Related Articles'}
+            </h2>
             <div className="grid sm:grid-cols-2 gap-6">
               {post.relatedPosts.map((p) => (
                 <BlogCard key={p._id} post={p} />

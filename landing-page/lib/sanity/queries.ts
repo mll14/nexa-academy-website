@@ -255,6 +255,16 @@ export const blogPostBySlugQuery = groq`
   }
 `
 
+export const blogIndexPageQuery = groq`
+  *[_type == "blogIndexPage"][0] {
+    eyebrow, headline, intro,
+    showFeatured, moreArticlesHeading, allArticlesHeading, emptyCategoryText,
+    emptyStateText, emptyStateCta ${linkFragment},
+    backLabel, relatedHeading,
+    ${seoFragment}
+  }
+`
+
 export const allBlogSlugsQuery = groq`
   *[_type == "blogPost" && defined(slug.current)] { "slug": slug.current }
 `
@@ -280,6 +290,19 @@ export const eventBySlugQuery = groq`
       ...,
       _type == "image" => { ..., asset-> }
     },
+    ${seoFragment}
+  }
+`
+
+export const eventsIndexPageQuery = groq`
+  *[_type == "eventsIndexPage"][0] {
+    eyebrow, headline, intro,
+    upcomingHeading, pastHeading, showPastEvents,
+    emptyStateText,
+    emptyStatePrimaryCta ${linkFragment},
+    emptyStateSecondaryCta ${linkFragment},
+    backLabel, pastBadgeLabel, registerLabel,
+    detailSecondaryCta ${linkFragment},
     ${seoFragment}
   }
 `
