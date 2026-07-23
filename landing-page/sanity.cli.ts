@@ -6,6 +6,8 @@ export default defineCliConfig({
     projectId: 'qg0o7wrr',
     dataset: 'production',
   },
+  // Hosted Studio at https://nexa-academy.sanity.studio
+  studioHost: 'nexa-academy',
   vite: {
     resolve: {
       alias: {
