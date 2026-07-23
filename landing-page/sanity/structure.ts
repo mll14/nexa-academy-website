@@ -53,7 +53,21 @@ export const structure = (S: StructureBuilder) =>
       S.listItem()
         .title('Blog')
         .icon(EditIcon)
-        .child(S.documentTypeList('blogPost').title('Blog Posts')),
+        .child(
+          S.list()
+            .title('Blog')
+            .items([
+              S.listItem()
+                .title('Blog Page Settings')
+                .icon(CogIcon)
+                .child(S.document().schemaType('blogIndexPage').documentId('blogIndexPage')),
+              S.divider(),
+              S.listItem()
+                .title('Blog Posts')
+                .icon(EditIcon)
+                .child(S.documentTypeList('blogPost').title('Blog Posts')),
+            ])
+        ),
 
       S.divider(),
 
@@ -97,7 +111,23 @@ export const structure = (S: StructureBuilder) =>
               S.listItem()
                 .title('Events')
                 .icon(CalendarIcon)
-                .child(S.documentTypeList('event').title('Events')),
+                .child(
+                  S.list()
+                    .title('Events')
+                    .items([
+                      S.listItem()
+                        .title('Events Page Settings')
+                        .icon(CogIcon)
+                        .child(
+                          S.document().schemaType('eventsIndexPage').documentId('eventsIndexPage')
+                        ),
+                      S.divider(),
+                      S.listItem()
+                        .title('All Events')
+                        .icon(CalendarIcon)
+                        .child(S.documentTypeList('event').title('Events')),
+                    ])
+                ),
               S.listItem()
                 .title('Careers')
                 .icon(CaseIcon)

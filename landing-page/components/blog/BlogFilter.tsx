@@ -15,7 +15,13 @@ const CATEGORIES = [
   { label: 'Course Content', value: 'course-content' },
 ]
 
-export function BlogFilter({ posts }: { posts: BlogPostSummary[] }) {
+export function BlogFilter({
+  posts,
+  emptyText,
+}: {
+  posts: BlogPostSummary[]
+  emptyText?: string
+}) {
   const [active, setActive] = useState('all')
 
   const filtered = active === 'all' ? posts : posts.filter((p) => p.category === active)
@@ -45,7 +51,9 @@ export function BlogFilter({ posts }: { posts: BlogPostSummary[] }) {
 
       {/* Grid */}
       {filtered.length === 0 ? (
-        <p className="py-16 text-center text-muted-foreground">No posts in this category yet.</p>
+        <p className="py-16 text-center text-muted-foreground">
+          {emptyText ?? 'No posts in this category yet.'}
+        </p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {filtered.map((post) => (

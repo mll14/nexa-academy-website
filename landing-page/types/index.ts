@@ -450,6 +450,22 @@ export interface BlogPostSummary {
   coverImage?: SanityImage
 }
 
+/** Editable chrome for /blog and /blog/[slug] — the `blogIndexPage` singleton. */
+export interface BlogIndexPage {
+  eyebrow?: string
+  headline?: string
+  intro?: string
+  showFeatured?: boolean
+  moreArticlesHeading?: string
+  allArticlesHeading?: string
+  emptyCategoryText?: string
+  emptyStateText?: string
+  emptyStateCta?: Link
+  backLabel?: string
+  relatedHeading?: string
+  seo?: SEO
+}
+
 // ─── Events ───────────────────────────────────────────────────────────────────
 
 export type EventStatus = 'upcoming' | 'ongoing' | 'past' | 'cancelled'
@@ -468,6 +484,24 @@ export interface EventSummary {
 
 export interface EventDoc extends EventSummary {
   description?: PortableTextBlock[]
+  seo?: SEO
+}
+
+/** Editable chrome for /events and /events/[slug] — the `eventsIndexPage` singleton. */
+export interface EventsIndexPage {
+  eyebrow?: string
+  headline?: string
+  intro?: string
+  upcomingHeading?: string
+  pastHeading?: string
+  showPastEvents?: boolean
+  emptyStateText?: string
+  emptyStatePrimaryCta?: Link
+  emptyStateSecondaryCta?: Link
+  backLabel?: string
+  pastBadgeLabel?: string
+  registerLabel?: string
+  detailSecondaryCta?: Link
   seo?: SEO
 }
 

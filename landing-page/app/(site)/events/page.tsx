@@ -3,19 +3,27 @@ export const runtime = 'edge'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { sanityFetch } from '@/lib/sanity/client'
-import { allEventsQuery, siteSettingsQuery } from '@/lib/sanity/queries'
+import { allEventsQuery, eventsIndexPageQuery, siteSettingsQuery } from '@/lib/sanity/queries'
+import { buildMetadata } from '@/lib/seo'
 import { EventCard } from '@/components/events/EventCard'
-import type { EventSummary, SiteSettings } from '@/types'
-
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://nexaacademy.co.ke'
+import type { EventSummary, EventsIndexPage, SiteSettings } from '@/types'
 
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = await sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'] })
-  return {
-    title: 'Events & Open Days',
-    description: `Workshops, open days, demo nights, and meetups from ${settings?.siteName ?? 'Nexa Academy'} in Nairobi.`,
-    alternates: { canonical: `${SITE_URL}/events` },
-  }
+  const [page, settings] = await Promise.all([
+    sanityFetch<EventsIndexPage>({ query: eventsIndexPageQuery, tags: ['eventsIndexPage'] }),
+    sanityFetch<SiteSettings>({ query: siteSettingsQuery, tags: ['siteSettings'] }),
+  ])
+  const siteName = settings?.siteName ?? 'Nexa Academy'
+  return buildMetadata(
+    page?.seo ?? null,
+    {
+      title: 'Events & Open Days',
+      description: `Workshops, open days, demo nights, and meetups from ${siteName} in Nairobi.`,
+    },
+    siteName,
+    settings?.defaultSeo?.ogImage,
+    '/events',
+  )
 }
 
 /**
@@ -29,38 +37,50 @@ function isUpcoming(event: EventSummary, now: number): boolean {
 }
 
 export default async function EventsPage() {
-  const events = await sanityFetch<EventSummary[]>({
-    query: allEventsQuery,
-    tags: ['event'],
-    revalidate: 300,
-  })
+  const [events, page] = await Promise.all([
+    sanityFetch<EventSummary[]>({
+      query: allEventsQuery,
+      tags: ['event'],
+      revalidate: 300,
+    }),
+    sanityFetch<EventsIndexPage>({
+      query: eventsIndexPageQuery,
+      tags: ['eventsIndexPage'],
+      revalidate: 300,
+    }),
+  ])
 
   const now = Date.now()
   const all = events ?? []
   const upcoming = all
     .filter((e) => isUpcoming(e, now))
     .sort((a, b) => +new Date(a.startDate) - +new Date(b.startDate))
-  const past = all.filter((e) => !isUpcoming(e, now))
+  const past = (page?.showPastEvents ?? true) ? all.filter((e) => !isUpcoming(e, now)) : []
+
+  const primaryCta = page?.emptyStatePrimaryCta
+  const secondaryCta = page?.emptyStateSecondaryCta
 
   return (
     <main className="min-h-screen bg-background">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 md:py-24">
 
         <div className="mb-12 max-w-2xl">
-          <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">Events</p>
+          <p className="text-sm font-semibold text-primary uppercase tracking-widest mb-3">
+            {page?.eyebrow ?? 'Events'}
+          </p>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
-            Open days, workshops & demo nights
+            {page?.headline ?? 'Open days, workshops & demo nights'}
           </h1>
           <p className="mt-4 text-lg text-muted-foreground leading-relaxed">
-            Come meet the team, see student projects, and get a feel for how we teach — in person
-            at our Nairobi campus or online.
+            {page?.intro ??
+              'Come meet the team, see student projects, and get a feel for how we teach — in person at our Nairobi campus or online.'}
           </p>
         </div>
 
         {upcoming.length > 0 && (
           <section className="mb-16">
             <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-6">
-              Upcoming
+              {page?.upcomingHeading ?? 'Upcoming'}
             </h2>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {upcoming.map((event) => (
@@ -73,7 +93,7 @@ export default async function EventsPage() {
         {past.length > 0 && (
           <section>
             <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-6">
-              Past events
+              {page?.pastHeading ?? 'Past events'}
             </h2>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {past.map((event) => (
@@ -83,24 +103,30 @@ export default async function EventsPage() {
           </section>
         )}
 
-        {all.length === 0 && (
+        {upcoming.length === 0 && past.length === 0 && (
           <div className="py-24 text-center space-y-4">
             <p className="text-muted-foreground text-lg">
-              No events scheduled right now. Check back soon — or book a visit and we&apos;ll show
-              you around.
+              {page?.emptyStateText ??
+                "No events scheduled right now. Check back soon — or book a visit and we'll show you around."}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Link
-                href="/appointments"
+                href={primaryCta?.url ?? '/appointments'}
+                {...(primaryCta?.openInNewTab
+                  ? { target: '_blank', rel: 'noopener noreferrer' }
+                  : {})}
                 className="w-full sm:w-auto inline-flex items-center justify-center h-11 px-6 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-colors"
               >
-                Book a visit
+                {primaryCta?.label ?? 'Book a visit'}
               </Link>
               <Link
-                href="/"
+                href={secondaryCta?.url ?? '/'}
+                {...(secondaryCta?.openInNewTab
+                  ? { target: '_blank', rel: 'noopener noreferrer' }
+                  : {})}
                 className="w-full sm:w-auto inline-flex items-center justify-center h-11 px-6 rounded-lg border border-border font-semibold hover:bg-muted transition-colors"
               >
-                Back to home
+                {secondaryCta?.label ?? 'Back to home'}
               </Link>
             </div>
           </div>

@@ -5,12 +5,12 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { CalendarDays, MapPin, ArrowLeft } from 'lucide-react'
 import { sanityFetch } from '@/lib/sanity/client'
-import { eventBySlugQuery, siteSettingsQuery } from '@/lib/sanity/queries'
+import { eventBySlugQuery, eventsIndexPageQuery, siteSettingsQuery } from '@/lib/sanity/queries'
 import { buildMetadata, serializeJsonLd } from '@/lib/seo'
 import { SanityImage } from '@/components/shared/SanityImage'
 import { PortableTextRenderer } from '@/components/shared/PortableTextRenderer'
 import { formatEventDate } from '@/components/events/EventCard'
-import type { EventDoc, SiteSettings } from '@/types'
+import type { EventDoc, EventsIndexPage, SiteSettings } from '@/types'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://nexaacademy.co.ke'
 
@@ -43,14 +43,23 @@ export default async function EventDetailPage({
   params: Promise<{ slug: string }>
 }) {
   const { slug } = await params
-  const event = await sanityFetch<EventDoc | null>({
-    query: eventBySlugQuery,
-    params: { slug },
-    tags: ['event'],
-    revalidate: 300,
-  })
+  const [event, page] = await Promise.all([
+    sanityFetch<EventDoc | null>({
+      query: eventBySlugQuery,
+      params: { slug },
+      tags: ['event'],
+      revalidate: 300,
+    }),
+    sanityFetch<EventsIndexPage>({
+      query: eventsIndexPageQuery,
+      tags: ['eventsIndexPage'],
+      revalidate: 300,
+    }),
+  ])
 
   if (!event) notFound()
+
+  const secondaryCta = page?.detailSecondaryCta
 
   const isPast =
     event.status === 'past' ||
@@ -79,7 +88,7 @@ export default async function EventDetailPage({
           href="/events"
           className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors mb-8"
         >
-          <ArrowLeft className="w-4 h-4" /> All events
+          <ArrowLeft className="w-4 h-4" /> {page?.backLabel ?? 'All events'}
         </Link>
 
         {event.coverImage?.asset && (
@@ -97,7 +106,7 @@ export default async function EventDetailPage({
         <div className="space-y-4">
           {isPast && (
             <span className="inline-block px-2.5 py-1 rounded-full bg-muted text-muted-foreground text-xs font-bold uppercase tracking-wider">
-              Past event
+              {page?.pastBadgeLabel ?? 'Past event'}
             </span>
           )}
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight leading-tight">
@@ -134,14 +143,17 @@ export default async function EventDetailPage({
                 rel="noopener noreferrer"
                 className="w-full sm:w-auto inline-flex items-center justify-center h-11 px-6 rounded-lg bg-primary text-white font-semibold hover:bg-primary/90 transition-colors"
               >
-                Register
+                {page?.registerLabel ?? 'Register'}
               </a>
             )}
             <Link
-              href="/appointments"
+              href={secondaryCta?.url ?? '/appointments'}
+              {...(secondaryCta?.openInNewTab
+                ? { target: '_blank', rel: 'noopener noreferrer' }
+                : {})}
               className="w-full sm:w-auto inline-flex items-center justify-center h-11 px-6 rounded-lg border border-primary text-primary font-semibold hover:bg-primary hover:text-white transition-colors"
             >
-              Book a visit instead
+              {secondaryCta?.label ?? 'Book a visit instead'}
             </Link>
           </div>
         )}

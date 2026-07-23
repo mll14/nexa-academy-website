@@ -14,6 +14,9 @@ const typeToTags: Record<string, string[]> = {
   partner: ['homePage', 'pages'],
   teamMember: ['homePage', 'pages'],
   event: ['event'],
+  eventsIndexPage: ['eventsIndexPage'],
+  blogPost: ['blogPost'],
+  blogIndexPage: ['blogIndexPage'],
 }
 
 const UNAUTHORIZED = NextResponse.json({ message: 'Invalid secret' }, { status: 401 })
@@ -40,7 +43,8 @@ export async function POST(req: NextRequest) {
     const docId: string = body._id ?? ''
     const docSlug: string = body.slug?.current ?? ''
 
-    const tags = typeToTags[docType] ?? ['pages']
+    // Copy — the entries in typeToTags are module-level and must not be mutated.
+    const tags = [...(typeToTags[docType] ?? ['pages'])]
 
     if (docType === 'page' && docId) {
       revalidateTag('pages')
